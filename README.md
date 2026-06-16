@@ -40,9 +40,9 @@ Wired and coherent; the trust/persistence layers are stubbed for the single-home
 ## Run (dev)
 
 ```sh
-./gradlew bootRun        # :8090
-curl -s localhost:8090/roster | jq
-curl -s -XPOST localhost:8090/resolve -H 'content-type: application/json' \
+./gradlew bootRun        # :8095
+curl -s localhost:8095/roster | jq
+curl -s -XPOST localhost:8095/resolve -H 'content-type: application/json' \
   -d '{"phone":"+5511987654321"}' | jq    # -> register at the dev homeserver
 ```
 

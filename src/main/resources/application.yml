@@ -1,5 +1,6 @@
 server:
-  port: 8090
+  # 8095 (NOT 8090 — that is MAS in the local dev stack).
+  port: 8095
 
 spring:
   application:
