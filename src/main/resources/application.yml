@@ -1,0 +1,28 @@
+server:
+  port: 8090
+
+spring:
+  application:
+    name: gua-resolver
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+# Phase-1 dev: the single homeserver the resolver routes everyone to. Placeholders here; the real domains
+# are injected per-environment (e.g. GUA_RESOLVER_DEVHOMESERVER_SERVERNAME=...). Replaced entirely by the
+# authority-signed, transparency-logged roster when a second operator joins.
+gua:
+  resolver:
+    dev-homeserver:
+      id: dev
+      server-name: gua.local
+      base-url: https://matrix.gua.local
+      mas-issuer: https://account.gua.local
+      region: dev

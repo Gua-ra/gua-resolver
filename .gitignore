@@ -1,0 +1,21 @@
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+### IntelliJ ###
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+### VS Code ###
+.vscode/
+
+### Runtime ###
+logs/
+*.log
+
+### Local secrets / dev ###
+.env
+*.pem
