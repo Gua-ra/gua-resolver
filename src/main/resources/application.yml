@@ -17,10 +17,17 @@ management:
   endpoints:
     web:
       exposure:
-        include: health, info
+        include: health, info, prometheus
   endpoint:
     health:
       probes:
+        enabled: true
+  metrics:
+    tags:
+      application: gua-resolver   # so dashboards can filter Gua app metrics by service
+  prometheus:
+    metrics:
+      export:
         enabled: true
 
 # Rate-limit the directory lookup (anti-enumeration): per the design the phone graph is queried, never

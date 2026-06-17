@@ -10,6 +10,8 @@ import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.placement.PlacementContext;
 import global.gua.resolver.roster.RosterStore;
 import global.gua.resolver.service.ResolutionService;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 
 /**
  * The federation front door consumed by iOS / web (and later Android) BEFORE OIDC login. The client sends a
@@ -23,19 +25,28 @@ public class ResolveController {
 
     private final ResolutionService resolution;
     private final RosterStore rosterStore;
+    private final Counter resolveExisting;
+    private final Counter resolveRegister;
 
-    public ResolveController(ResolutionService resolution, RosterStore rosterStore) {
+    public ResolveController(ResolutionService resolution, RosterStore rosterStore, MeterRegistry metrics) {
         this.resolution = resolution;
         this.rosterStore = rosterStore;
+        // gua_resolver_resolve_total{outcome=...} — login (existing account) vs register (new placement).
+        this.resolveExisting = Counter.builder("gua.resolver.resolve").tag("outcome", "existing").register(metrics);
+        this.resolveRegister = Counter.builder("gua.resolver.resolve").tag("outcome", "register").register(metrics);
     }
 
     /** Resolve a phone to its homeserver (login) or to a placement target (register). */
     @PostMapping("/resolve")
     public ResolveResponse resolve(@RequestBody ResolveRequest request) {
         return resolution.resolvePhone(request.phone())
-                .map(hs -> ResolveResponse.existing(HomeserverRef.of(hs)))
+                .map(hs -> {
+                    resolveExisting.increment();
+                    return ResolveResponse.existing(HomeserverRef.of(hs));
+                })
                 .orElseGet(() -> {
                     Homeserver target = resolution.placementFor(PlacementContext.forPhone(request.phone()));
+                    resolveRegister.increment();
                     return ResolveResponse.register(HomeserverRef.of(target));
                 });
     }
