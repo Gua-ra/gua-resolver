@@ -14,7 +14,7 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 
 /**
- * The federation front door consumed by iOS / web (and later Android) BEFORE OIDC login. The client sends a
+ * The federation front door consumed by iOS / Web / Android BEFORE OIDC login. The client sends a
  * verified phone and learns which homeserver to authenticate against; for a new phone it learns where to
  * register. This is what replaces the clients' hardcoded {@code GuaDefaultAccountProvider}.
  *
