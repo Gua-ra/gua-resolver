@@ -8,6 +8,7 @@ on:
     branches: ["main", "mvp/**"]
     tags: ["v*"]
   pull_request:
+  workflow_dispatch: # manual trigger from the Mac: `gh workflow run ci.yaml -R Gua-ra/gua-resolver --ref <branch>`
 
 permissions:
   contents: read
