@@ -1,14 +1,12 @@
 name: CI
 
 # Test on every push/PR; build + publish the image to GHCR on integration-branch pushes and tags.
-# This replaces the manual "docker build --platform amd64 | save | k3s ctr import" loop — the cluster
-# pulls a tagged image from GHCR instead.
 on:
   push:
     branches: ["main", "mvp/**"]
     tags: ["v*"]
   pull_request:
-  workflow_dispatch: # manual trigger from the Mac: `gh workflow run ci.yaml -R Gua-ra/gua-resolver --ref <branch>`
+  workflow_dispatch:
 
 permissions:
   contents: read
