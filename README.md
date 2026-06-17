@@ -19,23 +19,41 @@ public, read-mostly, horizontally-scalable, **anyone-can-mirror** entry point to
    lives. Operator-specific placement (a carrier claiming its numbers, a university claiming its affiliates)
    is **declarative data in the signed roster**, not code — adding one is a roster edit, no redeploy.
 
-## Status — Phase 1 (scaffold)
+## Status
 
-Wired and coherent; the trust/persistence layers are stubbed for the single-homeserver dev cutover:
+The trust + persistence layers are **implemented**, not stubbed:
 
 - `placement/` — `PlacementRule` SPI + `PlacementEngine` + built-in `ClaimRule` (declarative carrier/
-  affiliation/prefix claims) and `WeightedFallbackRule`. **Real and extensible now.**
-- `roster/` — `SignedRoster` / `RosterEntry` / `RosterStore` / `TransparencyLog` contracts; dev
-  `InMemoryRosterStore` returns the single dev homeserver (unsigned). The authority-signed,
-  threshold + Merkle-log store is the next pass.
-- `service/` + `api/` — `/resolve` + `/roster` over a stub directory (everyone routes to the dev
-  homeserver until the shared peppered-HMAC directory is wired).
+  affiliation/prefix claims) and `WeightedFallbackRule`. Extensible: a new strategy is a new bean.
+- `crypto/` — JDK-native **Ed25519** (sign/verify) and an **RFC 6962 Merkle tree** (root + consistency
+  proofs) — the tamper-evidence primitive, no PoW/blockchain.
+- `roster/` — **authority-signed roster** with **k-of-n threshold** Ed25519 signatures
+  (`RosterSigner`/`RosterVerifier`) over deterministic `CanonicalRoster` bytes, anchored to a persistent
+  **Merkle transparency log** (`JdbcTransparencyLog`). Two modes: `AuthorityRosterStore` (owns + signs) and
+  `MirrorRosterStore` (pulls upstream, **verifies threshold sigs + log consistency** before serving).
+- `admission/` — the authority's **admission control**: key-possession proof, pluggable
+  `DomainOwnershipVerifier`, and **claim non-overlap** validation; every admit/suspend/revoke is appended
+  to the transparency log and the roster is re-signed.
+- `directory/` — the **persistent, shared phone→homeserver directory** addressed only by **peppered
+  HMAC** (`PhoneHasher`); writes are authenticated by the hosting homeserver's **membership credential**
+  (its roster signing key — it can only write its own accounts); reads are rate-limited and a mirror
+  **queries** it (`RemoteDirectoryStore`) rather than replicating the phone graph.
+- `service/` + `api/` — `/resolve`, `/roster`, `/roster/log(/consistency)`, `/directory/entries|lookup`,
+  `/authority/admission`, `/authority/roster/{id}/status`.
 
-### Next passes
-- Authority-signed roster: Ed25519 threshold (k-of-n) signatures + Merkle transparency log + admission flow.
-- Persistent, shared phone→homeserver directory (peppered HMAC, rate-limited, no bulk export) + Redis cache.
-- `identity-service` calls `placementFor(...)` at provisioning and writes directory entries.
-- iOS + web clients: pre-auth `POST /resolve` step replacing `GuaDefaultAccountProvider`.
+Persistence is Postgres (Flyway migration in `db/migration/`); tests run on in-memory H2. Phase 1 seeds the
+single configured dev homeserver on a fresh DB (logged + signed from entry #1).
+
+### Modes & key config (`gua.resolver.*`)
+- `mode: AUTHORITY | MIRROR`
+- `authority.threshold` (k), `authority.trusted-keys[]` (n), `authority.signing-{key-id,private-key}`
+- `directory.pepper` — **must match identity-service**
+- `mirror.upstream-url`, `mirror.refresh-interval`
+
+### Still external to this repo
+- `identity-service` calls `placementFor(...)` at provisioning and `POST /directory/entries` (its phone
+  OTP IdP already shares the pepper).
+- iOS + web pre-auth `POST /resolve` step — already wired in those clients.
 
 ## Run (dev)
 

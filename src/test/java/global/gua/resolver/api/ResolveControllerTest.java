@@ -42,6 +42,8 @@ class ResolveControllerTest {
                 .andExpect(jsonPath("$.version").value(1))
                 .andExpect(jsonPath("$.entries[0].homeserver.serverName").value("gua.local"))
                 .andExpect(jsonPath("$.entries[0].homeserver.acceptsNew").value(true))
-                .andExpect(jsonPath("$.logCheckpoint.merkleRoot").value("dev-stub"));
+                .andExpect(jsonPath("$.logCheckpoint.size").value(1))
+                .andExpect(jsonPath("$.logCheckpoint.merkleRoot").isNotEmpty())
+                .andExpect(jsonPath("$.authoritySignatures[0].authorityKeyId").value("gua-authority-test"));
     }
 }

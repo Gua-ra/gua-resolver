@@ -30,21 +30,26 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-webflux'      // WebClient for roster pull + remote-claim webhooks
-    implementation 'com.nimbusds:nimbus-jose-jwt:9.37.3'                        // Ed25519 roster/authority signatures
     implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.2.0'
     implementation 'io.github.resilience4j:resilience4j-ratelimiter:2.2.0'
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.13'
+
+    // Persistent roster + transparency log + shared phone->homeserver directory.
+    // Ed25519 authority/roster signatures use the JDK-native provider (java.security, "Ed25519"); no extra
+    // crypto lib is needed. JdbcTemplate (not JPA) keeps the persistence thin + the SQL explicit.
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+    runtimeOnly 'org.postgresql:postgresql'
+
     compileOnly 'org.projectlombok:lombok'
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
     annotationProcessor 'org.projectlombok:lombok'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'com.h2database:h2'                                     // in-memory DB for store tests
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-
-    // Added with the persistent directory/roster store (next pass):
-    //   spring-boot-starter-data-jpa, flyway-core, flyway-database-postgresql, postgresql  -> roster + directory
-    //   spring-boot-starter-data-redis                                                     -> read-cache for the front door
 }
 
 tasks.named('test') {

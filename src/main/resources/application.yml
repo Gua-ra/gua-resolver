@@ -5,6 +5,14 @@ server:
 spring:
   application:
     name: gua-resolver
+  datasource:
+    # Persistent roster + transparency log + shared directory. Postgres in every real environment;
+    # all values are env-overridable per deployment.
+    url: ${GUA_RESOLVER_DB_URL:jdbc:postgresql://localhost:5432/gua_resolver}
+    username: ${GUA_RESOLVER_DB_USER:resolver}
+    password: ${GUA_RESOLVER_DB_PASSWORD:resolver}
+  flyway:
+    enabled: true
 
 management:
   endpoints:
@@ -16,14 +24,39 @@ management:
       probes:
         enabled: true
 
-# Phase-1 dev: the single homeserver the resolver routes everyone to. Placeholders here; the real domains
-# are injected per-environment (e.g. GUA_RESOLVER_DEVHOMESERVER_SERVERNAME=...). Replaced entirely by the
-# authority-signed, transparency-logged roster when a second operator joins.
+# Rate-limit the directory lookup (anti-enumeration): per the design the phone graph is queried, never
+# bulk-exported, so the read path is throttled.
+resilience4j:
+  ratelimiter:
+    instances:
+      directoryLookup:
+        limit-for-period: 50
+        limit-refresh-period: 1s
+        timeout-duration: 0s
+
 gua:
   resolver:
+    # AUTHORITY (owns + signs the roster) or MIRROR (pulls + verifies an upstream authority's roster).
+    mode: ${GUA_RESOLVER_MODE:AUTHORITY}
+    directory:
+      # Shared HMAC pepper for the phone directory — MUST match identity-service. Required at runtime.
+      pepper: ${GUA_RESOLVER_DIRECTORY_PEPPER:}
+    authority:
+      threshold: ${GUA_RESOLVER_AUTHORITY_THRESHOLD:1}
+      signing-key-id: ${GUA_RESOLVER_AUTHORITY_KEY_ID:}
+      signing-private-key: ${GUA_RESOLVER_AUTHORITY_PRIVATE_KEY:}
+      # The published authority key set (n). Phase 1 is n=1 (Gua); add entries to grow toward k-of-n.
+      trusted-keys:
+        - id: ${GUA_RESOLVER_AUTHORITY_KEY_ID:}
+          public-key: ${GUA_RESOLVER_AUTHORITY_PUBLIC_KEY:}
+    mirror:
+      upstream-url: ${GUA_RESOLVER_MIRROR_UPSTREAM_URL:}
+      refresh-interval: ${GUA_RESOLVER_MIRROR_REFRESH_INTERVAL:PT5M}
+    # The single homeserver the authority seeds a fresh roster with (Phase 1). Real domains injected per env.
     dev-homeserver:
-      id: dev
-      server-name: gua.local
-      base-url: https://matrix.gua.local
-      mas-issuer: https://account.gua.local
-      region: dev
+      id: ${GUA_RESOLVER_DEVHOMESERVER_ID:dev}
+      server-name: ${GUA_RESOLVER_DEVHOMESERVER_SERVERNAME:gua.local}
+      base-url: ${GUA_RESOLVER_DEVHOMESERVER_BASEURL:https://matrix.gua.local}
+      mas-issuer: ${GUA_RESOLVER_DEVHOMESERVER_MASISSUER:https://account.gua.local}
+      region: ${GUA_RESOLVER_DEVHOMESERVER_REGION:dev}
+      signing-key: ${GUA_RESOLVER_DEVHOMESERVER_SIGNINGKEY:}
