@@ -1,0 +1,35 @@
+# Test profile: in-memory H2 (PostgreSQL compatibility mode), schema via Spring SQL init (Flyway off in
+# tests). The Ed25519 keys below are THROWAWAY test keys, generated solely for the unit/integration tests.
+spring:
+  datasource:
+    url: jdbc:h2:mem:resolver;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  flyway:
+    enabled: false
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+gua:
+  resolver:
+    mode: AUTHORITY
+    directory:
+      pepper: test-pepper-do-not-use-in-prod
+    authority:
+      threshold: 1
+      signing-key-id: gua-authority-test
+      signing-private-key: MC4CAQAwBQYDK2VwBCIEIH1ZCjZ4M0Whb9fx/2kIIOZn7fVN+G7zYG4/oJoNxukP
+      trusted-keys:
+        - id: gua-authority-test
+          public-key: MCowBQYDK2VwAyEAKmLHcu0upvhSa7Js4d9vfSGOSDSX/4qKFPixabw1dHI=
+    dev-homeserver:
+      id: dev
+      server-name: gua.local
+      base-url: https://matrix.gua.local
+      mas-issuer: https://account.gua.local
+      region: dev
+      # Membership credential — matches the homeserver private key the directory-write test signs with.
+      signing-key: MCowBQYDK2VwAyEAg+PkHYfc3kRJjw/Nssh+8NvEHkWK0m1n3FGqP5xVQ5o=
