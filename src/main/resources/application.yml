@@ -1,5 +1,4 @@
 server:
-  # 8095 (NOT 8090 — that is MAS in the local dev stack).
   port: 8095
 
 spring:
@@ -52,7 +51,7 @@ gua:
     mirror:
       upstream-url: ${GUA_RESOLVER_MIRROR_UPSTREAM_URL:}
       refresh-interval: ${GUA_RESOLVER_MIRROR_REFRESH_INTERVAL:PT5M}
-    # The single homeserver the authority seeds a fresh roster with (Phase 1). Real domains injected per env.
+
     dev-homeserver:
       id: ${GUA_RESOLVER_DEVHOMESERVER_ID:dev}
       server-name: ${GUA_RESOLVER_DEVHOMESERVER_SERVERNAME:gua.local}
