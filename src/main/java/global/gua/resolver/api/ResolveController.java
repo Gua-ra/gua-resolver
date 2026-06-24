@@ -1,9 +1,13 @@
 package global.gua.resolver.api;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import global.gua.resolver.domain.Homeserver;
@@ -38,7 +42,7 @@ public class ResolveController {
 
     /** Resolve a phone to its homeserver (login) or to a placement target (register). */
     @PostMapping("/resolve")
-    public ResolveResponse resolve(@RequestBody ResolveRequest request) {
+    public ResolveResponse resolve(@Valid @RequestBody ResolveRequest request) {
         return resolution.resolvePhone(request.phone())
                 .map(hs -> {
                     resolveExisting.increment();
@@ -57,6 +61,17 @@ public class ResolveController {
         return rosterStore.current();
     }
 
+    /**
+     * A phone that isn't valid E.164 is a client error, not a server fault. Map it to 400 so callers
+     * get a clear "fix your input" signal (and a friendly message) instead of an opaque 500. The phone
+     * is never echoed back — only a generic, non-PII message.
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ProblemResponse onInvalidPhone(IllegalArgumentException e) {
+        return new ProblemResponse("invalid_phone", e.getMessage());
+    }
+
     // --- DTOs -----------------------------------------------------------------------------------
 
     public record ResolveRequest(@NotBlank String phone) {}
@@ -72,4 +87,7 @@ public class ResolveController {
         static ResolveResponse existing(HomeserverRef hs) { return new ResolveResponse(true, hs, null); }
         static ResolveResponse register(HomeserverRef hs) { return new ResolveResponse(false, null, hs); }
     }
+
+    /** Problem payload for client errors (mirrors the shape used by the other API controllers). */
+    public record ProblemResponse(String code, String message) {}
 }
