@@ -36,6 +36,24 @@ class ResolveControllerTest {
     }
 
     @Test
+    void resolveRejectsNonE164PhoneWith400() throws Exception {
+        // A partial / non-E.164 number is a client error: expect a clean 400, not a 500.
+        for (String bad : new String[] { "+1", "notaphone", "12345" }) {
+            mockMvc.perform(post("/resolve").contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"phone\":\"" + bad + "\"}"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("invalid_phone"));
+        }
+    }
+
+    @Test
+    void resolveRejectsBlankPhoneWith400() throws Exception {
+        mockMvc.perform(post("/resolve").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"phone\":\"\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void rosterReturnsSignedRosterWithDevHomeserver() throws Exception {
         mockMvc.perform(get("/roster"))
                 .andExpect(status().isOk())
