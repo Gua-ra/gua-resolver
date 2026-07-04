@@ -162,7 +162,8 @@ claims. The future secure shape is:
 
 - MAS verifies external IdP,
 - MAS or identity-service issues a signed routing-claims envelope,
-- resolver verifies issuer/audience/expiry,
+- resolver verifies issuer/audience/expiry/signature, enforces the configured maximum lifetime, and records
+  the claims nonce in the shared replay table,
 - routing policy matches OIDC issuer, verified domain, assurance level, and account-linking state,
 - directory residence remains separate from authentication source.
 
@@ -194,6 +195,7 @@ Implemented:
 - file-backed policy source,
 - optional mirror roster cache,
 - fail-closed mirror directory lookup,
+- DB-backed replay protection for signed routing-claims nonces,
 - policy status and distribution endpoints,
 - policy-backed placement rule,
 - security default deny,
@@ -205,7 +207,6 @@ Still needed:
 - remote policy source,
 - persistent policy cache and staleness health,
 - policy transparency log,
-- routing-claims replay nonce cache,
 - directory high-availability design,
 - production domain proof verifier,
 - client-side verifier libraries,

@@ -1,8 +1,10 @@
 package global.gua.resolver.claims;
 
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 
@@ -20,7 +22,7 @@ class RoutingClaimsVerifierTest {
         RoutingClaimsEnvelope signed = RoutingClaimsSigner.sign(unsigned(Map.of("email_domain", "usp.br")),
                 "claims-a", kp.privateKeyB64());
 
-        RoutingClaimsVerifier.VerifiedRoutingClaims verified = new RoutingClaimsVerifier(props(kp.publicKeyB64()))
+        RoutingClaimsVerifier.VerifiedRoutingClaims verified = verifier(kp.publicKeyB64())
                 .verify(signed);
 
         assertThat(verified.affiliations()).containsExactly("students.usp.br");
@@ -38,7 +40,7 @@ class RoutingClaimsVerifierTest {
                 signed.audience(), signed.issuedAt(), signed.expiresAt(), signed.nonce(),
                 signed.affiliations(), Map.of("email_domain", "evil.example"), signed.signatures());
 
-        assertThatThrownBy(() -> new RoutingClaimsVerifier(props(kp.publicKeyB64())).verify(tampered))
+        assertThatThrownBy(() -> verifier(kp.publicKeyB64()).verify(tampered))
                 .isInstanceOf(RoutingClaimsVerifier.InvalidRoutingClaimsException.class)
                 .hasMessageContaining("signature");
     }
@@ -51,15 +53,55 @@ class RoutingClaimsVerifierTest {
                 Instant.now().minusSeconds(300), "nonce", List.of(), Map.of(), List.of());
         RoutingClaimsEnvelope signed = RoutingClaimsSigner.sign(expired, "claims-a", kp.privateKeyB64());
 
-        assertThatThrownBy(() -> new RoutingClaimsVerifier(props(kp.publicKeyB64())).verify(signed))
+        assertThatThrownBy(() -> verifier(kp.publicKeyB64()).verify(signed))
                 .isInstanceOf(RoutingClaimsVerifier.InvalidRoutingClaimsException.class)
                 .hasMessageContaining("expired");
+    }
+
+    @Test
+    void rejectsRoutingClaimsWithoutNonceWhenReplayProtectionIsEnabled() {
+        Ed25519.KeyPairB64 kp = Ed25519.generate();
+        RoutingClaimsEnvelope missingNonce = new RoutingClaimsEnvelope(RoutingClaimsEnvelope.SCHEMA_VERSION,
+                "https://account.gua.test", "gua-resolver", Instant.now().minusSeconds(10),
+                Instant.now().plusSeconds(200), null, List.of(), Map.of(), List.of());
+        RoutingClaimsEnvelope signed = RoutingClaimsSigner.sign(missingNonce, "claims-a", kp.privateKeyB64());
+
+        assertThatThrownBy(() -> verifier(kp.publicKeyB64()).verify(signed))
+                .isInstanceOf(RoutingClaimsVerifier.InvalidRoutingClaimsException.class)
+                .hasMessageContaining("nonce is required");
+    }
+
+    @Test
+    void rejectsClaimsWhoseLifetimeExceedsConfiguredMaximum() {
+        Ed25519.KeyPairB64 kp = Ed25519.generate();
+        RoutingClaimsEnvelope tooLong = new RoutingClaimsEnvelope(RoutingClaimsEnvelope.SCHEMA_VERSION,
+                "https://account.gua.test", "gua-resolver", Instant.now().minusSeconds(10),
+                Instant.now().plusSeconds(600), "nonce", List.of(), Map.of(), List.of());
+        RoutingClaimsEnvelope signed = RoutingClaimsSigner.sign(tooLong, "claims-a", kp.privateKeyB64());
+
+        assertThatThrownBy(() -> verifier(kp.publicKeyB64()).verify(signed))
+                .isInstanceOf(RoutingClaimsVerifier.InvalidRoutingClaimsException.class)
+                .hasMessageContaining("lifetime");
+    }
+
+    @Test
+    void rejectsReplayedNonceAfterSuccessfulVerification() {
+        Ed25519.KeyPairB64 kp = Ed25519.generate();
+        RoutingClaimsEnvelope signed = RoutingClaimsSigner.sign(unsigned(Map.of("email_domain", "usp.br")),
+                "claims-a", kp.privateKeyB64());
+        RoutingClaimsVerifier verifier = verifier(kp.publicKeyB64());
+
+        verifier.verify(signed);
+
+        assertThatThrownBy(() -> verifier.verify(signed))
+                .isInstanceOf(RoutingClaimsVerifier.InvalidRoutingClaimsException.class)
+                .hasMessageContaining("already used");
     }
 
     private static RoutingClaimsEnvelope unsigned(Map<String, String> attrs) {
         return new RoutingClaimsEnvelope(RoutingClaimsEnvelope.SCHEMA_VERSION,
                 "https://account.gua.test", "gua-resolver", Instant.now().minusSeconds(10),
-                Instant.now().plusSeconds(300), "nonce", List.of("students.usp.br"), attrs, List.of());
+                Instant.now().plusSeconds(200), "nonce", List.of("students.usp.br"), attrs, List.of());
     }
 
     private static ResolverProperties props(String publicKey) {
@@ -69,5 +111,24 @@ class RoutingClaimsVerifierTest {
         trusted.setPublicKey(publicKey);
         props.getClaims().setTrustedKeys(List.of(trusted));
         return props;
+    }
+
+    private static RoutingClaimsVerifier verifier(String publicKey) {
+        return new RoutingClaimsVerifier(props(publicKey), inMemoryReplayStore());
+    }
+
+    private static RoutingClaimsReplayStore inMemoryReplayStore() {
+        return new RoutingClaimsReplayStore() {
+            private final Set<String> seen = new HashSet<>();
+
+            @Override
+            public boolean recordIfNew(String issuer, String nonce, Instant expiresAt) {
+                return seen.add(issuer + "\n" + nonce);
+            }
+
+            @Override
+            public void removeExpired(Instant now) {
+            }
+        };
     }
 }

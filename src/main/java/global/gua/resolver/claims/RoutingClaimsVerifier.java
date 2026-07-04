@@ -24,18 +24,24 @@ public class RoutingClaimsVerifier {
 
     private final String audience;
     private final Duration maxClockSkew;
+    private final Duration maxLifetime;
+    private final boolean replayProtectionEnabled;
     private final Clock clock;
+    private final RoutingClaimsReplayStore replayStore;
     private final Map<String, PublicKey> trustedKeys = new HashMap<>();
 
     @Autowired
-    public RoutingClaimsVerifier(ResolverProperties props) {
-        this(props, Clock.systemUTC());
+    public RoutingClaimsVerifier(ResolverProperties props, RoutingClaimsReplayStore replayStore) {
+        this(props, Clock.systemUTC(), replayStore);
     }
 
-    RoutingClaimsVerifier(ResolverProperties props, Clock clock) {
+    RoutingClaimsVerifier(ResolverProperties props, Clock clock, RoutingClaimsReplayStore replayStore) {
         this.audience = props.getClaims().getAudience();
         this.maxClockSkew = props.getClaims().getMaxClockSkew();
+        this.maxLifetime = props.getClaims().getMaxLifetime();
+        this.replayProtectionEnabled = props.getClaims().isReplayProtectionEnabled();
         this.clock = clock;
+        this.replayStore = replayStore;
         List<ResolverProperties.TrustedKey> keys = !props.getClaims().getTrustedKeys().isEmpty()
                 ? props.getClaims().getTrustedKeys()
                 : (!props.getPolicy().getTrustedKeys().isEmpty()
@@ -54,6 +60,7 @@ public class RoutingClaimsVerifier {
         }
         validateEnvelope(envelope);
         requireValidSignature(envelope);
+        recordNonce(envelope);
         Map<String, String> attrs = new HashMap<>(envelope.attributes() == null ? Map.of() : envelope.attributes());
         attrs.put(VERIFIED_ATTRIBUTE, "true");
         attrs.putIfAbsent("routing_claims_issuer", envelope.issuer());
@@ -80,6 +87,13 @@ public class RoutingClaimsVerifier {
         if (envelope.expiresAt() == null || !envelope.expiresAt().isAfter(now.minus(skew))) {
             throw invalid("routing claims expired");
         }
+        Duration lifetime = maxLifetime == null ? Duration.ZERO : maxLifetime;
+        if (!lifetime.isZero() && envelope.expiresAt().isAfter(envelope.issuedAt().plus(lifetime))) {
+            throw invalid("routing claims lifetime exceeds maximum");
+        }
+        if (replayProtectionEnabled && blank(envelope.nonce())) {
+            throw invalid("routing claims nonce is required");
+        }
     }
 
     private void requireValidSignature(RoutingClaimsEnvelope envelope) {
@@ -98,6 +112,15 @@ public class RoutingClaimsVerifier {
             counted.add(sig.keyId());
         }
         throw invalid("routing claims signature is invalid");
+    }
+
+    private void recordNonce(RoutingClaimsEnvelope envelope) {
+        if (!replayProtectionEnabled) {
+            return;
+        }
+        if (!replayStore.recordIfNew(envelope.issuer(), envelope.nonce(), envelope.expiresAt())) {
+            throw invalid("routing claims nonce was already used");
+        }
     }
 
     private static boolean blank(String s) {

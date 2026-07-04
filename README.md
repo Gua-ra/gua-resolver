@@ -18,7 +18,9 @@ The current architecture also supports optional **signed routing policy bundles*
 that split routing policy from roster membership. Policy bundles can define delegated authority zones
 (carrier, institution, OIDC issuer) and are verified before routing. Legacy roster claims remain supported.
 Institution/OIDC policy rules require a signed routing-claims envelope from MAS / identity-service; public
-clients can transport claims but cannot self-assert institutional authority.
+clients can transport claims but cannot self-assert institutional authority. Signed routing claims are
+short-lived by default (5 minutes max) and replay-protected with a DB-backed nonce table shared by resolver
+replicas.
 
 
 Persistence is Postgres (Flyway migration in `db/migration/`); tests run on in-memory H2.
@@ -28,7 +30,7 @@ Persistence is Postgres (Flyway migration in `db/migration/`); tests run on in-m
 - `authority.threshold` (k), `authority.trusted-keys[]` (n), `authority.signing-{key-id,private-key}`
 - `directory.pepper` — **must match identity-service**
 - `policy.enabled`, `policy.file`, `policy.require-signatures`, `policy.signature-threshold`
-- `claims.audience`, `claims.trusted-keys[]`
+- `claims.audience`, `claims.max-lifetime`, `claims.replay-protection-enabled`, `claims.trusted-keys[]`
 - `mirror.upstream-url`, `mirror.refresh-interval`, `mirror.cache-file`
 
 ## Run (dev)

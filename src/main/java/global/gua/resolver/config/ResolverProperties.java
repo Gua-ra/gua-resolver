@@ -148,6 +148,12 @@ public class ResolverProperties {
         private String audience = "gua-resolver";
         /** Allowed clock skew when checking issued/expires timestamps. */
         private Duration maxClockSkew = Duration.ofMinutes(2);
+        /** Maximum accepted claims lifetime. Prod policy is short-lived routing proof, not a bearer token. */
+        private Duration maxLifetime = Duration.ofMinutes(5);
+        /** Require a unique nonce and persist it so routing claims cannot be replayed across resolver nodes. */
+        private boolean replayProtectionEnabled = true;
+        /** How often expired nonces are removed from the replay table. */
+        private Duration replayCleanupInterval = Duration.ofMinutes(10);
         /** Trusted envelope signing keys. Empty means reuse policy keys, then authority keys. */
         private List<TrustedKey> trustedKeys = new ArrayList<>();
 
@@ -155,6 +161,16 @@ public class ResolverProperties {
         public void setAudience(String audience) { this.audience = audience; }
         public Duration getMaxClockSkew() { return maxClockSkew; }
         public void setMaxClockSkew(Duration maxClockSkew) { this.maxClockSkew = maxClockSkew; }
+        public Duration getMaxLifetime() { return maxLifetime; }
+        public void setMaxLifetime(Duration maxLifetime) { this.maxLifetime = maxLifetime; }
+        public boolean isReplayProtectionEnabled() { return replayProtectionEnabled; }
+        public void setReplayProtectionEnabled(boolean replayProtectionEnabled) {
+            this.replayProtectionEnabled = replayProtectionEnabled;
+        }
+        public Duration getReplayCleanupInterval() { return replayCleanupInterval; }
+        public void setReplayCleanupInterval(Duration replayCleanupInterval) {
+            this.replayCleanupInterval = replayCleanupInterval;
+        }
         public List<TrustedKey> getTrustedKeys() { return trustedKeys; }
         public void setTrustedKeys(List<TrustedKey> trustedKeys) { this.trustedKeys = trustedKeys; }
     }

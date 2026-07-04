@@ -104,9 +104,15 @@ Configure trusted routing-claims keys:
 
 ```text
 GUA_RESOLVER_CLAIMS_AUDIENCE=gua-resolver
+GUA_RESOLVER_CLAIMS_MAX_LIFETIME=PT5M
+GUA_RESOLVER_CLAIMS_REPLAY_PROTECTION_ENABLED=true
 gua.resolver.claims.trusted-keys[0].id=<mas-or-identity-key-id>
 gua.resolver.claims.trusted-keys[0].public-key=<base64-x509-ed25519-public-key>
 ```
+
+MAS/identity-service must generate a fresh nonce per signed routing-claims envelope. Reusing a nonce should
+be treated as a client/auth bug: resolver replicas share the `routing_claim_nonce` table and will reject the
+second use.
 
 ## Phase 5: Directory Availability
 

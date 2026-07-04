@@ -51,6 +51,9 @@ gua:
     claims:
       audience: ${GUA_RESOLVER_CLAIMS_AUDIENCE:gua-resolver}
       max-clock-skew: ${GUA_RESOLVER_CLAIMS_MAX_CLOCK_SKEW:PT2M}
+      max-lifetime: ${GUA_RESOLVER_CLAIMS_MAX_LIFETIME:PT5M}
+      replay-protection-enabled: ${GUA_RESOLVER_CLAIMS_REPLAY_PROTECTION_ENABLED:true}
+      replay-cleanup-interval: ${GUA_RESOLVER_CLAIMS_REPLAY_CLEANUP_INTERVAL:PT10M}
       trusted-keys: []
     policy:
       enabled: ${GUA_RESOLVER_POLICY_ENABLED:false}
