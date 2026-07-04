@@ -2,6 +2,7 @@ package global.gua.resolver.placement;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 
 /**
  * Everything the placement rules may use to decide where a brand-new account lives. All fields are
@@ -29,5 +30,29 @@ public record PlacementContext(
 
     public static PlacementContext forPhone(String e164) {
         return new PlacementContext(e164, null, null, null, null, java.util.List.of(), Map.of());
+    }
+
+    /** Stable, deterministic key used for reproducible fallback placement. */
+    public String canonicalRoutingKey() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("phone=").append(nz(e164Phone)).append('\n');
+        sb.append("country=").append(nz(country)).append('\n');
+        sb.append("mccmnc=").append(nz(mccmnc)).append('\n');
+        sb.append("carrier=").append(nz(carrier)).append('\n');
+        sb.append("region=").append(nz(regionHint)).append('\n');
+        sb.append("affiliations=");
+        if (affiliations != null) {
+            sb.append(affiliations.stream().sorted().reduce((a, b) -> a + "|" + b).orElse(""));
+        }
+        sb.append('\n');
+        sb.append("attrs=");
+        if (attributes != null) {
+            new TreeMap<>(attributes).forEach((k, v) -> sb.append(k).append('=').append(v).append('|'));
+        }
+        return sb.toString();
+    }
+
+    private static String nz(String s) {
+        return s == null ? "" : s;
     }
 }

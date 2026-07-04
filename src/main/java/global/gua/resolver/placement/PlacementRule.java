@@ -2,8 +2,6 @@ package global.gua.resolver.placement;
 
 import java.util.Optional;
 
-import global.gua.resolver.domain.Homeserver;
-
 /**
  * SPI for placement rules. The {@link PlacementEngine} runs enabled rules in priority order and takes the
  * first non-empty result, so a new placement strategy is a new {@code PlacementRule} bean — the engine is
@@ -15,8 +13,8 @@ import global.gua.resolver.domain.Homeserver;
  */
 public interface PlacementRule {
 
-    /** @return the chosen homeserver, or empty to defer to the next rule. */
-    Optional<Homeserver> evaluate(PlacementContext context);
+    /** @return the placement decision, or empty to defer to the next rule. */
+    Optional<PlacementDecision> evaluate(PlacementContext context);
 
     /** Lower runs first. */
     int priority();

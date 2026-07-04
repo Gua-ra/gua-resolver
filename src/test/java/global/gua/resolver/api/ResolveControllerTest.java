@@ -32,7 +32,19 @@ class ResolveControllerTest {
                 .andExpect(jsonPath("$.exists").value(false))
                 .andExpect(jsonPath("$.registerAt.serverName").value("gua.local"))
                 .andExpect(jsonPath("$.registerAt.baseUrl").value("https://matrix.gua.local"))
-                .andExpect(jsonPath("$.registerAt.masIssuer").value("https://account.gua.local"));
+                .andExpect(jsonPath("$.registerAt.masIssuer").value("https://account.gua.local"))
+                .andExpect(jsonPath("$.trace").doesNotExist());
+    }
+
+    @Test
+    void resolveCanReturnDecisionTraceWhenRequested() throws Exception {
+        mockMvc.perform(post("/resolve").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"phone\":\"+5511987654321\",\"trace\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.exists").value(false))
+                .andExpect(jsonPath("$.trace.source").value("placement"))
+                .andExpect(jsonPath("$.trace.rule").value("WeightedFallbackRule"))
+                .andExpect(jsonPath("$.trace.homeserverId").value("dev"));
     }
 
     @Test
@@ -63,5 +75,17 @@ class ResolveControllerTest {
                 .andExpect(jsonPath("$.logCheckpoint.size").value(1))
                 .andExpect(jsonPath("$.logCheckpoint.merkleRoot").isNotEmpty())
                 .andExpect(jsonPath("$.authoritySignatures[0].authorityKeyId").value("gua-authority-test"));
+    }
+
+    @Test
+    void unknownRoutesAreDeniedByDefault() throws Exception {
+        mockMvc.perform(get("/not-a-real-endpoint"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void policyStatusEndpointExistsWhenNoPolicySourceIsConfigured() throws Exception {
+        mockMvc.perform(get("/policy/routing/status"))
+                .andExpect(status().isOk());
     }
 }

@@ -47,6 +47,20 @@ gua:
     directory:
       # Shared HMAC pepper for the phone directory — MUST match identity-service. Required at runtime.
       pepper: ${GUA_RESOLVER_DIRECTORY_PEPPER:}
+      fail-open-on-lookup-error: ${GUA_RESOLVER_DIRECTORY_FAIL_OPEN_ON_LOOKUP_ERROR:false}
+    claims:
+      audience: ${GUA_RESOLVER_CLAIMS_AUDIENCE:gua-resolver}
+      max-clock-skew: ${GUA_RESOLVER_CLAIMS_MAX_CLOCK_SKEW:PT2M}
+      trusted-keys: []
+    policy:
+      enabled: ${GUA_RESOLVER_POLICY_ENABLED:false}
+      file: ${GUA_RESOLVER_POLICY_FILE:}
+      require-signatures: ${GUA_RESOLVER_POLICY_REQUIRE_SIGNATURES:true}
+      signature-threshold: ${GUA_RESOLVER_POLICY_SIGNATURE_THRESHOLD:1}
+      signing-key-id: ${GUA_RESOLVER_POLICY_KEY_ID:${GUA_RESOLVER_AUTHORITY_KEY_ID:}}
+      signing-private-key: ${GUA_RESOLVER_POLICY_PRIVATE_KEY:${GUA_RESOLVER_AUTHORITY_PRIVATE_KEY:}}
+      refresh-interval: ${GUA_RESOLVER_POLICY_REFRESH_INTERVAL:PT1M}
+      trusted-keys: []
     authority:
       threshold: ${GUA_RESOLVER_AUTHORITY_THRESHOLD:1}
       signing-key-id: ${GUA_RESOLVER_AUTHORITY_KEY_ID:}
@@ -58,6 +72,7 @@ gua:
     mirror:
       upstream-url: ${GUA_RESOLVER_MIRROR_UPSTREAM_URL:}
       refresh-interval: ${GUA_RESOLVER_MIRROR_REFRESH_INTERVAL:PT5M}
+      cache-file: ${GUA_RESOLVER_MIRROR_CACHE_FILE:}
 
     dev-homeserver:
       id: ${GUA_RESOLVER_DEVHOMESERVER_ID:dev}

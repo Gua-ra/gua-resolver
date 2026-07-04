@@ -8,8 +8,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import global.gua.resolver.domain.Homeserver;
-
 /**
  * Runs the registered {@link PlacementRule}s in priority order and returns the first match. Placement is a
  * pure function of (context, current roster) so it is deterministic: the same input always yields the same
@@ -35,12 +33,19 @@ public class PlacementEngine {
      * @return the homeserver a new account with this context should be created on.
      * @throws IllegalStateException if no rule (including the weighted fallback) yields a homeserver.
      */
-    public Homeserver decide(PlacementContext context) {
+    public global.gua.resolver.domain.Homeserver decide(PlacementContext context) {
+        return decideWithTrace(context).homeserver();
+    }
+
+    /** Same placement decision, with the rule/policy metadata needed for debugging and audit. */
+    public PlacementDecision decideWithTrace(PlacementContext context) {
         for (PlacementRule rule : rules) {
-            Optional<Homeserver> choice = rule.evaluate(context);
+            Optional<PlacementDecision> choice = rule.evaluate(context);
             if (choice.isPresent()) {
-                log.debug("Placement: {} -> {} (by {})", context.country(), choice.get().id(), rule.name());
-                return choice.get();
+                PlacementDecision decision = choice.get();
+                log.debug("Placement: {} -> {} (by {}; reason={})",
+                        context.country(), decision.homeserver().id(), rule.name(), decision.reason());
+                return decision;
             }
         }
         throw new IllegalStateException("No placement rule yielded a homeserver; "

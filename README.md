@@ -14,6 +14,12 @@ public, read-mostly, horizontally-scalable, **anyone-can-mirror** entry point to
    lives. Operator-specific placement (a carrier claiming its numbers, a university claiming its affiliates)
    is **declarative data in the signed roster**, not code — adding one is a roster edit, no redeploy.
 
+The current architecture also supports optional **signed routing policy bundles** (`GET /policy/routing`)
+that split routing policy from roster membership. Policy bundles can define delegated authority zones
+(carrier, institution, OIDC issuer) and are verified before routing. Legacy roster claims remain supported.
+Institution/OIDC policy rules require a signed routing-claims envelope from MAS / identity-service; public
+clients can transport claims but cannot self-assert institutional authority.
+
 
 Persistence is Postgres (Flyway migration in `db/migration/`); tests run on in-memory H2.
 
@@ -21,7 +27,9 @@ Persistence is Postgres (Flyway migration in `db/migration/`); tests run on in-m
 - `mode: AUTHORITY | MIRROR`
 - `authority.threshold` (k), `authority.trusted-keys[]` (n), `authority.signing-{key-id,private-key}`
 - `directory.pepper` — **must match identity-service**
-- `mirror.upstream-url`, `mirror.refresh-interval`
+- `policy.enabled`, `policy.file`, `policy.require-signatures`, `policy.signature-threshold`
+- `claims.audience`, `claims.trusted-keys[]`
+- `mirror.upstream-url`, `mirror.refresh-interval`, `mirror.cache-file`
 
 ## Run (dev)
 
@@ -30,6 +38,9 @@ Persistence is Postgres (Flyway migration in `db/migration/`); tests run on in-m
 curl -s localhost:8095/roster | jq
 curl -s -XPOST localhost:8095/resolve -H 'content-type: application/json' \
   -d '{"phone":"+5511987654321"}' | jq    # -> register at the dev homeserver
+curl -s -XPOST localhost:8095/resolve -H 'content-type: application/json' \
+  -d '{"phone":"+5511987654321","trace":true}' | jq
+curl -s localhost:8095/policy/routing/status | jq
 ```
 
 Stack: Java 21 · Spring Boot 3.5.6

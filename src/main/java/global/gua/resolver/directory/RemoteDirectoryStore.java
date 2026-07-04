@@ -5,6 +5,7 @@ import java.util.Optional;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import global.gua.resolver.config.ResolverProperties;
 
@@ -20,9 +21,11 @@ public class RemoteDirectoryStore implements DirectoryStore {
 
     private final WebClient upstream;
     private final PhoneHasher hasher;
+    private final boolean failOpenOnLookupError;
 
     public RemoteDirectoryStore(ResolverProperties props, PhoneHasher hasher, WebClient.Builder builder) {
         this.hasher = hasher;
+        this.failOpenOnLookupError = props.getDirectory().isFailOpenOnLookupError();
         this.upstream = builder.baseUrl(props.getMirror().getUpstreamUrl()).build();
     }
 
@@ -42,14 +45,21 @@ public class RemoteDirectoryStore implements DirectoryStore {
     }
 
     private Optional<String> lookup(String param, String value) {
-        LookupResponse r = upstream.get()
-                .uri(b -> b.path("/directory/lookup").queryParam(param, value).build())
-                .retrieve()
-                .onStatus(s -> s.value() == 404, resp -> reactor.core.publisher.Mono.empty())
-                .bodyToMono(LookupResponse.class)
-                .onErrorResume(e -> reactor.core.publisher.Mono.empty())
-                .block();
-        return (r == null || r.homeserverId() == null) ? Optional.empty() : Optional.of(r.homeserverId());
+        try {
+            LookupResponse r = upstream.get()
+                    .uri(b -> b.path("/directory/lookup").queryParam(param, value).build())
+                    .retrieve()
+                    .bodyToMono(LookupResponse.class)
+                    .block();
+            return (r == null || r.homeserverId() == null) ? Optional.empty() : Optional.of(r.homeserverId());
+        } catch (WebClientResponseException.NotFound e) {
+            return Optional.empty();
+        } catch (Exception e) {
+            if (failOpenOnLookupError) {
+                return Optional.empty();
+            }
+            throw new DirectoryUnavailableException("authority directory lookup unavailable", e);
+        }
     }
 
     @Override

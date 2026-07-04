@@ -3,12 +3,20 @@ package global.gua.resolver.placement;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 
 import global.gua.resolver.domain.Homeserver;
+import global.gua.resolver.claims.RoutingClaimsVerifier;
+import global.gua.resolver.placement.rules.PolicyRoutingRule;
 import global.gua.resolver.placement.rules.ClaimRule;
 import global.gua.resolver.placement.rules.WeightedFallbackRule;
+import global.gua.resolver.policy.CompositeRoutingPolicyProvider;
+import global.gua.resolver.policy.DelegationZone;
+import global.gua.resolver.policy.RoutingPolicyBundle;
+import global.gua.resolver.policy.RoutingPolicyRule;
+import global.gua.resolver.policy.RoutingPolicySource;
 import global.gua.resolver.roster.RosterEntry;
 import global.gua.resolver.roster.RosterStore;
 import global.gua.resolver.roster.SignedRoster;
@@ -81,6 +89,104 @@ class PlacementEngineTest {
     }
 
     @Test
+    void weightedFallbackIsDeterministicForTheSameContextAndRoster() {
+        var engine = engineFor(rosterOf(entry(CARRIER), entry(UNI), entry(DEFAULT)));
+        var ctx = new PlacementContext("+15555550100", "US", "31000", "Verizon", null, List.of(), Map.of());
+
+        String first = engine.decide(ctx).id();
+
+        for (int i = 0; i < 20; i++) {
+            assertThat(engine.decide(ctx).id()).isEqualTo(first);
+        }
+    }
+
+    @Test
+    void signedPolicyPhoneDelegationWinsBeforeFallback() {
+        RoutingPolicyBundle policy = new RoutingPolicyBundle(
+                RoutingPolicyBundle.SCHEMA_VERSION,
+                "br-carrier-policy",
+                7,
+                Instant.now(),
+                Instant.now().minusSeconds(60),
+                Instant.now().plusSeconds(3600),
+                List.of(new DelegationZone("vivo-sp", DelegationZone.ScopeType.PHONE_PREFIX,
+                        "+55119", "carrier:vivo", List.of("carrier"), null, null)),
+                List.of(new RoutingPolicyRule("vivo-sp-portable", 10,
+                        RoutingPolicyRule.MatchType.PHONE_PREFIX, "+551198", null, null,
+                        "carrier", "vivo-sp", "portable carrier routing within delegated prefix",
+                        RoutingPolicyRule.AssignmentPolicy.PORTABLE, true)),
+                new RoutingPolicyBundle.FallbackStrategy("legacy-weighted", true),
+                List.of());
+        RosterStore store = rosterOf(entry(CARRIER), entry(DEFAULT));
+        var engine = new PlacementEngine(List.of(new WeightedFallbackRule(store),
+                new PolicyRoutingRule(provider(policy), store)));
+
+        var decision = engine.decideWithTrace(PlacementContext.forPhone("+5511987654321"));
+
+        assertThat(decision.homeserver().id()).isEqualTo("carrier");
+        assertThat(decision.policyId()).isEqualTo("br-carrier-policy");
+        assertThat(decision.delegatedZoneId()).isEqualTo("vivo-sp");
+        assertThat(decision.assignmentPolicy()).isEqualTo("PORTABLE");
+    }
+
+    @Test
+    void signedPolicyInstitutionDomainDelegationMatchesVerifiedAffiliation() {
+        RoutingPolicyBundle policy = new RoutingPolicyBundle(
+                RoutingPolicyBundle.SCHEMA_VERSION,
+                "institution-policy",
+                3,
+                Instant.now(),
+                Instant.now().minusSeconds(60),
+                Instant.now().plusSeconds(3600),
+                List.of(new DelegationZone("usp-domain", DelegationZone.ScopeType.INSTITUTION_DOMAIN,
+                        "usp.br", "institution:usp", List.of("uni"), null, null)),
+                List.of(new RoutingPolicyRule("usp-affiliates", 10,
+                        RoutingPolicyRule.MatchType.INSTITUTION_DOMAIN, "usp.br", null, null,
+                        "uni", "usp-domain", "verified institution domain",
+                        RoutingPolicyRule.AssignmentPolicy.REQUIRES_CONFIRMATION, true)),
+                new RoutingPolicyBundle.FallbackStrategy("legacy-weighted", true),
+                List.of());
+        RosterStore store = rosterOf(entry(UNI), entry(DEFAULT));
+        var engine = new PlacementEngine(List.of(new WeightedFallbackRule(store),
+                new PolicyRoutingRule(provider(policy), store)));
+
+        var ctx = new PlacementContext("+5511000000000", "BR", null, null, null,
+                List.of("students.usp.br"), Map.of(RoutingClaimsVerifier.VERIFIED_ATTRIBUTE, "true"));
+
+        var decision = engine.decideWithTrace(ctx);
+
+        assertThat(decision.homeserver().id()).isEqualTo("uni");
+        assertThat(decision.assignmentPolicy()).isEqualTo("REQUIRES_CONFIRMATION");
+    }
+
+    @Test
+    void institutionPolicyIgnoresUnverifiedAffiliationClaims() {
+        RoutingPolicyBundle policy = new RoutingPolicyBundle(
+                RoutingPolicyBundle.SCHEMA_VERSION,
+                "institution-policy",
+                3,
+                Instant.now(),
+                Instant.now().minusSeconds(60),
+                Instant.now().plusSeconds(3600),
+                List.of(new DelegationZone("usp-domain", DelegationZone.ScopeType.INSTITUTION_DOMAIN,
+                        "usp.br", "institution:usp", List.of("uni"), null, null)),
+                List.of(new RoutingPolicyRule("usp-affiliates", 10,
+                        RoutingPolicyRule.MatchType.INSTITUTION_DOMAIN, "usp.br", null, null,
+                        "uni", "usp-domain", "verified institution domain",
+                        RoutingPolicyRule.AssignmentPolicy.REQUIRES_CONFIRMATION, true)),
+                new RoutingPolicyBundle.FallbackStrategy("legacy-weighted", true),
+                List.of());
+        RosterStore store = rosterOf(entry(UNI), entry(DEFAULT));
+        var engine = new PlacementEngine(List.of(new WeightedFallbackRule(store),
+                new PolicyRoutingRule(provider(policy), store)));
+
+        var ctx = new PlacementContext("+5511000000000", "BR", null, null, null,
+                List.of("students.usp.br"), Map.of());
+
+        assertThat(engine.decideWithTrace(ctx).rule()).isEqualTo("WeightedFallbackRule");
+    }
+
+    @Test
     void claimedButNotAcceptingNewIsNotPlacedThere() {
         var closed = new Homeserver("closed", "closed.gua.global", "https://c", "https://c/auth", "BR", 1, false, null);
         var carrierClaim = new ClaimPredicate(null, "72411", null, null, null, null, null, 100);
@@ -90,5 +196,14 @@ class PlacementEngineTest {
 
         // The claiming homeserver isn't accepting new accounts, so placement falls through to the default.
         assertThat(engine.decide(ctx).id()).isEqualTo("default");
+    }
+
+    private static CompositeRoutingPolicyProvider provider(RoutingPolicyBundle policy) {
+        return new CompositeRoutingPolicyProvider(List.of(new RoutingPolicySource() {
+            @Override public Optional<RoutingPolicyBundle> current() { return Optional.of(policy); }
+            @Override public PolicySourceStatus status() {
+                return new PolicySourceStatus("test", true, policy.version(), Instant.now(), "ok");
+            }
+        }));
     }
 }

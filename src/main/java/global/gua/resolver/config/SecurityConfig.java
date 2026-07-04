@@ -18,10 +18,12 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/resolve", "/roster", "/actuator/**",
+                        .requestMatchers("/resolve", "/roster", "/roster/log", "/roster/log/consistency",
+                                "/policy/routing", "/policy/routing/status",
+                                "/directory/entries", "/directory/lookup", "/actuator/**",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/authority/**").authenticated()
-                        .anyRequest().permitAll());
+                        .anyRequest().denyAll());
         return http.build();
     }
 }

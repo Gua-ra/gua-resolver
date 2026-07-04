@@ -3,6 +3,9 @@ package global.gua.resolver.roster;
 import java.time.Instant;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.placement.ClaimPredicate;
 
@@ -16,6 +19,7 @@ import global.gua.resolver.placement.ClaimPredicate;
  * @param admittedAt  when the authority admitted this homeserver
  * @param status      ACTIVE | SUSPENDED | REVOKED
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record RosterEntry(
         Homeserver homeserver,
         List<ClaimPredicate> claims,
@@ -24,6 +28,7 @@ public record RosterEntry(
 
     public enum Status { ACTIVE, SUSPENDED, REVOKED }
 
+    @JsonIgnore
     public boolean isActive() {
         return status == Status.ACTIVE;
     }

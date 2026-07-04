@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import global.gua.resolver.directory.DirectoryStore;
 import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.placement.PlacementContext;
+import global.gua.resolver.placement.PlacementDecision;
 import global.gua.resolver.placement.PlacementEngine;
 import global.gua.resolver.roster.RosterStore;
 
@@ -42,7 +43,12 @@ public class DefaultResolutionService implements ResolutionService {
 
     @Override
     public Homeserver placementFor(PlacementContext context) {
-        return placementEngine.decide(context);
+        return placementDecisionFor(context).homeserver();
+    }
+
+    @Override
+    public PlacementDecision placementDecisionFor(PlacementContext context) {
+        return placementEngine.decideWithTrace(context);
     }
 
     /** Only resolve to homeservers that are currently ACTIVE in the verified roster. */

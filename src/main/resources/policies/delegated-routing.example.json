@@ -1,0 +1,79 @@
+{
+  "schemaVersion": "gua-routing-policy.v1",
+  "policyId": "example-delegated-routing",
+  "version": 1,
+  "issuedAt": "2026-07-03T00:00:00Z",
+  "notBefore": "2026-07-03T00:00:00Z",
+  "expiresAt": "2026-10-01T00:00:00Z",
+  "delegationZones": [
+    {
+      "id": "carrier-br-sp-mobile",
+      "scopeType": "PHONE_PREFIX",
+      "scopeValue": "+55119",
+      "delegatedAuthority": "carrier:vivo-br",
+      "allowedHomeserverIds": ["carrier-br"],
+      "notBefore": "2026-07-03T00:00:00Z",
+      "expiresAt": "2026-10-01T00:00:00Z"
+    },
+    {
+      "id": "usp-affiliates",
+      "scopeType": "INSTITUTION_DOMAIN",
+      "scopeValue": "usp.br",
+      "delegatedAuthority": "institution:usp",
+      "allowedHomeserverIds": ["usp"],
+      "notBefore": "2026-07-03T00:00:00Z",
+      "expiresAt": "2026-10-01T00:00:00Z"
+    },
+    {
+      "id": "gov-demo-issuer",
+      "scopeType": "OIDC_ISSUER",
+      "scopeValue": "https://sso.staging.gov.example",
+      "delegatedAuthority": "oidc:gov-demo",
+      "allowedHomeserverIds": ["gov-demo"],
+      "notBefore": "2026-07-03T00:00:00Z",
+      "expiresAt": "2026-10-01T00:00:00Z"
+    }
+  ],
+  "rules": [
+    {
+      "id": "vivo-sp-portable",
+      "priority": 10,
+      "matchType": "PHONE_PREFIX",
+      "matchValue": "+551198",
+      "targetHomeserverId": "carrier-br",
+      "delegatedZoneId": "carrier-br-sp-mobile",
+      "reason": "portable carrier-scoped onboarding for verified numbers",
+      "assignmentPolicy": "PORTABLE",
+      "enabled": true
+    },
+    {
+      "id": "usp-affiliate-confirmed",
+      "priority": 20,
+      "matchType": "INSTITUTION_DOMAIN",
+      "matchValue": "usp.br",
+      "targetHomeserverId": "usp",
+      "delegatedZoneId": "usp-affiliates",
+      "reason": "verified institution affiliation route",
+      "assignmentPolicy": "REQUIRES_CONFIRMATION",
+      "enabled": true
+    },
+    {
+      "id": "gov-demo-assurance",
+      "priority": 30,
+      "matchType": "OIDC_CLAIM",
+      "matchValue": "loa2",
+      "oidcIssuer": "https://sso.staging.gov.example",
+      "oidcClaim": "acr",
+      "targetHomeserverId": "gov-demo",
+      "delegatedZoneId": "gov-demo-issuer",
+      "reason": "verified gov-style OIDC assurance route for non-prod demos",
+      "assignmentPolicy": "REQUIRES_CONFIRMATION",
+      "enabled": true
+    }
+  ],
+  "fallback": {
+    "type": "legacy-weighted",
+    "enabled": true
+  },
+  "signatures": []
+}
