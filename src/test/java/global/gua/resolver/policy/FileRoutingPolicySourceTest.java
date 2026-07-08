@@ -94,7 +94,7 @@ class FileRoutingPolicySourceTest {
         trusted.setPublicKey(key.publicKeyB64());
         props.getPolicy().setTrustedKeys(List.of(trusted));
         return new FileRoutingPolicySource(props, mapper, roster(), new RoutingPolicyValidator(),
-                new RoutingPolicyVerifier(props), clock);
+                new RoutingPolicyVerifier(props), List.of(), clock);
     }
 
     private void writePolicy(Path file, long version) throws Exception {

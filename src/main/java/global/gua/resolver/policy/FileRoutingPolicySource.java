@@ -4,6 +4,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import org.slf4j.Logger;
@@ -35,6 +36,7 @@ public class FileRoutingPolicySource implements RoutingPolicySource {
     private final RosterStore rosterStore;
     private final RoutingPolicyValidator validator;
     private final RoutingPolicyVerifier verifier;
+    private final List<PolicyPublicationListener> publicationListeners;
     private final Clock clock;
 
     private volatile RoutingPolicyBundle current;
@@ -43,12 +45,14 @@ public class FileRoutingPolicySource implements RoutingPolicySource {
 
     @Autowired
     public FileRoutingPolicySource(ResolverProperties props, ObjectMapper json, RosterStore rosterStore,
-                                   RoutingPolicyValidator validator, RoutingPolicyVerifier verifier) {
-        this(props, json, rosterStore, validator, verifier, Clock.systemUTC());
+                                   RoutingPolicyValidator validator, RoutingPolicyVerifier verifier,
+                                   List<PolicyPublicationListener> publicationListeners) {
+        this(props, json, rosterStore, validator, verifier, publicationListeners, Clock.systemUTC());
     }
 
     FileRoutingPolicySource(ResolverProperties props, ObjectMapper json, RosterStore rosterStore,
-                            RoutingPolicyValidator validator, RoutingPolicyVerifier verifier, Clock clock) {
+                            RoutingPolicyValidator validator, RoutingPolicyVerifier verifier,
+                            List<PolicyPublicationListener> publicationListeners, Clock clock) {
         String configured = props.getPolicy().getFile();
         if (configured == null || configured.isBlank()) {
             throw new IllegalStateException("gua.resolver.policy.file is required when policy.enabled=true");
@@ -58,6 +62,7 @@ public class FileRoutingPolicySource implements RoutingPolicySource {
         this.rosterStore = rosterStore;
         this.validator = validator;
         this.verifier = verifier;
+        this.publicationListeners = publicationListeners == null ? List.of() : publicationListeners;
         this.clock = clock;
         refresh();
     }
@@ -104,10 +109,17 @@ public class FileRoutingPolicySource implements RoutingPolicySource {
                 throw new IllegalStateException("routing policy rollback rejected: loaded v" + loaded.version()
                         + " < current v" + existing.version());
             }
+            boolean newVersion = existing == null || loaded.version() != existing.version()
+                    || !loaded.policyId().equals(existing.policyId());
             current = loaded;
             loadedAt = Instant.now(clock);
             lastMessage = "loaded";
             log.info("Loaded routing policy {} v{} from {}", loaded.policyId(), loaded.version(), file);
+            if (newVersion) {
+                for (PolicyPublicationListener listener : publicationListeners) {
+                    listener.onPolicyAdopted(loaded);
+                }
+            }
         } catch (Exception e) {
             lastMessage = e.getMessage();
             if (current == null) {

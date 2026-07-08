@@ -35,6 +35,11 @@ public final class MerkleTree {
         return HEX.formatHex(sha256().digest(data.getBytes(StandardCharsets.UTF_8)));
     }
 
+    /** Plain SHA-256 (hex) of arbitrary bytes, e.g. a canonical policy-bundle content hash. */
+    public static String sha256Hex(byte[] data) {
+        return HEX.formatHex(sha256().digest(data));
+    }
+
     /** RFC 6962 leaf hash (hex) for arbitrary leaf data. */
     public static String leafHash(byte[] data) {
         MessageDigest d = sha256();

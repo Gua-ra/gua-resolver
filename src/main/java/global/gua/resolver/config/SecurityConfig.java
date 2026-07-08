@@ -29,7 +29,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/resolve", "/roster", "/roster/log", "/roster/log/consistency",
-                                "/policy/routing", "/policy/routing/status",
+                                "/policy/routing", "/policy/routing/status", "/policy/log",
                                 "/directory/entries", "/directory/lookup", "/actuator/**",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/authority/**").hasRole("ADMIN")
