@@ -7,6 +7,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -69,10 +70,10 @@ class ResolveControllerTest {
     void rosterReturnsSignedRosterWithDevHomeserver() throws Exception {
         mockMvc.perform(get("/roster"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.version").value(1))
+                .andExpect(jsonPath("$.version").value(greaterThanOrEqualTo(1)))
                 .andExpect(jsonPath("$.entries[0].homeserver.serverName").value("gua.local"))
                 .andExpect(jsonPath("$.entries[0].homeserver.acceptsNew").value(true))
-                .andExpect(jsonPath("$.logCheckpoint.size").value(1))
+                .andExpect(jsonPath("$.logCheckpoint.size").value(greaterThanOrEqualTo(1)))
                 .andExpect(jsonPath("$.logCheckpoint.merkleRoot").isNotEmpty())
                 .andExpect(jsonPath("$.authoritySignatures[0].authorityKeyId").value("gua-authority-test"));
     }

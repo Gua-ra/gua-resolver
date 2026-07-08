@@ -48,6 +48,8 @@ gua:
       # Shared HMAC pepper for the phone directory — MUST match identity-service. Required at runtime.
       pepper: ${GUA_RESOLVER_DIRECTORY_PEPPER:}
       fail-open-on-lookup-error: ${GUA_RESOLVER_DIRECTORY_FAIL_OPEN_ON_LOOKUP_ERROR:false}
+      # How often the authority signs + logs a directory checkpoint (Merkle root over the mappings).
+      checkpoint-interval: ${GUA_RESOLVER_DIRECTORY_CHECKPOINT_INTERVAL:PT5M}
     claims:
       audience: ${GUA_RESOLVER_CLAIMS_AUDIENCE:gua-resolver}
       max-clock-skew: ${GUA_RESOLVER_CLAIMS_MAX_CLOCK_SKEW:PT2M}
@@ -86,6 +88,9 @@ gua:
       cache-file: ${GUA_RESOLVER_MIRROR_CACHE_FILE:}
       # Hard cap on a single upstream directory lookup so a stalled authority cannot hang mirror threads.
       lookup-timeout: ${GUA_RESOLVER_MIRROR_LOOKUP_TIMEOUT:PT3S}
+      # How long a mirror may serve a previously-verified POSITIVE directory result during an authority
+      # outage (returning-user login stays up). Negatives are never served stale. Zero = strict fail-closed.
+      directory-cache-ttl: ${GUA_RESOLVER_MIRROR_DIRECTORY_CACHE_TTL:PT10M}
 
     dev-homeserver:
       id: ${GUA_RESOLVER_DEVHOMESERVER_ID:dev}

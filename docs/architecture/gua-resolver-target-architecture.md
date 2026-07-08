@@ -86,12 +86,13 @@ A delegation zone binds a delegate to an explicit bounded scope:
 Rules cannot target a homeserver outside the zone's allowed homeserver ids, a rule match must be within the
 zone scope, and a rule is only applied while its zone's signed `notBefore`/`expiresAt` window is open.
 
-Scope of delegation in this revision (important): zones are **authority-signed policy-as-data**, not
-**cryptographically delegated authority**. The single authority signature covers the whole bundle including
-every zone, so a delegate cannot yet author or veto its own scope, and the authority custodian can rewrite
-any zone. Per-delegate signatures (each zone signed by a delegate key from a delegate registry, with the
-delegate's rules covered only by that delegate's signature) are the next milestone and are required before
-admitting real third-party delegated authorities in production.
+Delegation is now **cryptographic**, not just authority-signed policy-as-data. Each zone carries a delegate
+public key (`delegateKeyId` + `delegatePublicKey`) that the authority attests by threshold-signing the whole
+bundle; the delegate independently signs the rules inside its own zone (`CanonicalDelegatedRules`, bound to
+policyId + version + zoneId). A rule is applied only when its zone is BOTH authority-attested and
+delegate-signed, so a delegate authors and controls its own rules within an authority-granted scope and no one
+(including the authority) can forge them. A zone whose delegate key is an authority key is authority
+self-delegation (public onboarding rules).
 
 ### Directory
 
@@ -218,18 +219,27 @@ Implemented:
 - security default-deny with HTTP Basic admin auth on `/authority/**` (fails closed with no admin credential),
 - clean 503 (not 500) when no homeserver accepts new accounts,
 - correlation id propagation,
-- tests for policy routing, validation, threshold, subject binding, canonical injectivity, rollback/expiry,
-  the self-assertion regression, and deny-by-default authz.
+- **per-delegate cryptographic delegation**: each zone carries a delegate key the authority attests, and the
+  delegate signs its own zone's rules; a rule applies only when both verify (governance-bottleneck fix),
+- **policy transparency log**: every adopted policy version is appended to the Merkle log (`POLICY_PUBLISH`),
+  covered by the published checkpoint + consistency proofs, so policy cannot be equivocated undetectably,
+- **reference client verifier + verification protocol spec**
+  (`ResolverVerifier` + docs/verification/gua-resolver-verification-protocol.md): a client verifies the signed
+  roster + policy and independently reproduces the deterministic decision (opaque-authority fix),
+- **signed, transparency-logged directory checkpoints** (Merkle root over the mappings, `DIRECTORY_CHECKPOINT`)
+  plus a mirror serve-stale-within-budget cache so returning-user login survives a brief authority outage,
+- tests for delegation (delegate-signed vs forged), policy transparency, the reference verifier, directory
+  checkpoints + mirror stale-serve, threshold, subject binding, canonical injectivity, rollback/expiry, the
+  self-assertion regression, and deny-by-default authz.
 
-Still needed (deferred; required before third-party delegation / institutional GA):
+Still needed (deferred):
 
-- **per-delegate cryptographic delegation** (per-zone signatures + delegate registry) so the single authority
-  key is not the sole signer of every delegate's scope — this is the governance-bottleneck fix,
-- **policy transparency log + client-side verifier libraries** so policy cannot be equivocated undetectably
-  and clients verify roster/policy/decisions independently — this is the opaque-authority fix,
-- **directory high availability** (signed checkpoints / mirrorable subset) so returning-user login does not
-  depend on the single authority directory,
+- **native client verifier libraries** (web / iOS / Android) implementing the verification protocol spec, so
+  end-user apps verify decisions on-device (the Java reference verifier + spec now exist),
+- **directory full inclusion proofs** (per-lookup audit path) and an untrusted-mirror replication story beyond
+  the signed checkpoint + stale cache,
 - remote policy source and persistent policy cache with staleness health,
 - production domain proof verifier (the current `TokenPresenceVerifier` is a placeholder),
 - key rotation / revocation artifacts,
+- multi-party authority key custody (the code supports k-of-n; the ceremony/custody is an ops rollout),
 - deployment HA changes (multi-replica + Postgres HA in gua-deploy).

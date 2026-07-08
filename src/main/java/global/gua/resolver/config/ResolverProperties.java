@@ -83,6 +83,10 @@ public class ResolverProperties {
         /** Hard timeout for a single upstream directory lookup, so a stalled authority cannot hang a mirror
          * request thread (and, in aggregate, exhaust its HTTP thread pool). */
         private Duration lookupTimeout = Duration.ofSeconds(3);
+        /** How long a mirror may serve a previously-verified POSITIVE directory result if the authority is
+         * unreachable (returning-user login stays up during a brief authority outage). Negative results are
+         * never served stale. Zero disables stale serving (strict fail-closed). */
+        private Duration directoryCacheTtl = Duration.ofMinutes(10);
 
         public String getUpstreamUrl() { return upstreamUrl; }
         public void setUpstreamUrl(String upstreamUrl) { this.upstreamUrl = upstreamUrl; }
@@ -92,6 +96,8 @@ public class ResolverProperties {
         public void setCacheFile(String cacheFile) { this.cacheFile = cacheFile; }
         public Duration getLookupTimeout() { return lookupTimeout; }
         public void setLookupTimeout(Duration lookupTimeout) { this.lookupTimeout = lookupTimeout; }
+        public Duration getDirectoryCacheTtl() { return directoryCacheTtl; }
+        public void setDirectoryCacheTtl(Duration directoryCacheTtl) { this.directoryCacheTtl = directoryCacheTtl; }
     }
 
     /**
