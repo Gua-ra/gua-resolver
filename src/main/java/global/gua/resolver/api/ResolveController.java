@@ -56,11 +56,13 @@ public class ResolveController {
     /** Resolve a phone to its homeserver (login) or to a placement target (register). */
     @PostMapping("/resolve")
     public ResolveResponse resolve(@Valid @RequestBody ResolveRequest request) {
+        // The roster version the decision is made against; clients pin + verify this exact version.
+        long rosterVersion = rosterStore.current().version();
         return resolution.resolvePhone(request.phone())
                 .map(hs -> {
                     resolveExisting.increment();
                     return ResolveResponse.existing(HomeserverRef.of(hs), request.traceEnabled()
-                            ? DecisionTrace.existing(hs.id()) : null);
+                            ? DecisionTrace.existing(hs.id(), rosterVersion) : null);
                 })
                 .orElseGet(() -> {
                     PlacementDecision decision = resolution.placementDecisionFor(
@@ -68,7 +70,7 @@ public class ResolveController {
                     Homeserver target = decision.homeserver();
                     resolveRegister.increment();
                     return ResolveResponse.register(HomeserverRef.of(target), request.traceEnabled()
-                            ? DecisionTrace.of(decision) : null);
+                            ? DecisionTrace.of(decision, rosterVersion) : null);
                 });
     }
 
@@ -159,16 +161,17 @@ public class ResolveController {
 
     public record DecisionTrace(String source, String rule, String ruleId, String reason,
                                 String policyId, Long policyVersion, String delegatedZoneId,
-                                String assignmentPolicy, String homeserverId) {
-        static DecisionTrace of(PlacementDecision decision) {
+                                String assignmentPolicy, String homeserverId, Long rosterVersion) {
+        static DecisionTrace of(PlacementDecision decision, long rosterVersion) {
             return new DecisionTrace("placement", decision.rule(), decision.ruleId(), decision.reason(),
                     decision.policyId(), decision.policyVersion(), decision.delegatedZoneId(),
-                    decision.assignmentPolicy(), decision.homeserver().id());
+                    decision.assignmentPolicy(), decision.homeserver().id(), rosterVersion);
         }
 
-        static DecisionTrace existing(String homeserverId) {
+        static DecisionTrace existing(String homeserverId, long rosterVersion) {
             return new DecisionTrace("directory", "directory_lookup", null,
-                    "existing account mapping found in active roster", null, null, null, null, homeserverId);
+                    "existing account mapping found in active roster", null, null, null, null,
+                    homeserverId, rosterVersion);
         }
     }
 
