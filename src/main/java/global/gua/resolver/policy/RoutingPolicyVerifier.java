@@ -12,7 +12,16 @@ import org.springframework.stereotype.Component;
 import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.crypto.Ed25519;
 
-/** Verifies detached Ed25519 signatures over canonical routing-policy bundles. */
+/**
+ * Verifies routing-policy bundles at two levels:
+ * <ol>
+ *   <li><b>Authority</b> (governance): k-of-n threshold Ed25519 signatures over the whole canonical bundle.
+ *       This attests the bundle including each delegation zone's grant (scope + delegate public key).</li>
+ *   <li><b>Delegate</b>: each zone's rules must be signed by that zone's delegate key. A rule is only
+ *       trusted when its zone is delegate-verified, so a delegate controls its own rules within its
+ *       authority-granted scope and the authority cannot forge them.</li>
+ * </ol>
+ */
 @Component
 public class RoutingPolicyVerifier {
 
@@ -50,6 +59,55 @@ public class RoutingPolicyVerifier {
                     "routing policy " + bundle.policyId() + " v" + bundle.version()
                             + " has " + valid + " valid signatures, need " + threshold);
         }
+    }
+
+    /**
+     * The set of zone ids whose rules carry a valid delegate signature (the delegate key is the one the
+     * authority attested in the zone). Assumes the bundle's authority signatures were already verified, so
+     * the zone's {@code delegatePublicKey} is trusted. When signatures are not required (dev), every zone id
+     * is returned. A rule should only be applied when its zone is in this set.
+     */
+    public Set<String> delegateVerifiedZones(RoutingPolicyBundle bundle) {
+        Set<String> verified = new HashSet<>();
+        List<DelegationZone> zones = bundle.delegationZones() == null ? List.of() : bundle.delegationZones();
+        if (!requireSignatures) {
+            for (DelegationZone z : zones) {
+                if (z.id() != null) {
+                    verified.add(z.id());
+                }
+            }
+            return verified;
+        }
+        List<RoutingPolicyBundle.DelegateSignature> sigs =
+                bundle.delegateSignatures() == null ? List.of() : bundle.delegateSignatures();
+        for (DelegationZone zone : zones) {
+            if (zone.id() == null || blank(zone.delegateKeyId()) || blank(zone.delegatePublicKey())) {
+                continue;
+            }
+            PublicKey delegateKey;
+            try {
+                delegateKey = Ed25519.publicKey(zone.delegatePublicKey());
+            } catch (RuntimeException e) {
+                continue;   // malformed delegate key -> zone not verified (fail closed)
+            }
+            byte[] canonical = CanonicalDelegatedRules.bytes(
+                    bundle.policyId(), bundle.version(), zone.id(), bundle.rules());
+            for (RoutingPolicyBundle.DelegateSignature sig : sigs) {
+                if (sig == null || !zone.id().equals(sig.zoneId())
+                        || !zone.delegateKeyId().equals(sig.delegateKeyId())) {
+                    continue;
+                }
+                if (Ed25519.verify(delegateKey, canonical, sig.signatureB64())) {
+                    verified.add(zone.id());
+                    break;
+                }
+            }
+        }
+        return verified;
+    }
+
+    private static boolean blank(String s) {
+        return s == null || s.isBlank();
     }
 
     private int countValidSignatures(RoutingPolicyBundle bundle) {

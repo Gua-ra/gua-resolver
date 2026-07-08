@@ -24,7 +24,7 @@ public final class CanonicalRoutingPolicy {
         sb.append("notBefore=").append(epoch(bundle.notBefore())).append('\n');
         sb.append("expiresAt=").append(epoch(bundle.expiresAt())).append('\n');
         zones(bundle.delegationZones()).forEach(z -> sb.append(zone(z)).append('\n'));
-        rules(bundle.rules()).forEach(r -> sb.append(rule(r)).append('\n'));
+        sortedRules(bundle.rules()).forEach(r -> sb.append(ruleLine(r)).append('\n'));
         RoutingPolicyBundle.FallbackStrategy f = bundle.fallback();
         sb.append("fallback=")
                 .append(f == null ? "" : nz(f.type()) + ":" + f.enabled())
@@ -38,7 +38,8 @@ public final class CanonicalRoutingPolicy {
                 .toList();
     }
 
-    private static List<RoutingPolicyRule> rules(List<RoutingPolicyRule> rules) {
+    /** Deterministic rule order (priority, then id), shared with the per-zone delegate canonical form. */
+    static List<RoutingPolicyRule> sortedRules(List<RoutingPolicyRule> rules) {
         return rules == null ? List.of() : rules.stream()
                 .sorted(Comparator.comparingInt(RoutingPolicyRule::priority)
                         .thenComparing(RoutingPolicyRule::id, Comparator.nullsLast(String::compareTo)))
@@ -52,6 +53,8 @@ public final class CanonicalRoutingPolicy {
         j.add(z.scopeType() == null ? "" : z.scopeType().name());
         j.add(nz(z.scopeValue()));
         j.add(nz(z.delegatedAuthority()));
+        j.add(nz(z.delegateKeyId()));
+        j.add(nz(z.delegatePublicKey()));
         j.add(z.allowedHomeserverIds() == null ? ""
                 : z.allowedHomeserverIds().stream().sorted().reduce((a, b) -> a + "|" + b).orElse(""));
         j.add(Long.toString(epoch(z.notBefore())));
@@ -59,7 +62,7 @@ public final class CanonicalRoutingPolicy {
         return j.toString();
     }
 
-    private static String rule(RoutingPolicyRule r) {
+    static String ruleLine(RoutingPolicyRule r) {
         StringJoiner j = new StringJoiner("\u001f");
         j.add("rule");
         j.add(nz(r.id()));

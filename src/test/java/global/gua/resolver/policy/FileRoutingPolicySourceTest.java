@@ -109,11 +109,11 @@ class FileRoutingPolicySourceTest {
                 RoutingPolicyBundle.SCHEMA_VERSION, "delegated-br", version,
                 Instant.now(), notBefore, expiresAt,
                 List.of(new DelegationZone("carrier-zone", DelegationZone.ScopeType.PHONE_PREFIX,
-                        "+55119", "carrier:vivo", List.of("carrier"), null, null)),
+                        "+55119", "carrier:vivo", "delegate-vivo", "DPUB", List.of("carrier"), null, null)),
                 List.of(new RoutingPolicyRule("carrier-rule", 10, RoutingPolicyRule.MatchType.PHONE_PREFIX,
                         "+551198", null, null, "carrier", "carrier-zone", "portable carrier rule",
                         RoutingPolicyRule.AssignmentPolicy.PORTABLE, true)),
-                new RoutingPolicyBundle.FallbackStrategy("legacy-weighted", true), List.of());
+                new RoutingPolicyBundle.FallbackStrategy("legacy-weighted", true), List.of(), List.of());
         RoutingPolicyBundle signed = new RoutingPolicySigner(props).sign(unsigned);
         Files.writeString(file, mapper.writeValueAsString(signed));
     }

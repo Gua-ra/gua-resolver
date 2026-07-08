@@ -21,6 +21,8 @@ class RoutingPolicyTest {
     private static final Homeserver UNI = new Homeserver(
             "uni", "usp.gua.global", "https://uni", "https://uni/auth", "BR", 1, true, "");
 
+    private static final Ed25519.KeyPairB64 DELEGATE = Ed25519.generate();
+
     private static SignedRoster roster() {
         return new SignedRoster(2, Instant.now(),
                 List.of(entry(CARRIER), entry(UNI)),
@@ -40,26 +42,32 @@ class RoutingPolicyTest {
                 Instant.now().minusSeconds(60),
                 Instant.now().plusSeconds(3600),
                 List.of(new DelegationZone("carrier-zone", DelegationZone.ScopeType.PHONE_PREFIX,
-                        zoneScope, "carrier:vivo", List.of(target), null, null)),
+                        zoneScope, "carrier:vivo", "delegate-vivo", DELEGATE.publicKeyB64(),
+                        List.of(target), null, null)),
                 List.of(new RoutingPolicyRule("carrier-rule", 10, RoutingPolicyRule.MatchType.PHONE_PREFIX,
                         ruleMatch, null, null, target, "carrier-zone", "portable delegated carrier rule",
                         RoutingPolicyRule.AssignmentPolicy.PORTABLE, true)),
                 new RoutingPolicyBundle.FallbackStrategy("legacy-weighted", true),
-                List.of());
+                List.of(), List.of());
     }
 
-    @Test
-    void signedPolicyVerifiesAndTamperingBreaksIt() {
-        Ed25519.KeyPairB64 key = Ed25519.generate();
+    private static ResolverProperties authorityProps(Ed25519.KeyPairB64 key, int threshold) {
         ResolverProperties props = new ResolverProperties();
         props.getPolicy().setRequireSignatures(true);
-        props.getPolicy().setSignatureThreshold(1);
+        props.getPolicy().setSignatureThreshold(threshold);
         props.getPolicy().setSigningKeyId("policy-a");
         props.getPolicy().setSigningPrivateKey(key.privateKeyB64());
         ResolverProperties.TrustedKey trusted = new ResolverProperties.TrustedKey();
         trusted.setId("policy-a");
         trusted.setPublicKey(key.publicKeyB64());
         props.getPolicy().setTrustedKeys(List.of(trusted));
+        return props;
+    }
+
+    @Test
+    void signedPolicyVerifiesAndTamperingBreaksIt() {
+        Ed25519.KeyPairB64 key = Ed25519.generate();
+        ResolverProperties props = authorityProps(key, 1);
 
         RoutingPolicyBundle signed = new RoutingPolicySigner(props).sign(
                 unsignedPolicy("carrier", "+55119", "+551198"));
@@ -73,7 +81,7 @@ class RoutingPolicyTest {
                 List.of(new RoutingPolicyRule("carrier-rule", 10, RoutingPolicyRule.MatchType.PHONE_PREFIX,
                         "+551198", null, null, "uni", "carrier-zone", "tampered",
                         RoutingPolicyRule.AssignmentPolicy.PORTABLE, true)),
-                signed.fallback(), signed.signatures());
+                signed.fallback(), signed.signatures(), signed.delegateSignatures());
 
         assertThat(verifier.isVerified(tampered)).isFalse();
     }
@@ -81,15 +89,7 @@ class RoutingPolicyTest {
     @Test
     void belowThresholdSignaturesAreRejected() {
         Ed25519.KeyPairB64 key = Ed25519.generate();
-        ResolverProperties props = new ResolverProperties();
-        props.getPolicy().setRequireSignatures(true);
-        props.getPolicy().setSignatureThreshold(2);   // require k=2 distinct valid signatures
-        props.getPolicy().setSigningKeyId("policy-a");
-        props.getPolicy().setSigningPrivateKey(key.privateKeyB64());
-        ResolverProperties.TrustedKey trusted = new ResolverProperties.TrustedKey();
-        trusted.setId("policy-a");
-        trusted.setPublicKey(key.publicKeyB64());
-        props.getPolicy().setTrustedKeys(List.of(trusted));
+        ResolverProperties props = authorityProps(key, 2);   // require k=2 distinct valid signatures
 
         RoutingPolicyBundle signed = new RoutingPolicySigner(props).sign(
                 unsignedPolicy("carrier", "+55119", "+551198"));   // carries only one signature
@@ -99,6 +99,62 @@ class RoutingPolicyTest {
         assertThatThrownBy(() -> verifier.requireVerified(signed))
                 .isInstanceOf(RoutingPolicyVerifier.RoutingPolicyVerificationException.class)
                 .hasMessageContaining("need 2");
+    }
+
+    @Test
+    void delegateSignedZoneIsDelegateVerified() {
+        RoutingPolicyVerifier verifier = new RoutingPolicyVerifier(authorityProps(Ed25519.generate(), 1));
+        RoutingPolicyBundle bundle = RoutingPolicySigner.signZone(
+                unsignedPolicy("carrier", "+55119", "+551198"),
+                "carrier-zone", "delegate-vivo", DELEGATE.privateKeyB64());
+
+        assertThat(verifier.delegateVerifiedZones(bundle)).containsExactly("carrier-zone");
+    }
+
+    @Test
+    void zoneWithoutADelegateSignatureIsNotDelegateVerified() {
+        RoutingPolicyVerifier verifier = new RoutingPolicyVerifier(authorityProps(Ed25519.generate(), 1));
+
+        // authority-signed only, no delegate signature over the zone's rules
+        assertThat(verifier.delegateVerifiedZones(unsignedPolicy("carrier", "+55119", "+551198"))).isEmpty();
+    }
+
+    @Test
+    void authorityCannotForgeADelegatesRules() {
+        RoutingPolicyVerifier verifier = new RoutingPolicyVerifier(authorityProps(Ed25519.generate(), 1));
+        RoutingPolicyBundle delegateSigned = RoutingPolicySigner.signZone(
+                unsignedPolicy("carrier", "+55119", "+551198"),
+                "carrier-zone", "delegate-vivo", DELEGATE.privateKeyB64());
+
+        // Whoever assembles the bundle swaps the delegate's rule for a different target, keeping the old
+        // delegate signature. The delegate signature is over the ORIGINAL rules, so the zone no longer verifies.
+        RoutingPolicyBundle forged = new RoutingPolicyBundle(delegateSigned.schemaVersion(),
+                delegateSigned.policyId(), delegateSigned.version(), delegateSigned.issuedAt(),
+                delegateSigned.notBefore(), delegateSigned.expiresAt(), delegateSigned.delegationZones(),
+                List.of(new RoutingPolicyRule("carrier-rule", 10, RoutingPolicyRule.MatchType.PHONE_PREFIX,
+                        "+551198", null, null, "uni", "carrier-zone", "forged target",
+                        RoutingPolicyRule.AssignmentPolicy.PORTABLE, true)),
+                delegateSigned.fallback(), delegateSigned.signatures(), delegateSigned.delegateSignatures());
+
+        assertThat(verifier.delegateVerifiedZones(forged)).isEmpty();
+    }
+
+    @Test
+    void validatorRejectsZoneWithoutADelegateKey() {
+        RoutingPolicyValidator validator = new RoutingPolicyValidator();
+        RoutingPolicyBundle policy = new RoutingPolicyBundle(
+                RoutingPolicyBundle.SCHEMA_VERSION, "delegated-br", 1, Instant.now(),
+                Instant.now().minusSeconds(60), Instant.now().plusSeconds(3600),
+                List.of(new DelegationZone("carrier-zone", DelegationZone.ScopeType.PHONE_PREFIX,
+                        "+55119", "carrier:vivo", null, null, List.of("carrier"), null, null)),
+                List.of(new RoutingPolicyRule("carrier-rule", 10, RoutingPolicyRule.MatchType.PHONE_PREFIX,
+                        "+551198", null, null, "carrier", "carrier-zone", "r",
+                        RoutingPolicyRule.AssignmentPolicy.PORTABLE, true)),
+                new RoutingPolicyBundle.FallbackStrategy("legacy-weighted", true), List.of(), List.of());
+
+        assertThatThrownBy(() -> validator.validate(policy, roster()))
+                .isInstanceOf(RoutingPolicyValidator.RoutingPolicyValidationException.class)
+                .hasMessageContaining("delegateKeyId");
     }
 
     @Test
@@ -122,12 +178,13 @@ class RoutingPolicyTest {
                 Instant.now().minusSeconds(60),
                 Instant.now().plusSeconds(3600),
                 List.of(new DelegationZone("carrier-zone", DelegationZone.ScopeType.PHONE_PREFIX,
-                        "+55119", "carrier:vivo", List.of("carrier"), null, null)),
+                        "+55119", "carrier:vivo", "delegate-vivo", DELEGATE.publicKeyB64(),
+                        List.of("carrier"), null, null)),
                 List.of(new RoutingPolicyRule("carrier-rule", 10, RoutingPolicyRule.MatchType.PHONE_PREFIX,
                         "+551198", null, null, "uni", "carrier-zone", "bad target",
                         RoutingPolicyRule.AssignmentPolicy.PORTABLE, true)),
                 new RoutingPolicyBundle.FallbackStrategy("legacy-weighted", true),
-                List.of());
+                List.of(), List.of());
 
         assertThatThrownBy(() -> validator.validate(policy, roster()))
                 .isInstanceOf(RoutingPolicyValidator.RoutingPolicyValidationException.class)

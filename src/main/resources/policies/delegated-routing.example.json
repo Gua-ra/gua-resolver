@@ -11,6 +11,8 @@
       "scopeType": "PHONE_PREFIX",
       "scopeValue": "+55119",
       "delegatedAuthority": "carrier:vivo-br",
+      "delegateKeyId": "delegate-vivo-br",
+      "delegatePublicKey": "REPLACE_WITH_DELEGATE_ED25519_PUBLIC_KEY_B64",
       "allowedHomeserverIds": ["carrier-br"],
       "notBefore": "2026-07-03T00:00:00Z",
       "expiresAt": "2026-10-01T00:00:00Z"
@@ -20,6 +22,8 @@
       "scopeType": "INSTITUTION_DOMAIN",
       "scopeValue": "usp.br",
       "delegatedAuthority": "institution:usp",
+      "delegateKeyId": "delegate-usp",
+      "delegatePublicKey": "REPLACE_WITH_DELEGATE_ED25519_PUBLIC_KEY_B64",
       "allowedHomeserverIds": ["usp"],
       "notBefore": "2026-07-03T00:00:00Z",
       "expiresAt": "2026-10-01T00:00:00Z"
@@ -29,6 +33,8 @@
       "scopeType": "OIDC_ISSUER",
       "scopeValue": "https://sso.staging.gov.example",
       "delegatedAuthority": "oidc:gov-demo",
+      "delegateKeyId": "delegate-gov-demo",
+      "delegatePublicKey": "REPLACE_WITH_DELEGATE_ED25519_PUBLIC_KEY_B64",
       "allowedHomeserverIds": ["gov-demo"],
       "notBefore": "2026-07-03T00:00:00Z",
       "expiresAt": "2026-10-01T00:00:00Z"
@@ -75,5 +81,6 @@
     "type": "legacy-weighted",
     "enabled": true
   },
-  "signatures": []
+  "signatures": [],
+  "delegateSignatures": []
 }

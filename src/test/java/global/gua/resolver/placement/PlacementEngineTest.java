@@ -7,6 +7,7 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 
+import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.placement.rules.PolicyRoutingRule;
 import global.gua.resolver.placement.rules.ClaimRule;
@@ -16,6 +17,7 @@ import global.gua.resolver.policy.DelegationZone;
 import global.gua.resolver.policy.RoutingPolicyBundle;
 import global.gua.resolver.policy.RoutingPolicyRule;
 import global.gua.resolver.policy.RoutingPolicySource;
+import global.gua.resolver.policy.RoutingPolicyVerifier;
 import global.gua.resolver.roster.RosterEntry;
 import global.gua.resolver.roster.RosterStore;
 import global.gua.resolver.roster.SignedRoster;
@@ -23,8 +25,10 @@ import global.gua.resolver.roster.SignedRoster;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Unit tests for the placement pipeline: a carrier claiming its MCCMNC wins, an affiliation claim wins,
- * and otherwise the weighted fallback always yields an enabled homeserver. Pure (no Spring).
+ * Unit tests for the placement pipeline: a carrier claiming its MCCMNC wins, a verified affiliation claim
+ * wins, an unverified one does not, and otherwise the weighted fallback always yields an enabled homeserver.
+ * Pure (no Spring). Signed-policy tests use a permissive verifier so they exercise placement logic; the
+ * delegation cryptography itself is covered in RoutingPolicyTest.
  */
 class PlacementEngineTest {
 
@@ -51,6 +55,20 @@ class PlacementEngineTest {
     private static PlacementEngine engineFor(RosterStore store) {
         // Registered out of priority order on purpose — the engine must sort them.
         return new PlacementEngine(List.of(new WeightedFallbackRule(store), new ClaimRule(store)));
+    }
+
+    /** Verifier that treats every zone as delegate-verified (requireSignatures=false), for placement-logic tests. */
+    private static RoutingPolicyVerifier permissiveVerifier() {
+        ResolverProperties props = new ResolverProperties();
+        props.getPolicy().setRequireSignatures(false);
+        return new RoutingPolicyVerifier(props);
+    }
+
+    private static DelegationZone zone(String id, DelegationZone.ScopeType type, String scope,
+                                       String authority, List<String> homeservers,
+                                       Instant notBefore, Instant expiresAt) {
+        return new DelegationZone(id, type, scope, authority, "delegate-" + id, "DPUB",
+                homeservers, notBefore, expiresAt);
     }
 
     @Test
@@ -120,17 +138,17 @@ class PlacementEngineTest {
                 Instant.now(),
                 Instant.now().minusSeconds(60),
                 Instant.now().plusSeconds(3600),
-                List.of(new DelegationZone("vivo-sp", DelegationZone.ScopeType.PHONE_PREFIX,
+                List.of(zone("vivo-sp", DelegationZone.ScopeType.PHONE_PREFIX,
                         "+55119", "carrier:vivo", List.of("carrier"), null, null)),
                 List.of(new RoutingPolicyRule("vivo-sp-portable", 10,
                         RoutingPolicyRule.MatchType.PHONE_PREFIX, "+551198", null, null,
                         "carrier", "vivo-sp", "portable carrier routing within delegated prefix",
                         RoutingPolicyRule.AssignmentPolicy.PORTABLE, true)),
                 new RoutingPolicyBundle.FallbackStrategy("legacy-weighted", true),
-                List.of());
+                List.of(), List.of());
         RosterStore store = rosterOf(entry(CARRIER), entry(DEFAULT));
         var engine = new PlacementEngine(List.of(new WeightedFallbackRule(store),
-                new PolicyRoutingRule(provider(policy), store)));
+                new PolicyRoutingRule(provider(policy), store, permissiveVerifier())));
 
         var decision = engine.decideWithTrace(PlacementContext.forPhone("+5511987654321"));
 
@@ -142,24 +160,10 @@ class PlacementEngineTest {
 
     @Test
     void signedPolicyInstitutionDomainDelegationMatchesVerifiedAffiliation() {
-        RoutingPolicyBundle policy = new RoutingPolicyBundle(
-                RoutingPolicyBundle.SCHEMA_VERSION,
-                "institution-policy",
-                3,
-                Instant.now(),
-                Instant.now().minusSeconds(60),
-                Instant.now().plusSeconds(3600),
-                List.of(new DelegationZone("usp-domain", DelegationZone.ScopeType.INSTITUTION_DOMAIN,
-                        "usp.br", "institution:usp", List.of("uni"), null, null)),
-                List.of(new RoutingPolicyRule("usp-affiliates", 10,
-                        RoutingPolicyRule.MatchType.INSTITUTION_DOMAIN, "usp.br", null, null,
-                        "uni", "usp-domain", "verified institution domain",
-                        RoutingPolicyRule.AssignmentPolicy.REQUIRES_CONFIRMATION, true)),
-                new RoutingPolicyBundle.FallbackStrategy("legacy-weighted", true),
-                List.of());
+        RoutingPolicyBundle policy = institutionPolicy(null, null);
         RosterStore store = rosterOf(entry(UNI), entry(DEFAULT));
         var engine = new PlacementEngine(List.of(new WeightedFallbackRule(store),
-                new PolicyRoutingRule(provider(policy), store)));
+                new PolicyRoutingRule(provider(policy), store, permissiveVerifier())));
 
         var ctx = new PlacementContext("+5511000000000", "BR", null, null, null,
                 List.of("students.usp.br"), Map.of(), true);
@@ -172,24 +176,10 @@ class PlacementEngineTest {
 
     @Test
     void institutionPolicyIgnoresUnverifiedAffiliationClaims() {
-        RoutingPolicyBundle policy = new RoutingPolicyBundle(
-                RoutingPolicyBundle.SCHEMA_VERSION,
-                "institution-policy",
-                3,
-                Instant.now(),
-                Instant.now().minusSeconds(60),
-                Instant.now().plusSeconds(3600),
-                List.of(new DelegationZone("usp-domain", DelegationZone.ScopeType.INSTITUTION_DOMAIN,
-                        "usp.br", "institution:usp", List.of("uni"), null, null)),
-                List.of(new RoutingPolicyRule("usp-affiliates", 10,
-                        RoutingPolicyRule.MatchType.INSTITUTION_DOMAIN, "usp.br", null, null,
-                        "uni", "usp-domain", "verified institution domain",
-                        RoutingPolicyRule.AssignmentPolicy.REQUIRES_CONFIRMATION, true)),
-                new RoutingPolicyBundle.FallbackStrategy("legacy-weighted", true),
-                List.of());
+        RoutingPolicyBundle policy = institutionPolicy(null, null);
         RosterStore store = rosterOf(entry(UNI), entry(DEFAULT));
         var engine = new PlacementEngine(List.of(new WeightedFallbackRule(store),
-                new PolicyRoutingRule(provider(policy), store)));
+                new PolicyRoutingRule(provider(policy), store, permissiveVerifier())));
 
         var ctx = new PlacementContext("+5511000000000", "BR", null, null, null,
                 List.of("students.usp.br"), Map.of(), false);
@@ -199,25 +189,11 @@ class PlacementEngineTest {
 
     @Test
     void expiredDelegationZoneIsNotAppliedEvenForVerifiedClaims() {
-        RoutingPolicyBundle policy = new RoutingPolicyBundle(
-                RoutingPolicyBundle.SCHEMA_VERSION,
-                "institution-policy",
-                3,
-                Instant.now(),
-                Instant.now().minusSeconds(3600),
-                Instant.now().plusSeconds(3600),
-                List.of(new DelegationZone("usp-domain", DelegationZone.ScopeType.INSTITUTION_DOMAIN,
-                        "usp.br", "institution:usp", List.of("uni"),
-                        Instant.now().minusSeconds(7200), Instant.now().minusSeconds(3600))),  // expired zone
-                List.of(new RoutingPolicyRule("usp-affiliates", 10,
-                        RoutingPolicyRule.MatchType.INSTITUTION_DOMAIN, "usp.br", null, null,
-                        "uni", "usp-domain", "verified institution domain",
-                        RoutingPolicyRule.AssignmentPolicy.REQUIRES_CONFIRMATION, true)),
-                new RoutingPolicyBundle.FallbackStrategy("legacy-weighted", true),
-                List.of());
+        RoutingPolicyBundle policy = institutionPolicy(
+                Instant.now().minusSeconds(7200), Instant.now().minusSeconds(3600));   // expired zone window
         RosterStore store = rosterOf(entry(UNI), entry(DEFAULT));
         var engine = new PlacementEngine(List.of(new WeightedFallbackRule(store),
-                new PolicyRoutingRule(provider(policy), store)));
+                new PolicyRoutingRule(provider(policy), store, permissiveVerifier())));
 
         var ctx = new PlacementContext("+5511000000000", "BR", null, null, null,
                 List.of("students.usp.br"), Map.of(), true);
@@ -236,6 +212,24 @@ class PlacementEngineTest {
 
         // The claiming homeserver isn't accepting new accounts, so placement falls through to the default.
         assertThat(engine.decide(ctx).id()).isEqualTo("default");
+    }
+
+    private static RoutingPolicyBundle institutionPolicy(Instant zoneNotBefore, Instant zoneExpiresAt) {
+        return new RoutingPolicyBundle(
+                RoutingPolicyBundle.SCHEMA_VERSION,
+                "institution-policy",
+                3,
+                Instant.now(),
+                Instant.now().minusSeconds(60),
+                Instant.now().plusSeconds(3600),
+                List.of(zone("usp-domain", DelegationZone.ScopeType.INSTITUTION_DOMAIN,
+                        "usp.br", "institution:usp", List.of("uni"), zoneNotBefore, zoneExpiresAt)),
+                List.of(new RoutingPolicyRule("usp-affiliates", 10,
+                        RoutingPolicyRule.MatchType.INSTITUTION_DOMAIN, "usp.br", null, null,
+                        "uni", "usp-domain", "verified institution domain",
+                        RoutingPolicyRule.AssignmentPolicy.REQUIRES_CONFIRMATION, true)),
+                new RoutingPolicyBundle.FallbackStrategy("legacy-weighted", true),
+                List.of(), List.of());
     }
 
     private static CompositeRoutingPolicyProvider provider(RoutingPolicyBundle policy) {

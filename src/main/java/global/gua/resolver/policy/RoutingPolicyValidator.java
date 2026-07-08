@@ -70,6 +70,10 @@ public class RoutingPolicyValidator {
             if (zone.scopeType() == null || blank(zone.scopeValue())) {
                 throw invalid("delegation zone " + zone.id() + " requires scopeType and scopeValue");
             }
+            if (blank(zone.delegateKeyId()) || blank(zone.delegatePublicKey())) {
+                throw invalid("delegation zone " + zone.id()
+                        + " requires delegateKeyId and delegatePublicKey (cryptographic delegation)");
+            }
             if (zone.allowedHomeserverIds() == null || zone.allowedHomeserverIds().isEmpty()) {
                 throw invalid("delegation zone " + zone.id() + " must allow at least one homeserver");
             }
