@@ -79,8 +79,40 @@ class ResolveControllerTest {
 
     @Test
     void unknownRoutesAreDeniedByDefault() throws Exception {
+        // deny-by-default + HTTP Basic entry point: an anonymous hit on a non-allowlisted route is challenged.
         mockMvc.perform(get("/not-a-real-endpoint"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void authorityAdminEndpointsAreDeniedWithoutAdminCredentials() throws Exception {
+        // No admin password hash is configured in tests, so /authority/** must not be reachable anonymously.
+        mockMvc.perform(post("/authority/admission").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void selfAssertedVerifiedMarkerAndAffiliationsDoNotChangePlacement() throws Exception {
+        // Regression for the self-assertion bypass: a public caller cannot fake verified institution claims.
+        // With only the dev homeserver and no signed envelope, this must still be a plain fallback register,
+        // never an institutional placement, and never a 500.
+        mockMvc.perform(post("/resolve").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"phone\":\"+5511987654321\",\"trace\":true,"
+                                + "\"affiliations\":[\"usp.br\"],"
+                                + "\"attributes\":{\"gua_claims_verified\":\"true\",\"email_domain\":\"usp.br\"}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.exists").value(false))
+                .andExpect(jsonPath("$.registerAt.serverName").value("gua.local"))
+                .andExpect(jsonPath("$.trace.rule").value("WeightedFallbackRule"));
+    }
+
+    @Test
+    void nullAttributeValuesAreHandledGracefully() throws Exception {
+        // A null attribute value must not blow up the request thread (previously a 500 via Map.copyOf).
+        mockMvc.perform(post("/resolve").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"phone\":\"+5511987654321\",\"attributes\":{\"x\":null}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.exists").value(false));
     }
 
     @Test

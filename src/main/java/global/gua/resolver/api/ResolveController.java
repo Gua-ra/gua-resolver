@@ -19,6 +19,7 @@ import global.gua.resolver.claims.RoutingClaimsEnvelope;
 import global.gua.resolver.claims.RoutingClaimsVerifier;
 import global.gua.resolver.directory.DirectoryUnavailableException;
 import global.gua.resolver.domain.Homeserver;
+import global.gua.resolver.placement.NoPlacementAvailableException;
 import global.gua.resolver.placement.PlacementContext;
 import global.gua.resolver.placement.PlacementDecision;
 import global.gua.resolver.roster.RosterStore;
@@ -100,6 +101,12 @@ public class ResolveController {
         return new ProblemResponse("directory_unavailable", "routing directory is temporarily unavailable");
     }
 
+    @ExceptionHandler(NoPlacementAvailableException.class)
+    @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
+    public ProblemResponse onNoPlacement(NoPlacementAvailableException e) {
+        return new ProblemResponse("no_placement_available", "no homeserver is currently accepting new accounts");
+    }
+
     // --- DTOs -----------------------------------------------------------------------------------
 
     public record ResolveRequest(
@@ -114,15 +121,17 @@ public class ResolveController {
             Boolean trace) {
 
         PlacementContext toPlacementContext(RoutingClaimsVerifier verifier) {
-            RoutingClaimsVerifier.VerifiedRoutingClaims verified = verifier.verify(routingClaims);
-            List<String> effectiveAffiliations = verified.affiliations().isEmpty()
-                    ? (affiliations == null ? List.of() : affiliations)
-                    : verified.affiliations();
-            Map<String, String> effectiveAttributes = new java.util.HashMap<>(
-                    attributes == null ? Map.of() : attributes);
-            effectiveAttributes.putAll(verified.attributes());
+            // Institution/OIDC affiliations and attributes are trusted ONLY from a signature-verified
+            // envelope bound to this phone. Self-asserted request.affiliations / request.attributes are
+            // deliberately NOT carried into the placement context: they were the self-assertion vector that
+            // let an anonymous caller obtain institutional placement. Carrier/geo hints (country, mccmnc,
+            // carrier, regionHint) stay, because choosing a carrier homeserver is self-service, not privilege.
+            RoutingClaimsVerifier.VerifiedRoutingClaims verified = verifier.verify(routingClaims, phone);
+            boolean claimsVerified = routingClaims != null;
+            List<String> effectiveAffiliations = claimsVerified ? verified.affiliations() : List.of();
+            Map<String, String> effectiveAttributes = claimsVerified ? verified.attributes() : Map.of();
             return new PlacementContext(phone, country, mccmnc, carrier, regionHint,
-                    effectiveAffiliations, Map.copyOf(effectiveAttributes));
+                    effectiveAffiliations, effectiveAttributes, claimsVerified);
         }
 
         boolean traceEnabled() {

@@ -8,7 +8,6 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 import global.gua.resolver.domain.Homeserver;
-import global.gua.resolver.claims.RoutingClaimsVerifier;
 import global.gua.resolver.placement.rules.PolicyRoutingRule;
 import global.gua.resolver.placement.rules.ClaimRule;
 import global.gua.resolver.placement.rules.WeightedFallbackRule;
@@ -59,19 +58,31 @@ class PlacementEngineTest {
         var carrierClaim = new ClaimPredicate(null, "72411", null, null, null, null, null, 100);
         var engine = engineFor(rosterOf(entry(CARRIER, carrierClaim), entry(DEFAULT)));
 
-        var ctx = new PlacementContext("+5511987654321", "BR", "72411", "Vivo", null, List.of(), Map.of());
+        var ctx = new PlacementContext("+5511987654321", "BR", "72411", "Vivo", null, List.of(), Map.of(), false);
 
         assertThat(engine.decide(ctx).id()).isEqualTo("carrier");
     }
 
     @Test
-    void affiliationClaimWins() {
+    void verifiedAffiliationClaimWins() {
         var uniClaim = new ClaimPredicate(null, null, null, null, "usp.br", null, null, 100);
         var engine = engineFor(rosterOf(entry(UNI, uniClaim), entry(DEFAULT)));
 
-        var ctx = new PlacementContext("+5511000000000", "BR", null, null, null, List.of("usp.br"), Map.of());
+        // claimsVerified=true means the affiliation came from a signature-verified envelope.
+        var ctx = new PlacementContext("+5511000000000", "BR", null, null, null, List.of("usp.br"), Map.of(), true);
 
         assertThat(engine.decide(ctx).id()).isEqualTo("uni");
+    }
+
+    @Test
+    void unverifiedAffiliationIsIgnoredByClaimRule() {
+        var uniClaim = new ClaimPredicate(null, null, null, null, "usp.br", null, null, 100);
+        var engine = engineFor(rosterOf(entry(UNI, uniClaim), entry(DEFAULT)));
+
+        // A self-asserted (unverified) affiliation must NOT grant institutional placement; it falls back.
+        var ctx = new PlacementContext("+5511000000000", "BR", null, null, null, List.of("usp.br"), Map.of(), false);
+
+        assertThat(engine.decideWithTrace(ctx).rule()).isEqualTo("WeightedFallbackRule");
     }
 
     @Test
@@ -80,7 +91,7 @@ class PlacementEngineTest {
         var engine = engineFor(rosterOf(entry(CARRIER, carrierClaim), entry(DEFAULT)));
 
         // A phone whose carrier nobody claims must still be placed (on an acceptsNew homeserver).
-        var ctx = new PlacementContext("+15555550100", "US", "31000", "Verizon", null, List.of(), Map.of());
+        var ctx = new PlacementContext("+15555550100", "US", "31000", "Verizon", null, List.of(), Map.of(), false);
 
         var chosen = engine.decide(ctx);
         assertThat(chosen).isNotNull();
@@ -91,7 +102,7 @@ class PlacementEngineTest {
     @Test
     void weightedFallbackIsDeterministicForTheSameContextAndRoster() {
         var engine = engineFor(rosterOf(entry(CARRIER), entry(UNI), entry(DEFAULT)));
-        var ctx = new PlacementContext("+15555550100", "US", "31000", "Verizon", null, List.of(), Map.of());
+        var ctx = new PlacementContext("+15555550100", "US", "31000", "Verizon", null, List.of(), Map.of(), false);
 
         String first = engine.decide(ctx).id();
 
@@ -151,7 +162,7 @@ class PlacementEngineTest {
                 new PolicyRoutingRule(provider(policy), store)));
 
         var ctx = new PlacementContext("+5511000000000", "BR", null, null, null,
-                List.of("students.usp.br"), Map.of(RoutingClaimsVerifier.VERIFIED_ATTRIBUTE, "true"));
+                List.of("students.usp.br"), Map.of(), true);
 
         var decision = engine.decideWithTrace(ctx);
 
@@ -181,8 +192,37 @@ class PlacementEngineTest {
                 new PolicyRoutingRule(provider(policy), store)));
 
         var ctx = new PlacementContext("+5511000000000", "BR", null, null, null,
-                List.of("students.usp.br"), Map.of());
+                List.of("students.usp.br"), Map.of(), false);
 
+        assertThat(engine.decideWithTrace(ctx).rule()).isEqualTo("WeightedFallbackRule");
+    }
+
+    @Test
+    void expiredDelegationZoneIsNotAppliedEvenForVerifiedClaims() {
+        RoutingPolicyBundle policy = new RoutingPolicyBundle(
+                RoutingPolicyBundle.SCHEMA_VERSION,
+                "institution-policy",
+                3,
+                Instant.now(),
+                Instant.now().minusSeconds(3600),
+                Instant.now().plusSeconds(3600),
+                List.of(new DelegationZone("usp-domain", DelegationZone.ScopeType.INSTITUTION_DOMAIN,
+                        "usp.br", "institution:usp", List.of("uni"),
+                        Instant.now().minusSeconds(7200), Instant.now().minusSeconds(3600))),  // expired zone
+                List.of(new RoutingPolicyRule("usp-affiliates", 10,
+                        RoutingPolicyRule.MatchType.INSTITUTION_DOMAIN, "usp.br", null, null,
+                        "uni", "usp-domain", "verified institution domain",
+                        RoutingPolicyRule.AssignmentPolicy.REQUIRES_CONFIRMATION, true)),
+                new RoutingPolicyBundle.FallbackStrategy("legacy-weighted", true),
+                List.of());
+        RosterStore store = rosterOf(entry(UNI), entry(DEFAULT));
+        var engine = new PlacementEngine(List.of(new WeightedFallbackRule(store),
+                new PolicyRoutingRule(provider(policy), store)));
+
+        var ctx = new PlacementContext("+5511000000000", "BR", null, null, null,
+                List.of("students.usp.br"), Map.of(), true);
+
+        // Even with verified claims, a rule inside an expired delegation zone must not route.
         assertThat(engine.decideWithTrace(ctx).rule()).isEqualTo("WeightedFallbackRule");
     }
 
@@ -192,7 +232,7 @@ class PlacementEngineTest {
         var carrierClaim = new ClaimPredicate(null, "72411", null, null, null, null, null, 100);
         var engine = engineFor(rosterOf(entry(closed, carrierClaim), entry(DEFAULT)));
 
-        var ctx = new PlacementContext("+5511987654321", "BR", "72411", "Vivo", null, List.of(), Map.of());
+        var ctx = new PlacementContext("+5511987654321", "BR", "72411", "Vivo", null, List.of(), Map.of(), false);
 
         // The claiming homeserver isn't accepting new accounts, so placement falls through to the default.
         assertThat(engine.decide(ctx).id()).isEqualTo("default");

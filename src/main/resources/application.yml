@@ -53,8 +53,16 @@ gua:
       max-clock-skew: ${GUA_RESOLVER_CLAIMS_MAX_CLOCK_SKEW:PT2M}
       max-lifetime: ${GUA_RESOLVER_CLAIMS_MAX_LIFETIME:PT5M}
       replay-protection-enabled: ${GUA_RESOLVER_CLAIMS_REPLAY_PROTECTION_ENABLED:true}
+      # Bind each envelope to the phone it was issued for, so a captured envelope cannot be replayed
+      # against a different number.
+      require-subject-binding: ${GUA_RESOLVER_CLAIMS_REQUIRE_SUBJECT_BINDING:true}
       replay-cleanup-interval: ${GUA_RESOLVER_CLAIMS_REPLAY_CLEANUP_INTERVAL:PT10M}
       trusted-keys: []
+    # HTTP Basic admin auth for /authority/** (admission, status changes). Fails closed: with no password
+    # hash set there are no admin users and the endpoints stay denied. Set a BCrypt hash to enable admin.
+    admin:
+      username: ${GUA_RESOLVER_ADMIN_USER:admin}
+      password-hash: ${GUA_RESOLVER_ADMIN_PASSWORD_HASH:}
     policy:
       enabled: ${GUA_RESOLVER_POLICY_ENABLED:false}
       file: ${GUA_RESOLVER_POLICY_FILE:}
@@ -76,6 +84,8 @@ gua:
       upstream-url: ${GUA_RESOLVER_MIRROR_UPSTREAM_URL:}
       refresh-interval: ${GUA_RESOLVER_MIRROR_REFRESH_INTERVAL:PT5M}
       cache-file: ${GUA_RESOLVER_MIRROR_CACHE_FILE:}
+      # Hard cap on a single upstream directory lookup so a stalled authority cannot hang mirror threads.
+      lookup-timeout: ${GUA_RESOLVER_MIRROR_LOOKUP_TIMEOUT:PT3S}
 
     dev-homeserver:
       id: ${GUA_RESOLVER_DEVHOMESERVER_ID:dev}

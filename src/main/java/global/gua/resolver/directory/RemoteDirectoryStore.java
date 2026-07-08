@@ -1,5 +1,6 @@
 package global.gua.resolver.directory;
 
+import java.time.Duration;
 import java.util.Optional;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -22,10 +23,12 @@ public class RemoteDirectoryStore implements DirectoryStore {
     private final WebClient upstream;
     private final PhoneHasher hasher;
     private final boolean failOpenOnLookupError;
+    private final Duration lookupTimeout;
 
     public RemoteDirectoryStore(ResolverProperties props, PhoneHasher hasher, WebClient.Builder builder) {
         this.hasher = hasher;
         this.failOpenOnLookupError = props.getDirectory().isFailOpenOnLookupError();
+        this.lookupTimeout = props.getMirror().getLookupTimeout();
         this.upstream = builder.baseUrl(props.getMirror().getUpstreamUrl()).build();
     }
 
@@ -50,7 +53,8 @@ public class RemoteDirectoryStore implements DirectoryStore {
                     .uri(b -> b.path("/directory/lookup").queryParam(param, value).build())
                     .retrieve()
                     .bodyToMono(LookupResponse.class)
-                    .block();
+                    .timeout(lookupTimeout)
+                    .block(lookupTimeout.plusSeconds(1));
             return (r == null || r.homeserverId() == null) ? Optional.empty() : Optional.of(r.homeserverId());
         } catch (WebClientResponseException.NotFound e) {
             return Optional.empty();

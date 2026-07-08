@@ -13,8 +13,12 @@ import java.util.TreeMap;
  * @param mccmnc        mobile country+network code derived from the number, if known (carrier identity)
  * @param carrier       human carrier name, if known
  * @param regionHint    explicit region/tenant hint from the caller
- * @param affiliations  verified affiliation assertions (e.g. ["usp.br"]) from an upstream IdP/claim
- * @param attributes    open-ended verified attributes for custom/remote claim rules
+ * @param affiliations  affiliation assertions (e.g. ["usp.br"]); trusted for institution/OIDC routing
+ *                      only when {@code claimsVerified} is true (i.e. they came from a verified envelope)
+ * @param attributes    open-ended attributes for custom/remote claim rules; same trust rule as affiliations
+ * @param claimsVerified whether {@code affiliations}/{@code attributes} arrived inside a signature-verified
+ *                       routing-claims envelope. Institution/OIDC placement requires this to be true; it is
+ *                       set only by the verifier path and can never be self-asserted by a public caller.
  */
 public record PlacementContext(
         String e164Phone,
@@ -23,13 +27,14 @@ public record PlacementContext(
         String carrier,
         String regionHint,
         java.util.List<String> affiliations,
-        Map<String, String> attributes) {
+        Map<String, String> attributes,
+        boolean claimsVerified) {
 
     /** Convenience Optional view of the phone (the record's String accessors cover the rest). */
     public Optional<String> phone() { return Optional.ofNullable(e164Phone); }
 
     public static PlacementContext forPhone(String e164) {
-        return new PlacementContext(e164, null, null, null, null, java.util.List.of(), Map.of());
+        return new PlacementContext(e164, null, null, null, null, java.util.List.of(), Map.of(), false);
     }
 
     /** Stable, deterministic key used for reproducible fallback placement. */

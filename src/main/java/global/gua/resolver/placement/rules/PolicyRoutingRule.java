@@ -1,5 +1,7 @@
 package global.gua.resolver.placement.rules;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.Locale;
 import java.util.Map;
@@ -11,11 +13,11 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import global.gua.resolver.domain.Homeserver;
-import global.gua.resolver.claims.RoutingClaimsVerifier;
 import global.gua.resolver.placement.PlacementContext;
 import global.gua.resolver.placement.PlacementDecision;
 import global.gua.resolver.placement.PlacementRule;
 import global.gua.resolver.policy.CompositeRoutingPolicyProvider;
+import global.gua.resolver.policy.DelegationZone;
 import global.gua.resolver.policy.RoutingPolicyBundle;
 import global.gua.resolver.policy.RoutingPolicyRule;
 import global.gua.resolver.roster.RosterEntry;
@@ -31,6 +33,7 @@ public class PolicyRoutingRule implements PlacementRule {
 
     private final CompositeRoutingPolicyProvider policies;
     private final RosterStore rosterStore;
+    private final Clock clock = Clock.systemUTC();
 
     public PolicyRoutingRule(CompositeRoutingPolicyProvider policies, RosterStore rosterStore) {
         this.policies = policies;
@@ -47,15 +50,32 @@ public class PolicyRoutingRule implements PlacementRule {
                 .map(RosterEntry::homeserver)
                 .filter(Homeserver::acceptsNew)
                 .collect(Collectors.toMap(Homeserver::id, Function.identity()));
+        Map<String, DelegationZone> zones = (policy.delegationZones() == null
+                ? java.util.List.<DelegationZone>of() : policy.delegationZones()).stream()
+                .filter(z -> z.id() != null)
+                .collect(Collectors.toMap(DelegationZone::id, Function.identity(), (a, b) -> a));
+        Instant now = Instant.now(clock);
 
         return (policy.rules() == null ? java.util.List.<RoutingPolicyRule>of() : policy.rules()).stream()
                 .filter(RoutingPolicyRule::isEnabled)
+                .filter(rule -> zoneActive(zones.get(rule.delegatedZoneId()), now))
                 .sorted(Comparator.comparingInt(RoutingPolicyRule::priority)
                         .thenComparing(RoutingPolicyRule::id))
                 .filter(rule -> matches(rule, context))
                 .map(rule -> decision(policy, rule, activeTargets.get(rule.targetHomeserverId())))
                 .flatMap(Optional::stream)
                 .findFirst();
+    }
+
+    /** A delegated zone only routes while its signed validity window is open (defence against stale scope). */
+    private static boolean zoneActive(DelegationZone zone, Instant now) {
+        if (zone == null) {
+            return false;
+        }
+        if (zone.notBefore() != null && zone.notBefore().isAfter(now)) {
+            return false;
+        }
+        return zone.expiresAt() == null || zone.expiresAt().isAfter(now);
     }
 
     private Optional<PlacementDecision> decision(RoutingPolicyBundle policy, RoutingPolicyRule rule,
@@ -111,7 +131,7 @@ public class PolicyRoutingRule implements PlacementRule {
     }
 
     private static boolean verifiedClaims(PlacementContext context) {
-        return "true".equalsIgnoreCase(attrs(context).get(RoutingClaimsVerifier.VERIFIED_ATTRIBUTE));
+        return context.claimsVerified();
     }
 
     private static String normalize(String s) {

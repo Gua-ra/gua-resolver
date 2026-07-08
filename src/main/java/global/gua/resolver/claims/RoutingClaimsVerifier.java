@@ -5,10 +5,8 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -20,12 +18,11 @@ import global.gua.resolver.crypto.Ed25519;
 @Component
 public class RoutingClaimsVerifier {
 
-    public static final String VERIFIED_ATTRIBUTE = "gua_claims_verified";
-
     private final String audience;
     private final Duration maxClockSkew;
     private final Duration maxLifetime;
     private final boolean replayProtectionEnabled;
+    private final boolean requireSubjectBinding;
     private final Clock clock;
     private final RoutingClaimsReplayStore replayStore;
     private final Map<String, PublicKey> trustedKeys = new HashMap<>();
@@ -40,6 +37,7 @@ public class RoutingClaimsVerifier {
         this.maxClockSkew = props.getClaims().getMaxClockSkew();
         this.maxLifetime = props.getClaims().getMaxLifetime();
         this.replayProtectionEnabled = props.getClaims().isReplayProtectionEnabled();
+        this.requireSubjectBinding = props.getClaims().isRequireSubjectBinding();
         this.clock = clock;
         this.replayStore = replayStore;
         List<ResolverProperties.TrustedKey> keys = !props.getClaims().getTrustedKeys().isEmpty()
@@ -54,22 +52,36 @@ public class RoutingClaimsVerifier {
         }
     }
 
-    public VerifiedRoutingClaims verify(RoutingClaimsEnvelope envelope) {
+    /**
+     * Verify the envelope and return the trusted affiliations/attributes.
+     *
+     * @param envelope        the transported (signed) envelope, or {@code null} if the caller sent none
+     * @param expectedSubject the E.164 phone the request is for; the envelope's {@code subject}, when present
+     *                        (and always when subject binding is required), must equal this
+     */
+    public VerifiedRoutingClaims verify(RoutingClaimsEnvelope envelope, String expectedSubject) {
         if (envelope == null) {
             return VerifiedRoutingClaims.empty();
         }
-        validateEnvelope(envelope);
+        validateEnvelope(envelope, expectedSubject);
         requireValidSignature(envelope);
         recordNonce(envelope);
-        Map<String, String> attrs = new HashMap<>(envelope.attributes() == null ? Map.of() : envelope.attributes());
-        attrs.put(VERIFIED_ATTRIBUTE, "true");
-        attrs.putIfAbsent("routing_claims_issuer", envelope.issuer());
+        // Only the raw asserted affiliations/attributes are returned; the "verified" signal is carried by
+        // PlacementContext.claimsVerified (a non-forgeable flag), never by a magic attribute a caller could set.
+        Map<String, String> attrs = new HashMap<>();
+        if (envelope.attributes() != null) {
+            envelope.attributes().forEach((k, v) -> {
+                if (k != null && v != null) {
+                    attrs.put(k, v);
+                }
+            });
+        }
         return new VerifiedRoutingClaims(
                 envelope.affiliations() == null ? List.of() : List.copyOf(envelope.affiliations()),
                 Map.copyOf(attrs));
     }
 
-    private void validateEnvelope(RoutingClaimsEnvelope envelope) {
+    private void validateEnvelope(RoutingClaimsEnvelope envelope, String expectedSubject) {
         if (!RoutingClaimsEnvelope.SCHEMA_VERSION.equals(envelope.schemaVersion())) {
             throw invalid("unsupported routing claims schema");
         }
@@ -79,6 +91,12 @@ public class RoutingClaimsVerifier {
         if (!audience.equals(envelope.audience())) {
             throw invalid("routing claims audience mismatch");
         }
+        if (requireSubjectBinding && blank(envelope.subject())) {
+            throw invalid("routing claims subject is required");
+        }
+        if (!blank(envelope.subject()) && !envelope.subject().equals(expectedSubject)) {
+            throw invalid("routing claims subject does not match the request");
+        }
         Instant now = Instant.now(clock);
         Duration skew = maxClockSkew == null ? Duration.ZERO : maxClockSkew;
         if (envelope.issuedAt() == null || envelope.issuedAt().isAfter(now.plus(skew))) {
@@ -86,6 +104,9 @@ public class RoutingClaimsVerifier {
         }
         if (envelope.expiresAt() == null || !envelope.expiresAt().isAfter(now.minus(skew))) {
             throw invalid("routing claims expired");
+        }
+        if (envelope.expiresAt().isBefore(envelope.issuedAt())) {
+            throw invalid("routing claims expiresAt precedes issuedAt");
         }
         Duration lifetime = maxLifetime == null ? Duration.ZERO : maxLifetime;
         if (!lifetime.isZero() && envelope.expiresAt().isAfter(envelope.issuedAt().plus(lifetime))) {
@@ -98,18 +119,16 @@ public class RoutingClaimsVerifier {
 
     private void requireValidSignature(RoutingClaimsEnvelope envelope) {
         byte[] canonical = CanonicalRoutingClaims.bytes(envelope);
-        Set<String> counted = new HashSet<>();
-        for (RoutingClaimsEnvelope.ClaimSignature sig :
-                envelope.signatures() == null ? List.<RoutingClaimsEnvelope.ClaimSignature>of()
-                        : envelope.signatures()) {
-            PublicKey key = trustedKeys.get(sig.keyId());
-            if (key == null || counted.contains(sig.keyId())) {
+        List<RoutingClaimsEnvelope.ClaimSignature> signatures = envelope.signatures() == null
+                ? List.of() : envelope.signatures();
+        for (RoutingClaimsEnvelope.ClaimSignature sig : signatures) {
+            if (sig == null) {
                 continue;
             }
-            if (Ed25519.verify(key, canonical, sig.signatureB64())) {
+            PublicKey key = trustedKeys.get(sig.keyId());
+            if (key != null && Ed25519.verify(key, canonical, sig.signatureB64())) {
                 return;
             }
-            counted.add(sig.keyId());
         }
         throw invalid("routing claims signature is invalid");
     }

@@ -79,6 +79,29 @@ class RoutingPolicyTest {
     }
 
     @Test
+    void belowThresholdSignaturesAreRejected() {
+        Ed25519.KeyPairB64 key = Ed25519.generate();
+        ResolverProperties props = new ResolverProperties();
+        props.getPolicy().setRequireSignatures(true);
+        props.getPolicy().setSignatureThreshold(2);   // require k=2 distinct valid signatures
+        props.getPolicy().setSigningKeyId("policy-a");
+        props.getPolicy().setSigningPrivateKey(key.privateKeyB64());
+        ResolverProperties.TrustedKey trusted = new ResolverProperties.TrustedKey();
+        trusted.setId("policy-a");
+        trusted.setPublicKey(key.publicKeyB64());
+        props.getPolicy().setTrustedKeys(List.of(trusted));
+
+        RoutingPolicyBundle signed = new RoutingPolicySigner(props).sign(
+                unsignedPolicy("carrier", "+55119", "+551198"));   // carries only one signature
+        RoutingPolicyVerifier verifier = new RoutingPolicyVerifier(props);
+
+        assertThat(verifier.isVerified(signed)).isFalse();
+        assertThatThrownBy(() -> verifier.requireVerified(signed))
+                .isInstanceOf(RoutingPolicyVerifier.RoutingPolicyVerificationException.class)
+                .hasMessageContaining("need 2");
+    }
+
+    @Test
     void validatorRejectsRuleOutsideDelegationScope() {
         RoutingPolicyValidator validator = new RoutingPolicyValidator();
 

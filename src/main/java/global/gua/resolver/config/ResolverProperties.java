@@ -27,6 +27,7 @@ public class ResolverProperties {
     private final Directory directory = new Directory();
     private final Policy policy = new Policy();
     private final Claims claims = new Claims();
+    private final Admin admin = new Admin();
     private final DevHomeserver devHomeserver = new DevHomeserver();
 
     public Mode getMode() { return mode; }
@@ -36,6 +37,7 @@ public class ResolverProperties {
     public Directory getDirectory() { return directory; }
     public Policy getPolicy() { return policy; }
     public Claims getClaims() { return claims; }
+    public Admin getAdmin() { return admin; }
     public DevHomeserver getDevHomeserver() { return devHomeserver; }
 
     /** Authority trust root: the published key set (verify) + this node's signing key (authority mode). */
@@ -78,6 +80,9 @@ public class ResolverProperties {
         private Duration refreshInterval = Duration.ofMinutes(5);
         /** Optional local file where a mirror stores the last verified roster for cold-start resilience. */
         private String cacheFile;
+        /** Hard timeout for a single upstream directory lookup, so a stalled authority cannot hang a mirror
+         * request thread (and, in aggregate, exhaust its HTTP thread pool). */
+        private Duration lookupTimeout = Duration.ofSeconds(3);
 
         public String getUpstreamUrl() { return upstreamUrl; }
         public void setUpstreamUrl(String upstreamUrl) { this.upstreamUrl = upstreamUrl; }
@@ -85,6 +90,24 @@ public class ResolverProperties {
         public void setRefreshInterval(Duration refreshInterval) { this.refreshInterval = refreshInterval; }
         public String getCacheFile() { return cacheFile; }
         public void setCacheFile(String cacheFile) { this.cacheFile = cacheFile; }
+        public Duration getLookupTimeout() { return lookupTimeout; }
+        public void setLookupTimeout(Duration lookupTimeout) { this.lookupTimeout = lookupTimeout; }
+    }
+
+    /**
+     * Authentication for the {@code /authority/**} admin surface (admission, status changes). Fails closed:
+     * with no {@code password-hash} configured there are no admin users, so admin endpoints stay denied.
+     */
+    public static class Admin {
+        /** Admin username for HTTP Basic auth on {@code /authority/**}. */
+        private String username = "admin";
+        /** BCrypt hash of the admin password. Empty means no admin user exists (admin endpoints denied). */
+        private String passwordHash = "";
+
+        public String getUsername() { return username; }
+        public void setUsername(String username) { this.username = username; }
+        public String getPasswordHash() { return passwordHash; }
+        public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
     }
 
     public static class Directory {
@@ -152,6 +175,9 @@ public class ResolverProperties {
         private Duration maxLifetime = Duration.ofMinutes(5);
         /** Require a unique nonce and persist it so routing claims cannot be replayed across resolver nodes. */
         private boolean replayProtectionEnabled = true;
+        /** Require the envelope's {@code subject} to be present and equal the request phone, so a captured
+         * envelope cannot be replayed against a different number. */
+        private boolean requireSubjectBinding = true;
         /** How often expired nonces are removed from the replay table. */
         private Duration replayCleanupInterval = Duration.ofMinutes(10);
         /** Trusted envelope signing keys. Empty means reuse policy keys, then authority keys. */
@@ -166,6 +192,10 @@ public class ResolverProperties {
         public boolean isReplayProtectionEnabled() { return replayProtectionEnabled; }
         public void setReplayProtectionEnabled(boolean replayProtectionEnabled) {
             this.replayProtectionEnabled = replayProtectionEnabled;
+        }
+        public boolean isRequireSubjectBinding() { return requireSubjectBinding; }
+        public void setRequireSubjectBinding(boolean requireSubjectBinding) {
+            this.requireSubjectBinding = requireSubjectBinding;
         }
         public Duration getReplayCleanupInterval() { return replayCleanupInterval; }
         public void setReplayCleanupInterval(Duration replayCleanupInterval) {

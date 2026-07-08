@@ -31,7 +31,7 @@ public class PlacementEngine {
 
     /**
      * @return the homeserver a new account with this context should be created on.
-     * @throws IllegalStateException if no rule (including the weighted fallback) yields a homeserver.
+     * @throws NoPlacementAvailableException if no rule (including the weighted fallback) yields a homeserver.
      */
     public global.gua.resolver.domain.Homeserver decide(PlacementContext context) {
         return decideWithTrace(context).homeserver();
@@ -48,7 +48,6 @@ public class PlacementEngine {
                 return decision;
             }
         }
-        throw new IllegalStateException("No placement rule yielded a homeserver; "
-                + "a WeightedFallbackRule over the enabled roster must always be registered last.");
+        throw new NoPlacementAvailableException("no homeserver is currently accepting new accounts");
     }
 }

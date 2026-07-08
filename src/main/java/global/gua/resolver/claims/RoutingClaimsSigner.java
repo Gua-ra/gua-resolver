@@ -21,7 +21,7 @@ public final class RoutingClaimsSigner {
         signatures.removeIf(s -> s.keyId().equals(keyId));
         signatures.add(signature);
         return new RoutingClaimsEnvelope(unsigned.schemaVersion(), unsigned.issuer(), unsigned.audience(),
-                unsigned.issuedAt(), unsigned.expiresAt(), unsigned.nonce(), unsigned.affiliations(),
-                unsigned.attributes(), signatures);
+                unsigned.issuedAt(), unsigned.expiresAt(), unsigned.nonce(), unsigned.subject(),
+                unsigned.affiliations(), unsigned.attributes(), signatures);
     }
 }

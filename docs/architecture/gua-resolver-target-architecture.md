@@ -83,8 +83,15 @@ A delegation zone binds a delegate to an explicit bounded scope:
 - OIDC issuer scope,
 - attribute scope.
 
-Rules cannot target a homeserver outside the zone's allowed homeserver ids, and a rule match must be
-within the zone scope.
+Rules cannot target a homeserver outside the zone's allowed homeserver ids, a rule match must be within the
+zone scope, and a rule is only applied while its zone's signed `notBefore`/`expiresAt` window is open.
+
+Scope of delegation in this revision (important): zones are **authority-signed policy-as-data**, not
+**cryptographically delegated authority**. The single authority signature covers the whole bundle including
+every zone, so a delegate cannot yet author or veto its own scope, and the authority custodian can rewrite
+any zone. Per-delegate signatures (each zone signed by a delegate key from a delegate registry, with the
+delegate's rules covered only by that delegate's signature) are the next milestone and are required before
+admitting real third-party delegated authorities in production.
 
 ### Directory
 
@@ -161,9 +168,12 @@ Resolver should receive verified identity context from MAS/identity-service, not
 claims. The future secure shape is:
 
 - MAS verifies external IdP,
-- MAS or identity-service issues a signed routing-claims envelope,
-- resolver verifies issuer/audience/expiry/signature, enforces the configured maximum lifetime, and records
-  the claims nonce in the shared replay table,
+- MAS or identity-service issues a signed routing-claims envelope **bound to the subject phone**,
+- resolver verifies issuer/audience/expiry/signature, enforces the configured maximum lifetime, enforces that
+  the envelope subject equals the request phone (so a captured envelope cannot be replayed against another
+  number), and records the claims nonce in the shared replay table,
+- only affiliations/attributes from a verified envelope are trusted for institution/OIDC placement; a public
+  caller's self-asserted affiliations/attributes are never trusted for privileged routing (they are dropped),
 - routing policy matches OIDC issuer, verified domain, assurance level, and account-linking state,
 - directory residence remains separate from authentication source.
 
@@ -189,25 +199,37 @@ Implemented:
 - deterministic fallback,
 - placement decision trace,
 - signed routing-policy domain model,
-- routing policy canonicalization/sign/verify,
-- validation against roster and delegation zones,
-- signed routing-claims envelopes for MAS/identity-service attributes,
-- file-backed policy source,
+- routing policy canonicalization/sign/verify (k-of-n threshold, per-key dedup),
+- injective canonical serialization for routing-claims (escaped delimiters; no signature-covers-a-different-
+  claim-set ambiguity),
+- validation against roster and delegation zones, with zone validity-window enforcement at evaluation time,
+- signed routing-claims envelopes for MAS/identity-service attributes, with subject/phone binding and the
+  replay/lifetime/nonce checks,
+- verified-claims gate on ALL institution/OIDC placement (both signed-policy rules and legacy roster claims);
+  self-asserted affiliations/attributes are dropped and can never be self-asserted as "verified",
+- file-backed policy source with monotonic-version rollback protection and refusal to serve/apply a bundle
+  outside its signed validity window,
 - optional mirror roster cache,
-- fail-closed mirror directory lookup,
+- fail-closed mirror directory lookup with a hard per-lookup timeout (a stalled authority cannot hang mirror
+  threads),
 - DB-backed replay protection for signed routing-claims nonces,
 - policy status and distribution endpoints,
 - policy-backed placement rule,
-- security default deny,
+- security default-deny with HTTP Basic admin auth on `/authority/**` (fails closed with no admin credential),
+- clean 503 (not 500) when no homeserver accepts new accounts,
 - correlation id propagation,
-- tests for policy routing and validation.
+- tests for policy routing, validation, threshold, subject binding, canonical injectivity, rollback/expiry,
+  the self-assertion regression, and deny-by-default authz.
 
-Still needed:
+Still needed (deferred; required before third-party delegation / institutional GA):
 
-- remote policy source,
-- persistent policy cache and staleness health,
-- policy transparency log,
-- directory high-availability design,
-- production domain proof verifier,
-- client-side verifier libraries,
-- deployment HA changes.
+- **per-delegate cryptographic delegation** (per-zone signatures + delegate registry) so the single authority
+  key is not the sole signer of every delegate's scope — this is the governance-bottleneck fix,
+- **policy transparency log + client-side verifier libraries** so policy cannot be equivocated undetectably
+  and clients verify roster/policy/decisions independently — this is the opaque-authority fix,
+- **directory high availability** (signed checkpoints / mirrorable subset) so returning-user login does not
+  depend on the single authority directory,
+- remote policy source and persistent policy cache with staleness health,
+- production domain proof verifier (the current `TokenPresenceVerifier` is a placeholder),
+- key rotation / revocation artifacts,
+- deployment HA changes (multi-replica + Postgres HA in gua-deploy).
