@@ -34,10 +34,13 @@ jobs:
       - name: Test
         run: ./gradlew test --no-daemon
 
-  # Image build + push. Never runs on pull_request (no publishing from a PR), only push/dispatch.
+  # Image build + push to GHCR. Never on pull_request (no publishing from a PR), only push/dispatch,
+  # and ONLY in the origin repo. A fork/clone runs `test` above (so anyone can build + test), but the
+  # publish + deploy jobs skip cleanly in a fork: to run your own Gua resolver, change this guard to your
+  # repo, point IMAGE at your own GHCR namespace, and provide your own deploy target/runner.
   build:
     needs: test
-    if: github.event_name != 'pull_request'
+    if: github.repository == 'Gua-ra/gua-resolver' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     outputs:
       ref: ${{ steps.ref.outputs.ref }}
@@ -80,8 +83,9 @@ jobs:
   deploy-dev:
     needs: build
     if: >-
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')
+      github.repository == 'Gua-ra/gua-resolver' && (
+        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+        (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev'))
     runs-on: [self-hosted, gua-resolver-incluster]
     environment: dev
     steps:
@@ -96,14 +100,17 @@ jobs:
           kubectl -n gua rollout status deployment/gua-resolver --timeout=180s
 
   # MANUAL GATE: pauses until a maintainer approves the `production` GitHub Environment.
+  # Uses a distinct prod-scoped in-cluster runner (stand one up alongside the dev runner when prod exists,
+  # mirroring gua-deploy k8s/cicd/gua-resolver-deploy-runner.yaml with a prod label + prod-cluster context).
   deploy-prod:
     needs: build
-    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'prod'
-    runs-on: [self-hosted, prod]
+    if: github.repository == 'Gua-ra/gua-resolver' && github.event_name == 'workflow_dispatch' && inputs.environment == 'prod'
+    runs-on: [self-hosted, gua-resolver-incluster-prod]
     environment: production
     steps:
       - name: Roll out ${{ needs.build.outputs.ref }} to prod
         run: |
           IMG="${{ needs.build.outputs.ref }}"
-          sudo k3s kubectl -n gua set image deployment/gua-resolver gua-resolver="$IMG"
-          sudo k3s kubectl -n gua rollout status deployment/gua-resolver --timeout=180s
+          kubectl -n gua patch deployment/gua-resolver --type=strategic \
+            -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"ghcr-pull\"}],\"containers\":[{\"name\":\"gua-resolver\",\"image\":\"$IMG\"}]}}}}"
+          kubectl -n gua rollout status deployment/gua-resolver --timeout=180s
