@@ -73,12 +73,16 @@ jobs:
           cache-to: type=gha,mode=max
 
   # AUTOMATIC on merge to main; also manually dispatchable to roll a branch onto dev for QA.
+  # Runs on the dedicated in-cluster, least-privilege runner (gua-deploy k8s/cicd/
+  # gua-resolver-deploy-runner.yaml): a public repo must not get the privileged host `dev`
+  # runner. The runner's ServiceAccount can patch ONLY the gua-resolver Deployment, and it
+  # uses the in-cluster kube API (no sudo, no kubeconfig secret).
   deploy-dev:
     needs: build
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')
-    runs-on: [self-hosted, dev]
+    runs-on: [self-hosted, gua-resolver-incluster]
     environment: dev
     steps:
       - name: Roll out ${{ needs.build.outputs.ref }} to dev
@@ -86,10 +90,10 @@ jobs:
           IMG="${{ needs.build.outputs.ref }}"
           # Single strategic patch: ensure the ghcr-pull secret (self-heals bootstrap drift where the live
           # deployment was created from a local image without it) AND set the new immutable sha-tagged image,
-          # so the pod can pull from GHCR. One template change = one rollout. k3s' bundled kubectl as root.
-          sudo k3s kubectl -n gua patch deployment/gua-resolver --type=strategic \
+          # so the pod can pull from GHCR. One template change = one rollout.
+          kubectl -n gua patch deployment/gua-resolver --type=strategic \
             -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"ghcr-pull\"}],\"containers\":[{\"name\":\"gua-resolver\",\"image\":\"$IMG\"}]}}}}"
-          sudo k3s kubectl -n gua rollout status deployment/gua-resolver --timeout=180s
+          kubectl -n gua rollout status deployment/gua-resolver --timeout=180s
 
   # MANUAL GATE: pauses until a maintainer approves the `production` GitHub Environment.
   deploy-prod:
