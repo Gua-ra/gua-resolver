@@ -96,7 +96,7 @@ jobs:
           # deployment was created from a local image without it) AND set the new immutable sha-tagged image,
           # so the pod can pull from GHCR. One template change = one rollout.
           kubectl -n gua patch deployment/gua-resolver --type=strategic \
-            -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"ghcr-pull\"}],\"containers\":[{\"name\":\"gua-resolver\",\"image\":\"$IMG\"}]}}}}"
+            -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"ghcr-pull\"}],\"containers\":[{\"name\":\"gua-resolver\",\"image\":\"$IMG\",\"imagePullPolicy\":\"IfNotPresent\"}]}}}}"
           kubectl -n gua rollout status deployment/gua-resolver --timeout=180s
 
   # MANUAL GATE: pauses until a maintainer approves the `production` GitHub Environment.
@@ -112,5 +112,5 @@ jobs:
         run: |
           IMG="${{ needs.build.outputs.ref }}"
           kubectl -n gua patch deployment/gua-resolver --type=strategic \
-            -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"ghcr-pull\"}],\"containers\":[{\"name\":\"gua-resolver\",\"image\":\"$IMG\"}]}}}}"
+            -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"ghcr-pull\"}],\"containers\":[{\"name\":\"gua-resolver\",\"image\":\"$IMG\",\"imagePullPolicy\":\"IfNotPresent\"}]}}}}"
           kubectl -n gua rollout status deployment/gua-resolver --timeout=180s
