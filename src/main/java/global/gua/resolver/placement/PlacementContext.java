@@ -37,7 +37,12 @@ public record PlacementContext(
         return new PlacementContext(e164, null, null, null, null, java.util.List.of(), Map.of(), false);
     }
 
-    /** Stable, deterministic key used for reproducible fallback placement. */
+    /**
+     * A stable, deterministic key that seeds the weighted-fallback bucketing hash so all nodes place the same
+     * context identically. This is intentionally a plain (non-injective) bucketing key, NOT a signed/canonical
+     * form: it feeds only a distribution hash, never a signature, so unescaped delimiters here are harmless.
+     * Do not reuse it anywhere a collision would matter; use the escaped {@code Canonical*} encoders instead.
+     */
     public String canonicalRoutingKey() {
         StringBuilder sb = new StringBuilder();
         sb.append("phone=").append(nz(e164Phone)).append('\n');

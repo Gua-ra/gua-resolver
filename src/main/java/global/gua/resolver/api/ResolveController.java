@@ -2,6 +2,7 @@ package global.gua.resolver.api;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -53,25 +54,44 @@ public class ResolveController {
         this.resolveRegister = Counter.builder("gua.resolver.resolve").tag("outcome", "register").register(metrics);
     }
 
-    /** Resolve a phone to its homeserver (login) or to a placement target (register). */
+    /**
+     * Resolve a phone to its existing homeserver (login) or to a placement target (register).
+     * An existing account is looked up first; only a phone with no account runs placement.
+     */
     @PostMapping("/resolve")
     public ResolveResponse resolve(@Valid @RequestBody ResolveRequest request) {
         // The roster version the decision is made against; clients pin + verify this exact version.
         long rosterVersion = rosterStore.current().version();
-        return resolution.resolvePhone(request.phone())
-                .map(hs -> {
-                    resolveExisting.increment();
-                    return ResolveResponse.existing(HomeserverRef.of(hs), request.traceEnabled()
-                            ? DecisionTrace.existing(hs.id(), rosterVersion) : null);
-                })
-                .orElseGet(() -> {
-                    PlacementDecision decision = resolution.placementDecisionFor(
-                            request.toPlacementContext(routingClaimsVerifier));
-                    Homeserver target = decision.homeserver();
-                    resolveRegister.increment();
-                    return ResolveResponse.register(HomeserverRef.of(target), request.traceEnabled()
-                            ? DecisionTrace.of(decision, rosterVersion) : null);
-                });
+        boolean trace = Boolean.TRUE.equals(request.trace());
+
+        Optional<Homeserver> existing = resolution.resolvePhone(request.phone());
+        if (existing.isPresent()) {
+            resolveExisting.increment();
+            Homeserver hs = existing.get();
+            return ResolveResponse.existing(HomeserverRef.of(hs),
+                    trace ? DecisionTrace.existing(hs.id(), rosterVersion) : null);
+        }
+
+        PlacementDecision decision = resolution.placementDecisionFor(placementContextFor(request));
+        resolveRegister.increment();
+        return ResolveResponse.register(HomeserverRef.of(decision.homeserver()),
+                trace ? DecisionTrace.of(decision, rosterVersion) : null);
+    }
+
+    /**
+     * Build the placement context for a new-account decision. Institution/OIDC affiliations and attributes
+     * are trusted ONLY when they arrive in a signature-verified routing-claims envelope bound to this phone;
+     * a public caller's self-asserted {@code affiliations}/{@code attributes} are deliberately dropped (they
+     * were the self-assertion vector). Carrier/geo hints stay, because choosing a carrier homeserver is
+     * self-service, not privilege.
+     */
+    private PlacementContext placementContextFor(ResolveRequest request) {
+        RoutingClaimsVerifier.VerifiedRoutingClaims verified =
+                routingClaimsVerifier.verify(request.routingClaims(), request.phone());
+        // The trust flag comes straight from the verification outcome, never from envelope presence.
+        return new PlacementContext(
+                request.phone(), request.country(), request.mccmnc(), request.carrier(), request.regionHint(),
+                verified.affiliations(), verified.attributes(), verified.verified());
     }
 
     /** The signed, public roster — what mirrors and clients verify (threshold sigs + log checkpoint). */
@@ -111,6 +131,7 @@ public class ResolveController {
 
     // --- DTOs -----------------------------------------------------------------------------------
 
+    /** The /resolve request body. A plain data carrier; all logic lives in the controller/service. */
     public record ResolveRequest(
             @NotBlank String phone,
             String country,
@@ -120,26 +141,7 @@ public class ResolveController {
             List<String> affiliations,
             Map<String, String> attributes,
             RoutingClaimsEnvelope routingClaims,
-            Boolean trace) {
-
-        PlacementContext toPlacementContext(RoutingClaimsVerifier verifier) {
-            // Institution/OIDC affiliations and attributes are trusted ONLY from a signature-verified
-            // envelope bound to this phone. Self-asserted request.affiliations / request.attributes are
-            // deliberately NOT carried into the placement context: they were the self-assertion vector that
-            // let an anonymous caller obtain institutional placement. Carrier/geo hints (country, mccmnc,
-            // carrier, regionHint) stay, because choosing a carrier homeserver is self-service, not privilege.
-            RoutingClaimsVerifier.VerifiedRoutingClaims verified = verifier.verify(routingClaims, phone);
-            boolean claimsVerified = routingClaims != null;
-            List<String> effectiveAffiliations = claimsVerified ? verified.affiliations() : List.of();
-            Map<String, String> effectiveAttributes = claimsVerified ? verified.attributes() : Map.of();
-            return new PlacementContext(phone, country, mccmnc, carrier, regionHint,
-                    effectiveAffiliations, effectiveAttributes, claimsVerified);
-        }
-
-        boolean traceEnabled() {
-            return Boolean.TRUE.equals(trace);
-        }
-    }
+            Boolean trace) {}
 
     /** Minimal homeserver reference the client needs to start OIDC — never leaks ":server" to the user. */
     public record HomeserverRef(String serverName, String baseUrl, String masIssuer, String region) {

@@ -8,6 +8,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -17,6 +19,8 @@ import global.gua.resolver.crypto.Ed25519;
 /** Verifies signed MAS / identity-service routing claims before policy rules can consume them. */
 @Component
 public class RoutingClaimsVerifier {
+
+    private static final Logger log = LoggerFactory.getLogger(RoutingClaimsVerifier.class);
 
     private final String audience;
     private final Duration maxClockSkew;
@@ -40,15 +44,31 @@ public class RoutingClaimsVerifier {
         this.requireSubjectBinding = props.getClaims().isRequireSubjectBinding();
         this.clock = clock;
         this.replayStore = replayStore;
-        List<ResolverProperties.TrustedKey> keys = !props.getClaims().getTrustedKeys().isEmpty()
-                ? props.getClaims().getTrustedKeys()
-                : (!props.getPolicy().getTrustedKeys().isEmpty()
-                        ? props.getPolicy().getTrustedKeys()
-                        : props.getAuthority().getTrustedKeys());
+
+        // Trust root for routing-claims signatures. Prefer keys scoped to the claims issuer
+        // (MAS/identity-service); fall back to policy, then authority keys, only as a bootstrap convenience.
+        // The fallback silently widens WHO can mint institutional/OIDC claims, so warn loudly: production
+        // should set an explicit gua.resolver.claims.trusted-keys list scoped to the identity-service issuer.
+        String keySource = "claims";
+        List<ResolverProperties.TrustedKey> keys = props.getClaims().getTrustedKeys();
+        if (keys.isEmpty()) {
+            keys = props.getPolicy().getTrustedKeys();
+            keySource = "policy";
+        }
+        if (keys.isEmpty()) {
+            keys = props.getAuthority().getTrustedKeys();
+            keySource = "authority";
+        }
         for (ResolverProperties.TrustedKey k : keys) {
             if (k.getId() != null && k.getPublicKey() != null && !k.getPublicKey().isBlank()) {
                 trustedKeys.put(k.getId(), Ed25519.publicKey(k.getPublicKey()));
             }
+        }
+        if (!"claims".equals(keySource) && !trustedKeys.isEmpty()) {
+            log.warn("Routing-claims signatures are verified against the {} trusted keys (no "
+                    + "gua.resolver.claims.trusted-keys configured). In production, set an explicit claims "
+                    + "trusted-keys list scoped to the identity-service issuer so the claims-issuer trust "
+                    + "domain is not conflated with the {} trust domain.", keySource, keySource);
         }
     }
 
@@ -78,7 +98,7 @@ public class RoutingClaimsVerifier {
         }
         return new VerifiedRoutingClaims(
                 envelope.affiliations() == null ? List.of() : List.copyOf(envelope.affiliations()),
-                Map.copyOf(attrs));
+                Map.copyOf(attrs), true);
     }
 
     private void validateEnvelope(RoutingClaimsEnvelope envelope, String expectedSubject) {
@@ -115,6 +135,22 @@ public class RoutingClaimsVerifier {
         if (replayProtectionEnabled && blank(envelope.nonce())) {
             throw invalid("routing claims nonce is required");
         }
+        // Reject malformed collections up front so canonicalization (which sorts affiliations and would NPE
+        // on a null element) never runs on bad input: a crafted null entry becomes a clean 400, not a 500.
+        if (envelope.affiliations() != null) {
+            for (String affiliation : envelope.affiliations()) {
+                if (blank(affiliation)) {
+                    throw invalid("routing claims affiliation entry is null or blank");
+                }
+            }
+        }
+        if (envelope.attributes() != null) {
+            for (Map.Entry<String, String> entry : envelope.attributes().entrySet()) {
+                if (blank(entry.getKey()) || entry.getValue() == null) {
+                    throw invalid("routing claims attribute entry has a null/blank key or null value");
+                }
+            }
+        }
     }
 
     private void requireValidSignature(RoutingClaimsEnvelope envelope) {
@@ -137,7 +173,12 @@ public class RoutingClaimsVerifier {
         if (!replayProtectionEnabled) {
             return;
         }
-        if (!replayStore.recordIfNew(envelope.issuer(), envelope.nonce(), envelope.expiresAt())) {
+        // Retain the nonce until the end of the ACCEPTANCE window (expiresAt + skew), not just expiresAt, so
+        // an envelope still accepted during the skew grace period cannot be replayed after cleanup would
+        // otherwise have purged its row.
+        Duration skew = maxClockSkew == null ? Duration.ZERO : maxClockSkew;
+        Instant retainUntil = envelope.expiresAt().plus(skew);
+        if (!replayStore.recordIfNew(envelope.issuer(), envelope.nonce(), retainUntil)) {
             throw invalid("routing claims nonce was already used");
         }
     }
@@ -150,9 +191,15 @@ public class RoutingClaimsVerifier {
         return new InvalidRoutingClaimsException(message);
     }
 
-    public record VerifiedRoutingClaims(List<String> affiliations, Map<String, String> attributes) {
+    /**
+     * The trusted result of verification. {@code verified} is true only when a real envelope passed every
+     * check; it is the non-forgeable signal the placement context keys off, so it is derived from the
+     * verification outcome here rather than re-inferred from envelope presence at the call site.
+     */
+    public record VerifiedRoutingClaims(List<String> affiliations, Map<String, String> attributes,
+                                        boolean verified) {
         static VerifiedRoutingClaims empty() {
-            return new VerifiedRoutingClaims(List.of(), Map.of());
+            return new VerifiedRoutingClaims(List.of(), Map.of(), false);
         }
     }
 

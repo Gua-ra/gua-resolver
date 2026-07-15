@@ -4,70 +4,78 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.StringJoiner;
+import java.util.Objects;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 /**
- * Deterministic bytes signed by MAS / identity-service routing-claims issuers.
+ * Produces the exact bytes a MAS / identity-service issuer signs over a routing-claims envelope (and that the
+ * resolver re-derives to verify the signature). The format is one {@code key=value} line per field, in a
+ * fixed order, prefixed by a version tag.
  *
- * <p>The encoding is <b>injective</b>: every string value is escaped so the structural delimiters
- * ({@code \n}, {@code |}, {@code =}) cannot appear literally inside a value. Without this, two different
- * logical claim sets could produce identical signed bytes (e.g. {@code {"a":"b|c=d"}} vs
- * {@code {"a":"b","c":"d"}}), letting one signature cover a claim set the issuer never asserted.
+ * <p>It is deliberately <b>injective</b>: {@link #escape} backslash-escapes the structural delimiters
+ * ({@code \n}, {@code |}, {@code =}) inside every value, so two different logical claim sets can never produce
+ * the same bytes. Without that, e.g. {@code {"a":"b|c=d"}} and {@code {"a":"b","c":"d"}} would encode
+ * identically, and one signature would cover a claim set the issuer never asserted.
  */
 public final class CanonicalRoutingClaims {
 
     private CanonicalRoutingClaims() {}
 
     public static byte[] bytes(RoutingClaimsEnvelope envelope) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("gua-routing-claims.v1\n");
-        sb.append("schema=").append(esc(envelope.schemaVersion())).append('\n');
-        sb.append("issuer=").append(esc(envelope.issuer())).append('\n');
-        sb.append("audience=").append(esc(envelope.audience())).append('\n');
-        sb.append("issuedAt=").append(epoch(envelope.issuedAt())).append('\n');
-        sb.append("expiresAt=").append(epoch(envelope.expiresAt())).append('\n');
-        sb.append("nonce=").append(esc(envelope.nonce())).append('\n');
-        sb.append("subject=").append(esc(envelope.subject())).append('\n');
-        sb.append("affiliations=").append(affiliations(envelope.affiliations())).append('\n');
-        sb.append("attrs=").append(attrs(envelope.attributes())).append('\n');
-        return sb.toString().getBytes(StandardCharsets.UTF_8);
+        String canonical = "gua-routing-claims.v1\n"
+                + "schema=" + escape(envelope.schemaVersion()) + "\n"
+                + "issuer=" + escape(envelope.issuer()) + "\n"
+                + "audience=" + escape(envelope.audience()) + "\n"
+                + "issuedAt=" + epochMillis(envelope.issuedAt()) + "\n"
+                + "expiresAt=" + epochMillis(envelope.expiresAt()) + "\n"
+                + "nonce=" + escape(envelope.nonce()) + "\n"
+                + "subject=" + escape(envelope.subject()) + "\n"
+                + "affiliations=" + affiliations(envelope.affiliations()) + "\n"
+                + "attrs=" + attributes(envelope.attributes()) + "\n";
+        return canonical.getBytes(StandardCharsets.UTF_8);
     }
 
+    /** Affiliations sorted for a stable order, each escaped, joined by {@code |}. Null entries are dropped
+     *  (the verifier rejects them upstream; this keeps the signer path from NPE-ing on malformed input). */
     private static String affiliations(List<String> affiliations) {
-        if (affiliations == null || affiliations.isEmpty()) {
+        if (affiliations == null) {
             return "";
         }
-        return affiliations.stream().sorted().map(CanonicalRoutingClaims::esc)
-                .reduce((a, b) -> a + "|" + b).orElse("");
+        return affiliations.stream()
+                .filter(Objects::nonNull)
+                .sorted()
+                .map(CanonicalRoutingClaims::escape)
+                .collect(Collectors.joining("|"));
     }
 
-    private static String attrs(Map<String, String> attributes) {
-        if (attributes == null || attributes.isEmpty()) {
+    /** Attributes sorted by key (TreeMap), each {@code key=value} escaped, joined by {@code |}. */
+    private static String attributes(Map<String, String> attributes) {
+        if (attributes == null) {
             return "";
         }
-        StringJoiner j = new StringJoiner("|");
-        new TreeMap<>(attributes).forEach((k, v) -> j.add(esc(k) + "=" + esc(v)));
-        return j.toString();
+        return new TreeMap<>(attributes).entrySet().stream()
+                .filter(entry -> entry.getKey() != null && entry.getValue() != null)
+                .map(entry -> escape(entry.getKey()) + "=" + escape(entry.getValue()))
+                .collect(Collectors.joining("|"));
     }
 
-    /** Backslash-escape the structural delimiters so the encoding is unambiguous (injective). */
-    private static String esc(String s) {
-        if (s == null) {
+    private static String escape(String value) {
+        if (value == null) {
             return "";
         }
-        StringBuilder b = new StringBuilder(s.length());
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
+        StringBuilder escaped = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
             if (c == '\\' || c == '\n' || c == '|' || c == '=') {
-                b.append('\\');
+                escaped.append('\\');
             }
-            b.append(c);
+            escaped.append(c);
         }
-        return b.toString();
+        return escaped.toString();
     }
 
-    private static long epoch(Instant instant) {
+    private static long epochMillis(Instant instant) {
         return instant == null ? 0L : instant.toEpochMilli();
     }
 }

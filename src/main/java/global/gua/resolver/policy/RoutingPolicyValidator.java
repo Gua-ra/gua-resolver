@@ -119,7 +119,13 @@ public class RoutingPolicyValidator {
             if (!withinZone(rule, zone)) {
                 throw invalid("rule " + rule.id() + " match is outside delegation zone " + zone.id());
             }
-            String matchKey = rule.matchType().name() + ":" + normalize(rule.matchValue());
+            // Two rules are "the same match" only if their full match criteria coincide. For OIDC_CLAIM that
+            // includes the issuer and claim name, not just the value, so rules that differ only by issuer/claim
+            // are not wrongly flagged ambiguous (and rules that genuinely coincide still are).
+            String matchKey = rule.matchType() == RoutingPolicyRule.MatchType.OIDC_CLAIM
+                    ? String.join(":", rule.matchType().name(), normalize(rule.oidcIssuer()),
+                            normalize(rule.oidcClaim()), normalize(rule.matchValue()))
+                    : rule.matchType().name() + ":" + normalize(rule.matchValue());
             String previousTarget = exactMatches.putIfAbsent(matchKey, rule.targetHomeserverId());
             if (previousTarget != null && !previousTarget.equals(rule.targetHomeserverId())) {
                 throw invalid("ambiguous rules for " + matchKey + ": " + previousTarget

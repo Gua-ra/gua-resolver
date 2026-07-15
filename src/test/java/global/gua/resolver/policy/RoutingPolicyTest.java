@@ -12,6 +12,7 @@ import global.gua.resolver.roster.RosterEntry;
 import global.gua.resolver.roster.SignedRoster;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RoutingPolicyTest {
@@ -164,6 +165,31 @@ class RoutingPolicyTest {
         assertThatThrownBy(() -> validator.validate(unsignedPolicy("carrier", "+55119", "+5521"), roster()))
                 .isInstanceOf(RoutingPolicyValidator.RoutingPolicyValidationException.class)
                 .hasMessageContaining("outside delegation zone");
+    }
+
+    @Test
+    void validatorAllowsTwoOidcRulesThatDifferOnlyByClaimName() {
+        RoutingPolicyValidator validator = new RoutingPolicyValidator();
+        String issuer = "https://issuer.example";
+        RoutingPolicyBundle policy = new RoutingPolicyBundle(
+                RoutingPolicyBundle.SCHEMA_VERSION, "delegated-oidc", 1, Instant.now(),
+                Instant.now().minusSeconds(60), Instant.now().plusSeconds(3600),
+                List.of(new DelegationZone("oidc-zone", DelegationZone.ScopeType.OIDC_ISSUER,
+                        issuer, "oidc:issuer", "delegate-oidc", DELEGATE.publicKeyB64(),
+                        List.of("carrier", "uni"), null, null)),
+                List.of(
+                        new RoutingPolicyRule("r-groups", 10, RoutingPolicyRule.MatchType.OIDC_CLAIM,
+                                "staff", issuer, "groups", "carrier", "oidc-zone", "route by groups",
+                                RoutingPolicyRule.AssignmentPolicy.PORTABLE, true),
+                        new RoutingPolicyRule("r-department", 20, RoutingPolicyRule.MatchType.OIDC_CLAIM,
+                                "staff", issuer, "department", "uni", "oidc-zone", "route by department",
+                                RoutingPolicyRule.AssignmentPolicy.PORTABLE, true)),
+                new RoutingPolicyBundle.FallbackStrategy("legacy-weighted", true), List.of(), List.of());
+
+        // Both rules share matchValue "staff" but read different OIDC claims, so they are genuinely distinct
+        // and must not be rejected as ambiguous. The pre-fix ambiguity key ignored issuer/claim and collided
+        // them, wrongly failing an otherwise valid institutional policy.
+        assertThatCode(() -> validator.validate(policy, roster())).doesNotThrowAnyException();
     }
 
     @Test

@@ -2,6 +2,7 @@ package global.gua.resolver.claims;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -170,6 +171,46 @@ class RoutingClaimsVerifierTest {
         assertThatThrownBy(() -> verifier.verify(signed, SUBJECT))
                 .isInstanceOf(RoutingClaimsVerifier.InvalidRoutingClaimsException.class)
                 .hasMessageContaining("already used");
+    }
+
+    @Test
+    void aNullAffiliationEntryIsRejectedAsInvalidNotAsServerError() {
+        Ed25519.KeyPairB64 kp = Ed25519.generate();
+        // A crafted null element in "affiliations" must be a clean 400 (invalid), never a 500 from an NPE
+        // while canonicalizing/sorting the list. Arrays.asList (unlike List.of) permits a null element.
+        RoutingClaimsEnvelope withNullAffiliation = new RoutingClaimsEnvelope(RoutingClaimsEnvelope.SCHEMA_VERSION,
+                "https://account.gua.test", "gua-resolver", Instant.now().minusSeconds(10),
+                Instant.now().plusSeconds(200), "nonce", SUBJECT, Arrays.asList("students.usp.br", null),
+                Map.of(), List.of());
+
+        assertThatThrownBy(() -> verifier(kp.publicKeyB64()).verify(withNullAffiliation, SUBJECT))
+                .isInstanceOf(RoutingClaimsVerifier.InvalidRoutingClaimsException.class)
+                .hasMessageContaining("affiliation");
+    }
+
+    @Test
+    void retainsTheReplayNonceThroughTheAcceptanceWindowNotJustExpiry() {
+        Ed25519.KeyPairB64 kp = Ed25519.generate();
+        RoutingClaimsEnvelope signed = RoutingClaimsSigner.sign(unsigned(Map.of("email_domain", "usp.br")),
+                "claims-a", kp.privateKeyB64());
+        Instant[] retainedUntil = new Instant[1];
+        RoutingClaimsReplayStore capturing = new RoutingClaimsReplayStore() {
+            @Override
+            public boolean recordIfNew(String issuer, String nonce, Instant expiresAt) {
+                retainedUntil[0] = expiresAt;
+                return true;
+            }
+
+            @Override
+            public void removeExpired(Instant now) {
+            }
+        };
+        ResolverProperties props = props(kp.publicKeyB64());
+        new RoutingClaimsVerifier(props, capturing).verify(signed, SUBJECT);
+
+        // The nonce must be retained until expiresAt + clock skew, so an envelope still accepted during the
+        // skew grace window cannot be replayed after a naive expiresAt-only cleanup would have purged it.
+        assertThat(retainedUntil[0]).isEqualTo(signed.expiresAt().plus(props.getClaims().getMaxClockSkew()));
     }
 
     private static RoutingClaimsEnvelope unsigned(Map<String, String> attrs) {
