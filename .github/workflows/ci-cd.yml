@@ -67,7 +67,7 @@ jobs:
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')
-    runs-on: [self-hosted, dev]
+    runs-on: [self-hosted, gua-resolver-incluster]
     environment: dev
     steps:
       - name: Roll out ${{ needs.build.outputs.ref }} to dev
@@ -79,11 +79,14 @@ jobs:
           sudo k3s kubectl -n gua set image deployment/gua-resolver gua-resolver="$IMG"
           sudo k3s kubectl -n gua rollout status deployment/gua-resolver --timeout=180s
 
-  # MANUAL GATE: pauses until a maintainer approves the `production` GitHub Environment.
+  # Staged on every merge to main and manually dispatchable; either way it pauses until a
+  # maintainer approves the `production` GitHub Environment.
   deploy-prod:
     needs: build
-    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'prod'
-    runs-on: [self-hosted, prod]
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'prod')
+    runs-on: [self-hosted, gua-resolver-incluster-prod]
     environment: production
     steps:
       - name: Roll out ${{ needs.build.outputs.ref }} to prod
