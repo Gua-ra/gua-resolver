@@ -112,7 +112,7 @@ jobs:
         run: |
           IMG="${{ needs.build.outputs.ref }}"
           # k8s pulls the immutable sha-tagged image from GHCR via the ghcr-pull secret
-          # (deployment is imagePullPolicy: IfNotPresent + imagePullSecrets) — no docker needed.
+          # (deployment is imagePullPolicy: IfNotPresent + imagePullSecrets), no docker needed.
           # Use k3s' bundled kubectl as root so PATH + kubeconfig are always correct on the node.
           sudo k3s kubectl -n gua set image deployment/gua-resolver gua-resolver="$IMG"
           sudo k3s kubectl -n gua rollout status deployment/gua-resolver --timeout=180s
