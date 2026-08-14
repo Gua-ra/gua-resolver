@@ -27,7 +27,11 @@ These are the only inputs the verifier trusts. Everything else is fetched and ve
 ## 1. Verify the roster
 
 1. Recompute the canonical bytes (`CanonicalRoster`): `version`, `issuedAt` (epoch millis), sorted entries,
-   sorted claim predicates, and the `logCheckpoint` (merkle root + size).
+   sorted claim predicates, and the `logCheckpoint` (merkle root + size). Each entry includes the
+   homeserver's user-search discoverability policy: `searchVisibility` (`GLOBAL` default, `SERVER`, or
+   `GROUP`) followed by its sorted `searchGroups` joined by `|` (empty when none), placed between
+   `signingKey` and `admittedAt`. Verifiers reading rosters that predate these fields treat them as
+   `GLOBAL` with no groups.
 2. Count valid `authoritySignatures`: each must be Ed25519-valid over the canonical bytes under a trusted
    authority key, one vote per key. Require at least `k`.
 3. Verify transparency-log consistency: the `logCheckpoint` must be an append-only extension of the last one

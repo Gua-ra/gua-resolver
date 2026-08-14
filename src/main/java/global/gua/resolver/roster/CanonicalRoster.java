@@ -51,6 +51,8 @@ public final class CanonicalRoster {
         j.add(Integer.toString(h.weight()));
         j.add(Boolean.toString(h.acceptsNew()));
         j.add(nz(h.signingKey()));
+        j.add(h.searchVisibility().name());
+        j.add(h.searchGroups().stream().sorted().reduce((a, b) -> a + "|" + b).orElse(""));
         j.add(e.admittedAt() == null ? "" : Long.toString(e.admittedAt().toEpochMilli()));
         j.add(e.status().name());
         j.add(claims(e.claims()));

@@ -15,6 +15,8 @@ CREATE TABLE roster_entry (
     weight         INTEGER      NOT NULL DEFAULT 1,
     accepts_new    BOOLEAN      NOT NULL DEFAULT TRUE,
     signing_key    VARCHAR(255) NOT NULL,
+    search_visibility VARCHAR(16) NOT NULL DEFAULT 'GLOBAL',
+    search_groups_json TEXT      NOT NULL DEFAULT '[]',
     claims_json    TEXT         NOT NULL DEFAULT '[]',
     admitted_at    TIMESTAMP    NOT NULL,
     status         VARCHAR(16)  NOT NULL DEFAULT 'ACTIVE'
