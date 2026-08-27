@@ -23,6 +23,8 @@ import global.gua.resolver.placement.ClaimPredicate;
  * @param keyPossessionProof base64 Ed25519 signature over {@code serverName}, proving control of signingKey
  * @param domainProof        domain-ownership proof token (verified by the DomainOwnershipVerifier)
  * @param claims             requested declarative placement claims (authority validates non-overlap)
+ * @param searchVisibility   optional user-search discoverability: GLOBAL (default), SERVER, or GROUP
+ * @param searchGroups       search-group ids; required (non-empty) when searchVisibility is GROUP
  */
 public record AdmissionRequest(
         String id,
@@ -35,5 +37,7 @@ public record AdmissionRequest(
         @NotBlank String signingKey,
         @NotBlank String keyPossessionProof,
         @NotBlank String domainProof,
-        @NotNull List<ClaimPredicate> claims) {
+        @NotNull List<ClaimPredicate> claims,
+        String searchVisibility,
+        List<String> searchGroups) {
 }

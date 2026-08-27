@@ -9,6 +9,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
 
 import global.gua.resolver.crypto.Ed25519;
+import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.placement.ClaimPredicate;
 import global.gua.resolver.roster.RosterStore;
 import global.gua.resolver.roster.RosterVerifier;
@@ -36,7 +37,7 @@ class AdmissionFlowTest {
                 serverName.getBytes(StandardCharsets.UTF_8));
         return new AdmissionRequest(null, serverName, "https://" + serverName,
                 "https://account." + serverName, "BR", 1, true,
-                kp.publicKeyB64(), proof, "dns-txt-proof-token", claims);
+                kp.publicKeyB64(), proof, "dns-txt-proof-token", claims, null, null);
     }
 
     @Test
@@ -58,10 +59,64 @@ class AdmissionFlowTest {
         AdmissionRequest forged = new AdmissionRequest(null, good.serverName(), good.baseUrl(),
                 good.masIssuer(), good.region(), good.weight(), good.acceptsNew(),
                 good.signingKey(), Ed25519.generate().publicKeyB64(),  // proof not made by signingKey
-                good.domainProof(), good.claims());
+                good.domainProof(), good.claims(), null, null);
 
         assertThatThrownBy(() -> admission.admit(forged))
                 .isInstanceOf(AdmissionService.AdmissionException.class);
+    }
+
+    @Test
+    void admissionDefaultsToGlobalSearchVisibility() {
+        SignedRoster after = admission.admit(request("defaultvis.gua.global", List.of()));
+
+        assertThat(after.entries()).anySatisfy(e -> {
+            if (e.homeserver().serverName().equals("defaultvis.gua.global")) {
+                assertThat(e.homeserver().searchVisibility())
+                        .isEqualTo(Homeserver.SearchVisibility.GLOBAL);
+                assertThat(e.homeserver().searchGroups()).isEmpty();
+            }
+        });
+    }
+
+    @Test
+    void admissionCarriesGroupSearchVisibilityIntoTheSignedRoster() {
+        AdmissionRequest base = request("grouped.gua.global", List.of());
+        AdmissionRequest grouped = new AdmissionRequest(base.id(), base.serverName(), base.baseUrl(),
+                base.masIssuer(), base.region(), base.weight(), base.acceptsNew(), base.signingKey(),
+                base.keyPossessionProof(), base.domainProof(), base.claims(),
+                "group", List.of("edu-br"));
+
+        SignedRoster after = admission.admit(grouped);
+
+        assertThat(after.entries()).anySatisfy(e -> {
+            if (e.homeserver().serverName().equals("grouped.gua.global")) {
+                assertThat(e.homeserver().searchVisibility())
+                        .isEqualTo(Homeserver.SearchVisibility.GROUP);
+                assertThat(e.homeserver().searchGroups()).containsExactly("edu-br");
+            }
+        });
+        // the visibility policy is inside the signed bytes: roster still verifies
+        assertThat(verifier.isVerified(after)).isTrue();
+    }
+
+    @Test
+    void rejectsGroupVisibilityWithoutGroupsAndGroupsWithoutGroupVisibility() {
+        AdmissionRequest base = request("badvis.gua.global", List.of());
+        AdmissionRequest groupNoGroups = new AdmissionRequest(base.id(), base.serverName(),
+                base.baseUrl(), base.masIssuer(), base.region(), base.weight(), base.acceptsNew(),
+                base.signingKey(), base.keyPossessionProof(), base.domainProof(), base.claims(),
+                "GROUP", List.of());
+        assertThatThrownBy(() -> admission.admit(groupNoGroups))
+                .isInstanceOf(AdmissionService.AdmissionException.class)
+                .hasMessageContaining("requires at least one search group");
+
+        AdmissionRequest groupsNoGroup = new AdmissionRequest(base.id(), base.serverName(),
+                base.baseUrl(), base.masIssuer(), base.region(), base.weight(), base.acceptsNew(),
+                base.signingKey(), base.keyPossessionProof(), base.domainProof(), base.claims(),
+                "server", List.of("edu-br"));
+        assertThatThrownBy(() -> admission.admit(groupsNoGroup))
+                .isInstanceOf(AdmissionService.AdmissionException.class)
+                .hasMessageContaining("only valid with searchVisibility GROUP");
     }
 
     @Test
