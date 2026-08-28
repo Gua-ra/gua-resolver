@@ -83,6 +83,19 @@ public class JdbcTransparencyLog implements TransparencyLog {
                         rs.getTimestamp("recorded_at").toInstant().toString()));
     }
 
+    /** True if a leaf of this type with this payload hash already exists (so policy versions log once). */
+    public boolean hasLeaf(String type, String payloadHash) {
+        Integer n = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM transparency_log WHERE event_type = ? AND payload_hash = ?",
+                Integer.class, type, payloadHash);
+        return n != null && n > 0;
+    }
+
+    /** Events of a single type (e.g. POLICY_PUBLISH), for the policy-log audit view. */
+    public List<Event> eventsOfType(String type) {
+        return events().stream().filter(e -> type.equals(e.type())).toList();
+    }
+
     private List<String> leafHashes() {
         return jdbc.queryForList(
                 "SELECT leaf_hash FROM transparency_log ORDER BY leaf_index", String.class);

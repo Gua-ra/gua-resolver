@@ -75,13 +75,16 @@ public final class Ed25519 {
 
     /** Verify a base64 detached signature over {@code message}. Returns false on any malformed input. */
     public static boolean verify(PublicKey key, byte[] message, String signatureB64) {
+        if (key == null || signatureB64 == null) {
+            return false;
+        }
         try {
             Signature s = Signature.getInstance(ALG);
             s.initVerify(key);
             s.update(message);
             return s.verify(B64D.decode(signatureB64));
         } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException
-                 | IllegalArgumentException e) {
+                 | IllegalArgumentException | NullPointerException e) {
             return false;
         }
     }

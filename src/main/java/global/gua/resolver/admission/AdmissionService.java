@@ -70,15 +70,45 @@ public class AdmissionService {
             }
         }
 
+        Homeserver.SearchVisibility visibility = parseSearchVisibility(req);
+
         String id = (req.id() == null || req.id().isBlank()) ? deriveId(req.serverName()) : req.id();
         Homeserver hs = new Homeserver(id, req.serverName(), req.baseUrl(), req.masIssuer(),
-                req.region(), Math.max(0, req.weight()), req.acceptsNew(), req.signingKey());
+                req.region(), Math.max(0, req.weight()), req.acceptsNew(), req.signingKey(),
+                visibility, req.searchGroups() == null ? List.of() : req.searchGroups());
         RosterEntry entry = new RosterEntry(hs, req.claims(), Instant.now(), RosterEntry.Status.ACTIVE);
 
         entries.insert(entry);
         appendLog("ADMIT", entry);
         log.info("Admitted homeserver {} ({}) with {} claim(s)", id, hs.serverName(), req.claims().size());
         return rosterStore.refresh();
+    }
+
+    /**
+     * Search discoverability is part of the signed roster, so it is validated at the admission gate:
+     * GROUP visibility without any group would silently hide the homeserver from everyone, which is
+     * almost certainly a misconfiguration, and groups on non-GROUP visibility would be dead config.
+     */
+    private static Homeserver.SearchVisibility parseSearchVisibility(AdmissionRequest req) {
+        String raw = req.searchVisibility();
+        Homeserver.SearchVisibility visibility;
+        if (raw == null || raw.isBlank()) {
+            visibility = Homeserver.SearchVisibility.GLOBAL;
+        } else {
+            try {
+                visibility = Homeserver.SearchVisibility.valueOf(raw.trim().toUpperCase(java.util.Locale.ROOT));
+            } catch (IllegalArgumentException e) {
+                throw new AdmissionException("unknown searchVisibility: " + raw);
+            }
+        }
+        boolean hasGroups = req.searchGroups() != null && !req.searchGroups().isEmpty();
+        if (visibility == Homeserver.SearchVisibility.GROUP && !hasGroups) {
+            throw new AdmissionException("searchVisibility GROUP requires at least one search group");
+        }
+        if (visibility != Homeserver.SearchVisibility.GROUP && hasGroups) {
+            throw new AdmissionException("searchGroups are only valid with searchVisibility GROUP");
+        }
+        return visibility;
     }
 
     /** Suspend (temporarily) or revoke (permanently) an admitted homeserver; logged + re-signed. */

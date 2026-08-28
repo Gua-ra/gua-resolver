@@ -17,8 +17,10 @@ import java.util.Map;
  * @param mccmnc         match carrier MCC+MNC (e.g. "72411" = Vivo BR)
  * @param carrier        match carrier name
  * @param phonePrefixes  match if the E.164 phone starts with any of these (e.g. ["+5511","+5519"])
- * @param affiliation    match if context affiliations contain this domain (e.g. "usp.br")
- * @param attributeMatch match if context attributes contain all these key=value pairs
+ * @param affiliation    match if context affiliations contain this domain (e.g. "usp.br"); an institution
+ *                       signal, so it matches only when the context's claims are signature-verified
+ * @param attributeMatch match if context attributes contain all these key=value pairs; an institution/OIDC
+ *                       signal, so it matches only when the context's claims are signature-verified
  * @param remoteClaimUrl operator webhook that returns whether this user belongs to them
  * @param priority       lower wins; ties broken deterministically by homeserver id
  */
@@ -32,7 +34,16 @@ public record ClaimPredicate(
         String remoteClaimUrl,
         int priority) {
 
-    /** Pure, local evaluation (the remote webhook is handled by {@code RemoteClaimRule}). */
+    /**
+     * Pure, local evaluation (the remote webhook is handled by {@code RemoteClaimRule}).
+     *
+     * <p>Carrier/geo signals (country, MCC/MNC, carrier, phone prefix) are derived from the number and may
+     * be matched from a public request: choosing a carrier homeserver is self-service, not privilege.
+     * Institution/OIDC signals ({@code affiliation}, {@code attributeMatch}) grant scoped placement onto an
+     * operator's homeserver, so they match ONLY when {@code ctx.claimsVerified()} is true, i.e. the
+     * affiliations/attributes came from a signature-verified routing-claims envelope. This is what stops an
+     * anonymous caller from self-asserting {@code affiliations:["usp.br"]} to land on an institution.
+     */
     public boolean matchesLocally(PlacementContext ctx) {
         if (country != null && !country.equalsIgnoreCase(ctx.country())) return false;
         if (mccmnc != null && !mccmnc.equals(ctx.mccmnc())) return false;
@@ -41,10 +52,15 @@ public record ClaimPredicate(
             String p = ctx.e164Phone();
             if (p == null || phonePrefixes.stream().noneMatch(p::startsWith)) return false;
         }
-        if (affiliation != null && (ctx.affiliations() == null || !ctx.affiliations().contains(affiliation))) return false;
-        if (attributeMatch != null) {
+        if (affiliation != null) {
+            if (!ctx.claimsVerified()) return false;
+            if (ctx.affiliations() == null || !ctx.affiliations().contains(affiliation)) return false;
+        }
+        if (attributeMatch != null && !attributeMatch.isEmpty()) {
+            if (!ctx.claimsVerified()) return false;
+            Map<String, String> attrs = ctx.attributes() == null ? Map.of() : ctx.attributes();
             for (var e : attributeMatch.entrySet()) {
-                if (!e.getValue().equals(ctx.attributes().get(e.getKey()))) return false;
+                if (!e.getValue().equals(attrs.get(e.getKey()))) return false;
             }
         }
         return true;

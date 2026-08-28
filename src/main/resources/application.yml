@@ -47,6 +47,33 @@ gua:
     directory:
       # Shared HMAC pepper for the phone directory — MUST match identity-service. Required at runtime.
       pepper: ${GUA_RESOLVER_DIRECTORY_PEPPER:}
+      fail-open-on-lookup-error: ${GUA_RESOLVER_DIRECTORY_FAIL_OPEN_ON_LOOKUP_ERROR:false}
+      # How often the authority signs + logs a directory checkpoint (Merkle root over the mappings).
+      checkpoint-interval: ${GUA_RESOLVER_DIRECTORY_CHECKPOINT_INTERVAL:PT5M}
+    claims:
+      audience: ${GUA_RESOLVER_CLAIMS_AUDIENCE:gua-resolver}
+      max-clock-skew: ${GUA_RESOLVER_CLAIMS_MAX_CLOCK_SKEW:PT2M}
+      max-lifetime: ${GUA_RESOLVER_CLAIMS_MAX_LIFETIME:PT5M}
+      replay-protection-enabled: ${GUA_RESOLVER_CLAIMS_REPLAY_PROTECTION_ENABLED:true}
+      # Bind each envelope to the phone it was issued for, so a captured envelope cannot be replayed
+      # against a different number.
+      require-subject-binding: ${GUA_RESOLVER_CLAIMS_REQUIRE_SUBJECT_BINDING:true}
+      replay-cleanup-interval: ${GUA_RESOLVER_CLAIMS_REPLAY_CLEANUP_INTERVAL:PT10M}
+      trusted-keys: []
+    # HTTP Basic admin auth for /authority/** (admission, status changes). Fails closed: with no password
+    # hash set there are no admin users and the endpoints stay denied. Set a BCrypt hash to enable admin.
+    admin:
+      username: ${GUA_RESOLVER_ADMIN_USER:admin}
+      password-hash: ${GUA_RESOLVER_ADMIN_PASSWORD_HASH:}
+    policy:
+      enabled: ${GUA_RESOLVER_POLICY_ENABLED:false}
+      file: ${GUA_RESOLVER_POLICY_FILE:}
+      require-signatures: ${GUA_RESOLVER_POLICY_REQUIRE_SIGNATURES:true}
+      signature-threshold: ${GUA_RESOLVER_POLICY_SIGNATURE_THRESHOLD:1}
+      signing-key-id: ${GUA_RESOLVER_POLICY_KEY_ID:${GUA_RESOLVER_AUTHORITY_KEY_ID:}}
+      signing-private-key: ${GUA_RESOLVER_POLICY_PRIVATE_KEY:${GUA_RESOLVER_AUTHORITY_PRIVATE_KEY:}}
+      refresh-interval: ${GUA_RESOLVER_POLICY_REFRESH_INTERVAL:PT1M}
+      trusted-keys: []
     authority:
       threshold: ${GUA_RESOLVER_AUTHORITY_THRESHOLD:1}
       signing-key-id: ${GUA_RESOLVER_AUTHORITY_KEY_ID:}
@@ -58,6 +85,12 @@ gua:
     mirror:
       upstream-url: ${GUA_RESOLVER_MIRROR_UPSTREAM_URL:}
       refresh-interval: ${GUA_RESOLVER_MIRROR_REFRESH_INTERVAL:PT5M}
+      cache-file: ${GUA_RESOLVER_MIRROR_CACHE_FILE:}
+      # Hard cap on a single upstream directory lookup so a stalled authority cannot hang mirror threads.
+      lookup-timeout: ${GUA_RESOLVER_MIRROR_LOOKUP_TIMEOUT:PT3S}
+      # How long a mirror may serve a previously-verified POSITIVE directory result during an authority
+      # outage (returning-user login stays up). Negatives are never served stale. Zero = strict fail-closed.
+      directory-cache-ttl: ${GUA_RESOLVER_MIRROR_DIRECTORY_CACHE_TTL:PT10M}
 
     dev-homeserver:
       id: ${GUA_RESOLVER_DEVHOMESERVER_ID:dev}

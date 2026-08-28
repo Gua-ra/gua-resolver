@@ -40,7 +40,9 @@ public class RosterEntryRepository {
                 rs.getString("region"),
                 rs.getInt("weight"),
                 rs.getBoolean("accepts_new"),
-                rs.getString("signing_key"));
+                rs.getString("signing_key"),
+                Homeserver.SearchVisibility.valueOf(rs.getString("search_visibility")),
+                readGroups(rs.getString("search_groups_json")));
         return new RosterEntry(hs, readClaims(rs.getString("claims_json")),
                 rs.getTimestamp("admitted_at").toInstant(),
                 RosterEntry.Status.valueOf(rs.getString("status")));
@@ -70,16 +72,35 @@ public class RosterEntryRepository {
         jdbc.update("""
                 INSERT INTO roster_entry
                     (id, server_name, base_url, mas_issuer, region, weight, accepts_new, signing_key,
-                     claims_json, admitted_at, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     search_visibility, search_groups_json, claims_json, admitted_at, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 h.id(), h.serverName(), h.baseUrl(), h.masIssuer(), h.region(), h.weight(),
-                h.acceptsNew(), h.signingKey(), writeClaims(e.claims()),
+                h.acceptsNew(), h.signingKey(), h.searchVisibility().name(), writeGroups(h.searchGroups()),
+                writeClaims(e.claims()),
                 Timestamp.from(e.admittedAt() == null ? Instant.now() : e.admittedAt()), e.status().name());
     }
 
     public void updateStatus(String id, RosterEntry.Status status) {
         jdbc.update("UPDATE roster_entry SET status = ? WHERE id = ?", status.name(), id);
+    }
+
+    private List<String> readGroups(String s) {
+        try {
+            return (s == null || s.isBlank())
+                    ? List.of()
+                    : json.readValue(s, new TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            throw new IllegalStateException("corrupt search_groups_json", e);
+        }
+    }
+
+    private String writeGroups(List<String> groups) {
+        try {
+            return json.writeValueAsString(groups == null ? List.of() : groups);
+        } catch (Exception e) {
+            throw new IllegalStateException("cannot serialise search groups", e);
+        }
     }
 
     private List<ClaimPredicate> readClaims(String s) {

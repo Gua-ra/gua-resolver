@@ -4,6 +4,7 @@ import java.util.Optional;
 
 import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.placement.PlacementContext;
+import global.gua.resolver.placement.PlacementDecision;
 
 /**
  * The read front-door logic: given a verified phone (or username), where does / should the account live?
@@ -22,4 +23,7 @@ public interface ResolutionService {
 
     /** Where a NEW account for this context should be registered (runs the placement engine). */
     Homeserver placementFor(PlacementContext context);
+
+    /** Same placement answer with rule/policy trace metadata for audit/debug flows. */
+    PlacementDecision placementDecisionFor(PlacementContext context);
 }

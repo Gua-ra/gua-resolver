@@ -4,6 +4,7 @@ DROP TABLE IF EXISTS roster_entry;
 DROP TABLE IF EXISTS transparency_log;
 DROP TABLE IF EXISTS directory_entry;
 DROP TABLE IF EXISTS username_index;
+DROP TABLE IF EXISTS routing_claim_nonce;
 
 CREATE TABLE roster_entry (
     id             VARCHAR(64)  PRIMARY KEY,
@@ -14,6 +15,8 @@ CREATE TABLE roster_entry (
     weight         INTEGER      NOT NULL DEFAULT 1,
     accepts_new    BOOLEAN      NOT NULL DEFAULT TRUE,
     signing_key    VARCHAR(255) NOT NULL,
+    search_visibility VARCHAR(16) NOT NULL DEFAULT 'GLOBAL',
+    search_groups_json TEXT      NOT NULL DEFAULT '[]',
     claims_json    TEXT         NOT NULL DEFAULT '[]',
     admitted_at    TIMESTAMP    NOT NULL,
     status         VARCHAR(16)  NOT NULL DEFAULT 'ACTIVE'
@@ -41,3 +44,12 @@ CREATE TABLE username_index (
     homeserver_id VARCHAR(64)  NOT NULL,
     updated_at    TIMESTAMP    NOT NULL
 );
+
+CREATE TABLE routing_claim_nonce (
+    issuer        VARCHAR(512) NOT NULL,
+    nonce         VARCHAR(128) NOT NULL,
+    expires_at    TIMESTAMP    NOT NULL,
+    first_seen_at TIMESTAMP    NOT NULL,
+    PRIMARY KEY (issuer, nonce)
+);
+CREATE INDEX ix_routing_claim_nonce_expires ON routing_claim_nonce (expires_at);

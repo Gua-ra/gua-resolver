@@ -10,6 +10,7 @@ on:
   push:
     branches: ["main"]
   pull_request:
+    branches: ["main"]
     types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
     inputs:
@@ -32,10 +33,10 @@ env:
   DEPLOY_LABEL: deploy:dev
 
 jobs:
-  build:
+  # Runs on every push, PR, and manual dispatch. This is the gate PRs get.
+  test:
     runs-on: ubuntu-latest
     outputs:
-      ref: ${{ steps.ref.outputs.ref }}
       deploy-to-dev: ${{ steps.gate.outputs.dev }}
     steps:
       - uses: actions/checkout@v4
@@ -60,11 +61,26 @@ jobs:
             echo "dev=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # An unlabelled PR stops at "it builds and the tests pass": no image, no deploy.
-      - if: github.event_name != 'pull_request' || steps.gate.outputs.dev == 'true'
-        uses: docker/setup-buildx-action@v3
+  # Image build + push to GHCR. Runs on push/dispatch, and for a same-repo PR labelled
+  # `deploy:dev` (an unlabelled PR stops at "it builds and the tests pass": no image, no
+  # deploy). ONLY in the origin repo: a fork/clone runs `test` above (so anyone can build +
+  # test), but the publish + deploy jobs skip cleanly in a fork. To run your own Gua
+  # resolver, change this guard to your repo, point IMAGE at your own GHCR namespace, and
+  # provide your own deploy target/runner.
+  build:
+    needs: test
+    if: >-
+      github.repository == 'Gua-ra/gua-resolver' && (
+        github.event_name != 'pull_request' ||
+        needs.test.outputs.deploy-to-dev == 'true')
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.ref.outputs.ref }}
+      deploy-to-dev: ${{ needs.test.outputs.deploy-to-dev }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
       - name: Log in to GHCR
-        if: github.event_name != 'pull_request' || steps.gate.outputs.dev == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -75,7 +91,6 @@ jobs:
         run: echo "ref=${IMAGE}:sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
       - name: Image metadata (tags)
         id: meta
-        if: github.event_name != 'pull_request' || steps.gate.outputs.dev == 'true'
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE }}
@@ -86,7 +101,6 @@ jobs:
             type=raw,value=dev,enable=${{ github.ref == 'refs/heads/main' }}
             type=raw,value=pr-${{ github.event.number }},enable=${{ github.event_name == 'pull_request' }}
       - name: Build + push (amd64 = the k3s target; arm64 for local dev)
-        if: github.event_name != 'pull_request' || steps.gate.outputs.dev == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -99,23 +113,29 @@ jobs:
 
   # AUTOMATIC on merge to main; also fires for a PR labelled `deploy:dev`, and manually
   # dispatchable to roll a branch onto dev for QA.
+  # Runs on the dedicated in-cluster, least-privilege runner (gua-deploy k8s/cicd/
+  # gua-resolver-deploy-runner.yaml): a public repo must not get the privileged host `dev`
+  # runner. The runner's ServiceAccount can patch ONLY the gua-resolver Deployment, and it
+  # uses the in-cluster kube API (no sudo, no kubeconfig secret).
   deploy-dev:
     needs: build
     if: >-
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev') ||
-      needs.build.outputs.deploy-to-dev == 'true'
+      github.repository == 'Gua-ra/gua-resolver' && (
+        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+        (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev') ||
+        needs.build.outputs.deploy-to-dev == 'true')
     runs-on: [self-hosted, gua-resolver-incluster]
     environment: dev
     steps:
       - name: Roll out ${{ needs.build.outputs.ref }} to dev
         run: |
           IMG="${{ needs.build.outputs.ref }}"
-          # k8s pulls the immutable sha-tagged image from GHCR via the ghcr-pull secret
-          # (deployment is imagePullPolicy: IfNotPresent + imagePullSecrets), no docker needed.
-          # Use k3s' bundled kubectl as root so PATH + kubeconfig are always correct on the node.
-          sudo k3s kubectl -n gua set image deployment/gua-resolver gua-resolver="$IMG"
-          sudo k3s kubectl -n gua rollout status deployment/gua-resolver --timeout=180s
+          # Single strategic patch: ensure the ghcr-pull secret (self-heals bootstrap drift where the live
+          # deployment was created from a local image without it) AND set the new immutable sha-tagged image,
+          # so the pod can pull from GHCR. One template change = one rollout.
+          kubectl -n gua patch deployment/gua-resolver --type=strategic \
+            -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"ghcr-pull\"}],\"containers\":[{\"name\":\"gua-resolver\",\"image\":\"$IMG\",\"imagePullPolicy\":\"IfNotPresent\"}]}}}}"
+          kubectl -n gua rollout status deployment/gua-resolver --timeout=180s
 
       - name: Tell the PR where it went
         if: github.event_name == 'pull_request'
@@ -138,19 +158,23 @@ jobs:
   # run here pins prod to an immutable sha.
   #
   # It also waits for a runner labelled `gua-resolver-incluster-prod`, which does not exist
-  # yet (the only registered runner is labelled `gua-resolver-incluster`). Until one is
-  # registered the job queues rather than deploying, which is the safe failure: it can no
-  # longer quietly hit the wrong namespace.
+  # yet (the only registered runner is labelled `gua-resolver-incluster`; stand a prod one
+  # up alongside the dev runner, mirroring gua-deploy k8s/cicd/gua-resolver-deploy-runner.yaml
+  # with a prod label + prod-cluster context). Until one is registered the job queues rather
+  # than deploying, which is the safe failure: it can no longer quietly hit the wrong
+  # namespace.
   deploy-prod:
     needs: build
     if: >-
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_dispatch' && inputs.environment == 'prod')
+      github.repository == 'Gua-ra/gua-resolver' && (
+        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+        (github.event_name == 'workflow_dispatch' && inputs.environment == 'prod'))
     runs-on: [self-hosted, gua-resolver-incluster-prod]
     environment: production
     steps:
       - name: Roll out ${{ needs.build.outputs.ref }} to prod
         run: |
           IMG="${{ needs.build.outputs.ref }}"
-          sudo k3s kubectl -n gua-prod set image deployment/gua-resolver gua-resolver="$IMG"
-          sudo k3s kubectl -n gua-prod rollout status deployment/gua-resolver --timeout=180s
+          kubectl -n gua-prod patch deployment/gua-resolver --type=strategic \
+            -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"ghcr-pull\"}],\"containers\":[{\"name\":\"gua-resolver\",\"image\":\"$IMG\",\"imagePullPolicy\":\"IfNotPresent\"}]}}}}"
+          kubectl -n gua-prod rollout status deployment/gua-resolver --timeout=180s
