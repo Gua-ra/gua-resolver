@@ -3,11 +3,15 @@ package global.gua.resolver.directory;
 import java.util.Optional;
 
 /**
- * The shared, persistent phone/username → homeserver directory (§4). Each homeserver is the authoritative
- * writer for its own accounts; the resolver front door reads it to route an existing account to its home.
+ * The persistent phone/username to homeserver directory, written by federation members through
+ * {@code POST /directory/entries}. Any ACTIVE member key can write any row; the store does not check
+ * that the writer hosts the account. The resolver reads it to route an existing account. This
+ * member-written directory is scheduled for removal (ADM-001 L1b) in favour of attested binding records
+ * (ADM-001 L7).
  *
- * <p>Privacy invariants: phones are addressed only by {@link PhoneHasher peppered HMAC}, never raw; there
- * is no list/scan/bulk-export method by design (mirrors query, they don't replicate the phone graph).
+ * <p>Privacy: phones are addressed only by {@link PhoneHasher peppered HMAC}, never raw, and there is no
+ * list/scan/bulk-export method (mirrors query rows one at a time; they do not replicate the directory).
+ * The shared pepper is scheduled for replacement (ADM-001 L15).
  */
 public interface DirectoryStore {
 

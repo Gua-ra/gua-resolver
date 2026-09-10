@@ -178,9 +178,9 @@ Also tracked in ADM-001. The largest open items, in plain terms:
 
 ## Where this document sits
 
-- This guide: the concepts and the story. **Target architecture.**
+- This guide: the concepts and the story. **TARGET ARCHITECTURE.**
 - [ADM-001](../decisions/ADM-001-identifier-binding-placement-trust.md): the normative decisions and their security reasoning. **Frozen pending implementation evidence.**
-- [Verification protocol](../verification/gua-resolver-verification-protocol.md): how to verify what the resolver serves **today**. Current implementation, with a banner listing what ADM-001 adds.
+- [Verification protocol](../verification/gua-resolver-verification-protocol.md): how to verify what the resolver serves **today**. **CURRENT IMPLEMENTATION**, with a banner listing what ADM-001 adds.
 - [Migration plan](../migrations/gua-resolver-migration-plan.md): the path from today's implementation to the target.
 - [Federation validation, August 2026](../validation/federation-e2e-2026-08.md): historical evidence that two homeservers federated end to end at that date. Not normative.
 - [Resolver target architecture, July 2026](history/gua-resolver-target-architecture-2026-07.md): the previous design document, preserved for provenance. Its core principle, that resolver nodes are verifiers and distributors rather than the source of truth, is carried forward. Its directory-write model is not.
