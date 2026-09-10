@@ -1,3 +1,15 @@
+> **Status: HISTORICAL DESIGN, July 2026.** Preserved for provenance. **Not normative.**
+>
+> This was the resolver's target architecture before [ADM-001](../../decisions/ADM-001-identifier-binding-placement-trust.md) was frozen. Its core principle, that resolver nodes should be verifiers and distributors rather than the sole source of truth, is carried forward unchanged and is the foundation of the current design.
+>
+> Three things in it are superseded and should not be relied on:
+>
+> - **The directory model.** It describes a privacy-preserving account directory that federation members write to directly. ADM-001 replaces member-written directory entries with binding records attested by accredited identifier verifiers, because a member's own statement must never be sufficient to claim an identifier.
+> - **Placement as routing execution.** It treats where an account lives as the output of routing rules applied to a verified context. ADM-001 separates allocation (a proposal for new accounts) from placement (a committed, signed record for existing ones), and forbids routing rules from silently moving an existing account.
+> - **The trust root.** It roots trust in configured authority keys. ADM-001 roots it in a pinned federation genesis with a threshold governance set, and requires each member to self-sign its own endpoint metadata so that governance can admit or remove a member but cannot redefine one.
+>
+> The current guide is [gua-identity-and-federation.md](../gua-identity-and-federation.md).
+
 # Gua Resolver Target Architecture
 
 Date: 2026-07-03

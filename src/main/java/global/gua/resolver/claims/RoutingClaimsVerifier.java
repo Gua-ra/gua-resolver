@@ -45,10 +45,11 @@ public class RoutingClaimsVerifier {
         this.clock = clock;
         this.replayStore = replayStore;
 
-        // Trust root for routing-claims signatures. Prefer keys scoped to the claims issuer
-        // (MAS/identity-service); fall back to policy, then authority keys, only as a bootstrap convenience.
-        // The fallback silently widens WHO can mint institutional/OIDC claims, so warn loudly: production
-        // should set an explicit gua.resolver.claims.trusted-keys list scoped to the identity-service issuer.
+        // Trust root for routing-claims signatures. Prefer keys scoped to the claims issuer; when the list is
+        // unset the code falls back to policy keys, then authority keys. The fallback widens WHO can mint
+        // institutional/OIDC claims to the authority key itself and is the key-role sharing ADM-001 L8
+        // requires to fail closed; until that change lands, production must set an explicit
+        // gua.resolver.claims.trusted-keys list scoped to the claims issuer.
         String keySource = "claims";
         List<ResolverProperties.TrustedKey> keys = props.getClaims().getTrustedKeys();
         if (keys.isEmpty()) {

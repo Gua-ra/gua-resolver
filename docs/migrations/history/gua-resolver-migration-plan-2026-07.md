@@ -1,3 +1,15 @@
+> **Status: HISTORICAL DESIGN, July 2026.** Preserved for provenance. **Not normative.**
+>
+> This was the phased rollout plan for signed routing policy and resolver mirrors. Phases 0 to 3 are done as far as this plan's code work goes: policy is enabled from a mounted file and signed, the routing-claims verifier and fail-closed directory lookup ship, and mirror mode with its cache exists and is covered by tests. Both deployed environments still run a single node, so the second node of phase 3 is a test fixture rather than a deployment.
+>
+> Phases 4 and 5 are superseded by [ADM-001](../../decisions/ADM-001-identifier-binding-placement-trust.md) and should not be executed as written:
+>
+> - **Phase 4, production governance.** It raises the resolver's own signing threshold and configures MAS or identity-service as routing-claims issuers. ADM-001 roots governance in a pinned federation genesis held outside the resolver process (L10, S5) and keeps identity-service out of federation-scope artifacts (L2).
+> - **Phase 5, directory availability.** Every option it lists keeps the member-written directory. ADM-001 replaces that directory with verifier-attested binding records and signed placement records (L1b, L6, L7), and separates replica count from authority (O12).
+> - **The backward-compatibility notes** treat the `exists` flag in `/resolve` and the directory-write signature string as contracts to preserve. ADM-001 marks the first as an enumeration defect to remove (L16) and the second as a path to delete (L1b).
+>
+> The current plan is [gua-resolver-migration-plan.md](../gua-resolver-migration-plan.md).
+
 # Gua Resolver Migration Plan
 
 Date: 2026-07-03

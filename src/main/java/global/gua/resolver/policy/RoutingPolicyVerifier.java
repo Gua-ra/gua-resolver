@@ -19,7 +19,9 @@ import global.gua.resolver.crypto.Ed25519;
  *       This attests the bundle including each delegation zone's grant (scope + delegate public key).</li>
  *   <li><b>Delegate</b>: each zone's rules must be signed by that zone's delegate key. A rule is only
  *       trusted when its zone is delegate-verified, so a delegate controls its own rules within its
- *       authority-granted scope and the authority cannot forge them.</li>
+ *       authority-granted scope. This constrains delegates, not the authority: the authority attests the
+ *       delegate key by signing the bundle and no delegate key is pinned, so an authority can publish a
+ *       zone whose delegate key it holds (ADM-001 L6 on unreviewed routing authority).</li>
  * </ol>
  */
 @Component

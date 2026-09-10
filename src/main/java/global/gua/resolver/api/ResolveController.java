@@ -29,11 +29,15 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 
 /**
- * The federation front door consumed by iOS / Web / Android BEFORE OIDC login. The client sends a
- * verified phone and learns which homeserver to authenticate against; for a new phone it learns where to
- * register. This is what replaces the clients' hardcoded {@code GuaDefaultAccountProvider}.
+ * The federation front door consumed by the iOS and Android clients BEFORE OIDC login. The client sends a
+ * phone number and learns which homeserver to authenticate against; for a phone with no account it learns
+ * where to register. Nothing about the phone is verified here: the endpoint is unauthenticated and takes a
+ * raw E.164, so today it also answers whether an account exists for any number (ADM-001 L16 names this as
+ * the enumeration oracle to close). This is what replaces the clients' hardcoded
+ * {@code GuaDefaultAccountProvider}.
  *
- * <p>Read-mostly and cacheable — the service is designed to run as a horizontally-scaled, mirrorable fleet.
+ * <p>Read-mostly and cacheable. Designed to run as a mirrorable fleet; both deployed environments run a
+ * single node today (ADM-001 O12).
  */
 @RestController
 public class ResolveController {

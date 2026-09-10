@@ -12,10 +12,11 @@ import global.gua.resolver.roster.SignedRoster;
 import global.gua.resolver.roster.TransparencyLog;
 
 /**
- * Public transparency-log surface (§5): anyone — clients, mirrors, auditors — can read the current
- * checkpoint, the event history, and a consistency proof between two tree sizes. Mirrors call
- * {@code /roster/log/consistency} to verify each pulled roster is an append-only extension of the last
- * (no rewritten history / split view). Authority mode only; mirrors relay from upstream.
+ * Public transparency-log surface: anyone (clients, mirrors, auditors) can read the current checkpoint, the
+ * event history, and a consistency proof between two tree sizes. Mirrors call
+ * {@code /roster/log/consistency} to verify each pulled roster is an append-only extension of the last one
+ * they accepted; that detects a history rewritten since then, not a split view between readers
+ * (ADM-001 L12). Authority mode only: a mirror does not relay these endpoints.
  */
 @RestController
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)

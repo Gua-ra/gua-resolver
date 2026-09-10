@@ -13,10 +13,13 @@ import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.roster.store.RosterEntryRepository;
 
 /**
- * Authority-mode {@link RosterStore} (§5): the roster's source of truth. Builds the published roster from
- * the persisted admitted entries, anchors it to the current transparency-log checkpoint, and threshold-
- * signs it. On a fresh database it seeds the single configured dev homeserver (Phase 1) and logs an ADMIT
- * event, so the audit trail exists from the very first entry.
+ * Authority-mode {@link RosterStore}: the node that builds the published roster from the persisted admitted
+ * entries, anchors it to the current transparency-log checkpoint, and threshold-signs it. It is the writer
+ * of the roster, not its trust root: integrity comes from transitions that others can replay, which the log
+ * does not yet support (ADM-001 L11, O12). Every rebuild re-signs with a fresh {@code issuedAt}, so the
+ * served bytes are not stable across rebuilds, and if its own signature threshold is not met it logs an
+ * error and still serves the under-signed roster. On a fresh database it seeds the single configured dev
+ * homeserver (Phase 1) and logs an ADMIT event, so the audit trail exists from the very first entry.
  *
  * <p>The roster {@code version} tracks the transparency-log size — every membership change appends a log
  * event, so a stable log size means a stable roster, and the signed snapshot is cached + only rebuilt when

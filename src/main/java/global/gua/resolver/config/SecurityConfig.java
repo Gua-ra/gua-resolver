@@ -13,12 +13,16 @@ import org.springframework.security.web.SecurityFilterChain;
 
 /**
  * Explicit public allowlist plus deny-by-default. The resolver front door is public by design:
- * {@code /resolve}, {@code /roster*}, {@code /policy/routing*}, health + docs are unauthenticated (rate
- * limited at the edge / by resilience4j). {@code /directory/entries} is unauthenticated at the transport
- * layer but authorised in the controller by a homeserver membership signature; {@code /directory/lookup} is
- * the mirror-facing, rate-limited, peppered-HMAC read. The {@code /authority/**} admin surface (admission,
- * status changes) requires the {@code ADMIN} role via HTTP Basic, and fails closed: with no admin password
- * hash configured there are no admin users, so those endpoints stay denied. Everything else is denied.
+ * {@code /resolve}, {@code /roster*}, {@code /policy/routing*}, health + docs are unauthenticated. The only
+ * rate limit in this service is the resilience4j bucket on {@code /directory/lookup}; {@code /resolve} has
+ * none, so it is an unrestricted existence oracle today (ADM-001 L16 requires layered controls that do not
+ * assume an account session). {@code /directory/entries} is unauthenticated at the transport layer and
+ * checked in the controller for a homeserver membership signature; that signature proves the writer is a
+ * member, not that it hosts the account, and the endpoint is scheduled for deletion (ADM-001 L1b).
+ * {@code /directory/lookup} is the mirror-facing, rate-limited, peppered-HMAC read. The
+ * {@code /authority/**} admin surface (admission, status changes) requires the {@code ADMIN} role via HTTP
+ * Basic, and fails closed: with no admin password hash configured there are no admin users, so those
+ * endpoints stay denied. Everything else is denied.
  */
 @Configuration
 public class SecurityConfig {

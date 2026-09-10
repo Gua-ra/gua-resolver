@@ -13,7 +13,9 @@ import java.util.List;
  * {@code leafHash = SHA256(0x00 || data)}, {@code nodeHash = SHA256(0x01 || left || right)}.
  *
  * <p>Provides the Merkle Tree Hash (root) and the consistency proof + verification that lets a mirror
- * prove a new checkpoint is an append-only extension of an older one (no rewritten history / split view).
+ * check that a new checkpoint is an append-only extension of one it saw earlier. That detects a history
+ * rewritten relative to that earlier checkpoint; ruling out a split view between readers needs witnesses
+ * and cross-channel comparison (ADM-001 L12).
  */
 public final class MerkleTree {
 
@@ -133,7 +135,7 @@ public final class MerkleTree {
     /**
      * Verify a consistency proof: that {@code newRoot} (of {@code second} leaves) is an append-only
      * extension of {@code oldRoot} (of {@code first} leaves). This is the check a mirror runs against the
-     * authority so a forked/rewritten history is detected.
+     * authority node so a history rewritten since {@code oldRoot} is detected.
      */
     public static boolean verifyConsistency(int first, int second, String oldRoot, String newRoot,
                                             List<String> proof) {
