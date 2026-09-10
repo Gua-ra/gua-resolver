@@ -1,7 +1,7 @@
 # Gua identity and federation: how accounts find their home
 
 > **Status: TARGET ARCHITECTURE, governed by [ADM-001](../decisions/ADM-001-identifier-binding-placement-trust.md).**
-> This guide explains the design in plain terms. Where it describes something that is not built yet, it says so. The section [What exists today](#what-exists-today) is the authoritative line between the two.
+> This guide explains the design in plain terms. Everything before the section [What exists today](#what-exists-today) describes the target, whether or not it is built yet; that section is the authoritative line between target and current implementation.
 
 This document is for a product stakeholder or a newly hired engineer. It teaches the concepts in the order they depend on each other, and it keeps cryptographic mechanism out of the main story. When you need the mechanism, follow the links.
 

@@ -8,7 +8,7 @@ import java.util.HexFormat;
 import java.util.List;
 
 /**
- * RFC 6962 (Certificate Transparency) Merkle tree hashing — the tamper-evidence primitive behind the
+ * RFC 6962 (Certificate Transparency) Merkle tree hashing, the tamper-evidence primitive behind the
  * transparency log (§5). Domain-separated so leaf and interior hashes can't be confused:
  * {@code leafHash = SHA256(0x00 || data)}, {@code nodeHash = SHA256(0x01 || left || right)}.
  *

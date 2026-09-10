@@ -2,7 +2,7 @@
 
 The federation **routing front door** for Gua: the service a client asks *before* login to find which homeserver an identifier leads to, and the service that serves the signed set of federated homeservers.
 
-The resolver **serves and verifies routing information. It does not authenticate anyone.** It is public, read-mostly, and anyone can mirror it. Running a resolver grants no authority over the federation.
+The resolver **serves and verifies routing information. It does not authenticate anyone.** It is public and read-mostly. A mirror mode exists and is exercised in tests; a complete, independently operated resolver is ADM-001 O12. Running a resolver grants no authority over the federation.
 
 > **Which document do you want?**
 > - What the resolver is and how routing, placement and binding fit together: [architecture guide](docs/architecture/gua-identity-and-federation.md).

@@ -8,9 +8,9 @@ import global.gua.resolver.roster.SignedRoster;
 /**
  * A signed commitment to the directory state: a Merkle root over all (peppered-phone-hash -> homeserver) and
  * (username -> homeserver) mappings, plus the entry count and issuance time. Anchored in the transparency log
- * so the authority cannot serve one directory mapping to one client and a different one to another
- * undetectably, and so returning-account routing is auditable. The raw phone graph is never exported: only
- * the root travels.
+ * so a client can detect a change against the checkpoint it stored earlier, and so returning-account routing
+ * is auditable. It does not prevent two clients being served different views (ADM-001 L11, L12). The raw
+ * phone graph is never exported: only the root travels.
  */
 public record DirectoryCheckpoint(String merkleRoot, long size, Instant issuedAt) {
 

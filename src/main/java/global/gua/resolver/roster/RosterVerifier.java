@@ -14,8 +14,9 @@ import global.gua.resolver.crypto.Ed25519;
 /**
  * Verifies that a {@link SignedRoster} carries at least {@code k} valid authority signatures (k-of-n
  * threshold, §5) over its canonical bytes, each from a distinct published authority key. This is the
- * "verify-on-read" gate every resolver — authority OR mirror — runs before trusting any roster entry, so
- * a single corrupt authority (or a tampered mirror feed) cannot inject a homeserver.
+ * "verify-on-read" gate every resolver, authority or mirror, runs before trusting any roster entry. It stops
+ * a tampered mirror feed. It stops a single corrupt authority key only when k is at least 2 across distinct
+ * operators; the deployed configuration is k=1, n=1 (ADM-001 O12).
  */
 @Component
 public class RosterVerifier {
@@ -36,7 +37,7 @@ public class RosterVerifier {
         return countValidSignatures(roster) >= threshold;
     }
 
-    /** Verify or throw — use on the trust boundary (mirror pull, roster load). */
+    /** Verify or throw; use on the trust boundary (mirror pull, roster load). */
     public void requireVerified(SignedRoster roster) {
         int valid = countValidSignatures(roster);
         if (valid < threshold) {

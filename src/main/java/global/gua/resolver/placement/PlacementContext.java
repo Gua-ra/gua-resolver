@@ -8,7 +8,7 @@ import java.util.TreeMap;
  * Everything the placement rules may use to decide where a brand-new account lives. All fields are
  * optional so callers supply only what they have verified; rules abstain when their inputs are absent.
  *
- * @param e164Phone     verified phone in E.164 (e.g. +5511987654321)
+ * @param e164Phone     phone in E.164 (e.g. +5511987654321); the resolver verifies nothing about it (ADM-001 L16)
  * @param country       ISO country derived from the phone (e.g. BR)
  * @param mccmnc        mobile country+network code derived from the number, if known (carrier identity)
  * @param carrier       human carrier name, if known

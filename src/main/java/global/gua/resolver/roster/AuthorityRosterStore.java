@@ -21,7 +21,7 @@ import global.gua.resolver.roster.store.RosterEntryRepository;
  * error and still serves the under-signed roster. On a fresh database it seeds the single configured dev
  * homeserver (Phase 1) and logs an ADMIT event, so the audit trail exists from the very first entry.
  *
- * <p>The roster {@code version} tracks the transparency-log size — every membership change appends a log
+ * <p>The roster {@code version} tracks the transparency-log size: every membership change appends a log
  * event, so a stable log size means a stable roster, and the signed snapshot is cached + only rebuilt when
  * the log advances (or {@link #refresh()} is called).
  */
@@ -71,7 +71,7 @@ public class AuthorityRosterStore implements RosterStore {
         SignedRoster signed = signer.sign(version, Instant.now(), all, head);
         if (!verifier.isVerified(signed)) {
             // Authority is misconfigured (no/short of signing keys for the threshold). Don't serve an
-            // unverifiable roster silently — clients/mirrors would reject it anyway.
+            // unverifiable roster silently; clients/mirrors would reject it anyway.
             log.error("Authority produced a roster below the {}-of-n signature threshold; "
                     + "check gua.resolver.authority.signing-private-key / trusted-keys / threshold",
                     verifier.threshold());

@@ -17,8 +17,9 @@ import global.gua.resolver.placement.ClaimPredicate;
 import global.gua.resolver.roster.RosterEntry;
 
 /**
- * Persistence for admitted homeservers (the authority's source-of-truth roster). Claim predicates are
- * stored as JSON. Authority mode reads + writes this; mirrors never touch it (they pull the signed snapshot).
+ * Persistence for admitted homeservers: the roster the node signs and serves in AUTHORITY mode. Self-signed
+ * entries are the ADM-001 L10 target. Claim predicates are stored as JSON. Authority mode reads + writes
+ * this; mirrors never touch it (they pull the signed snapshot).
  */
 @Repository
 public class RosterEntryRepository {

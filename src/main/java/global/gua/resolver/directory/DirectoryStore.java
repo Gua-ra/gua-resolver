@@ -20,7 +20,10 @@ public interface DirectoryStore {
     /** Homeserver id hosting this global username, if any. */
     Optional<String> homeserverIdForUsername(String username);
 
-    /** Upsert the phone→homeserver mapping (called by the hosting homeserver at account provisioning). */
+    /**
+     * Upsert a phone→homeserver row of the member-written directory. ADM-001 L1b removes this directory and
+     * L7 replaces it with attested binding records.
+     */
     void putPhone(String e164Phone, String homeserverId);
 
     /** Upsert the username→homeserver mapping. */

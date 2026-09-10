@@ -19,7 +19,7 @@ import global.gua.resolver.crypto.MerkleTree;
  * (Postgres in prod, H2 in tests). Phones are stored only as peppered HMACs. Upserts are portable
  * (UPDATE-then-INSERT, no vendor-specific {@code ON CONFLICT}/{@code MERGE}).
  *
- * <p>Authority mode only — it owns the phone graph. Mirrors {@link RemoteDirectoryStore query} it instead
+ * <p>Stores the directory rows in AUTHORITY mode. Mirrors {@link RemoteDirectoryStore query} it instead
  * of replicating it (§4).
  */
 @Component

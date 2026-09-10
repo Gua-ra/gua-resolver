@@ -1,4 +1,4 @@
-> **Status: HISTORICAL DESIGN, July 2026.** Preserved for provenance. **Not normative.**
+> **Status: HISTORICAL VALIDATION/DESIGN.** A design document from July 2026, preserved for provenance. **Not normative.**
 >
 > This was the resolver's target architecture before [ADM-001](../../decisions/ADM-001-identifier-binding-placement-trust.md) was frozen. Its core principle, that resolver nodes should be verifiers and distributors rather than the sole source of truth, is carried forward unchanged and is the foundation of the current design.
 >

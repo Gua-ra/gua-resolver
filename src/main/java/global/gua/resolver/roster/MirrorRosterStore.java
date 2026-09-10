@@ -20,9 +20,9 @@ import global.gua.resolver.crypto.MerkleTree;
  * Mirror-mode {@link RosterStore} (§4): pulls the signed roster from an upstream authority, verifies the
  * k-of-n authority signatures AND transparency-log consistency before serving it, then refreshes
  * periodically. An institution runs this to get a local, low-latency, sovereign copy of the roster
- * WITHOUT being an authority — it can never mint roster entries, only relay verified ones.
+ * WITHOUT being an authority: it can never mint roster entries, only relay verified ones.
  *
- * <p>The directory (phone graph) is deliberately NOT mirrored here — it is queried, rate-limited, against
+ * <p>The directory (phone graph) is deliberately NOT mirrored here; it is queried, rate-limited, against
  * the authoritative store; only the public roster is replicated.
  */
 @Component

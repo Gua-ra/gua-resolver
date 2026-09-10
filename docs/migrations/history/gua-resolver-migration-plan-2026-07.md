@@ -1,4 +1,4 @@
-> **Status: HISTORICAL DESIGN, July 2026.** Preserved for provenance. **Not normative.**
+> **Status: HISTORICAL VALIDATION/DESIGN.** A migration plan from July 2026, preserved for provenance. **Not normative.**
 >
 > This was the phased rollout plan for signed routing policy and resolver mirrors. Phases 0 to 3 are done as far as this plan's code work goes: policy is enabled from a mounted file and signed, the routing-claims verifier and fail-closed directory lookup ship, and mirror mode with its cache exists and is covered by tests. Both deployed environments still run a single node, so the second node of phase 3 is a test fixture rather than a deployment.
 >
