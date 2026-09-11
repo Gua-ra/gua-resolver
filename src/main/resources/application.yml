@@ -135,6 +135,14 @@ gua:
       # outage (returning-user login stays up). Negatives are never served stale. Zero = strict fail-closed.
       directory-cache-ttl: ${GUA_RESOLVER_MIRROR_DIRECTORY_CACHE_TTL:PT10M}
 
+    # Member self-signed roster entries (ADM-007). require-member-signature is a cutover: with it true an
+    # ACTIVE entry carrying no valid member self-signature is excluded from /roster, from placement and from
+    # existing-account resolution. Attest every ACTIVE member first (docs/runbooks/member-attestation.md);
+    # setting it back to false is the rollback and needs no code rollout.
+    roster:
+      require-member-signature: ${GUA_RESOLVER_ROSTER_REQUIRE_MEMBER_SIGNATURE:false}
+      member-max-lifetime: ${GUA_RESOLVER_ROSTER_MEMBER_MAX_LIFETIME:P400D}
+
     dev-homeserver:
       id: ${GUA_RESOLVER_DEVHOMESERVER_ID:dev}
       server-name: ${GUA_RESOLVER_DEVHOMESERVER_SERVERNAME:gua.local}

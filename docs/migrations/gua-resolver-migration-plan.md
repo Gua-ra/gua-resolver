@@ -38,9 +38,9 @@ The authority alone can no longer rewrite roster entries.
 
 **Changes**
 
-- Today: `AdmissionService` checks possession and keeps the member's key in the entry but discards the proof; entries carry no self-signature; only the authority signs.
-- Admission retains the member's genesis key.
-- Each entry carries a member self-signature over endpoint and key metadata (not `CanonicalRoster`'s delimiter form); clients verify both and refuse entries without one.
+- Today: an entry can carry the member's own signature over its endpoint, key and search fields (`gua-member-entry.v1`, encoded with `gua-lp.v1`, never `CanonicalRoster`'s delimiter form); the key an operator is admitted with is retained as the anchor of that chain; a member adopts, moves or re-keys its entry through `POST /authority/roster/{id}/member`, and each accepted attestation is committed to the log as a `MEMBER_ATTEST` leaf.
+- Today: entries with no member signature are still served and counted. The transition flag `gua.resolver.roster.require-member-signature` is off in both environments until every ACTIVE member has been attested (`docs/runbooks/member-attestation.md`).
+- Clients verify the member signature and refuse entries without one. Not started: client enforcement is Phase 6.
 
 **Validation**
 
@@ -52,7 +52,7 @@ A transition flag tolerates missing self-signatures; remove it afterwards.
 
 **Blocked by**
 
-O2 (canonical self-signed entry encoding), L4.
+O2 (canonical self-signed entry encoding), L4. Decided for roster, member and governance objects in [ADM-007](../decisions/ADM-007-canonical-encoding-and-member-entries.md), which unblocked this phase.
 
 ## Phase 2: separate governance keys
 

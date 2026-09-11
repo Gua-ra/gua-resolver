@@ -73,6 +73,10 @@ public final class MemberEntryVerifier {
         return maxLifetime;
     }
 
+    public Result verify(RosterEntry entry, Instant at, Prior prior) {
+        return verify(entry.homeserver(), entry.member(), at, prior);
+    }
+
     public Result verify(Homeserver homeserver, MemberAttestation member, Instant at) {
         return verify(homeserver, member, at, null);
     }

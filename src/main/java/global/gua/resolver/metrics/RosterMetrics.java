@@ -10,6 +10,8 @@ import io.micrometer.core.instrument.MeterRegistry;
  * <ul>
  *   <li>{@code gua_resolver_roster_version} — current signed-roster version,</li>
  *   <li>{@code gua_resolver_roster_homeservers{status="active"}} — admitted, active homeservers,</li>
+ *   <li>{@code gua_resolver_roster_homeservers{status="unattested"}}: ACTIVE homeservers with no valid
+ *       member self-signature, whether still served or excluded by the transition flag (ADM-007),</li>
  *   <li>{@code gua_resolver_transparency_log_size} — append-only membership-event count.</li>
  * </ul>
  * Gauges read the current roster on scrape, so they always reflect live state.
@@ -26,6 +28,11 @@ public class RosterMetrics {
                 .builder("gua.resolver.roster.homeservers", rosterStore,
                         rs -> safe(() -> rs.current().activeEntries().size()))
                 .tag("status", "active")
+                .register(metrics);
+        io.micrometer.core.instrument.Gauge
+                .builder("gua.resolver.roster.homeservers", rosterStore,
+                        rs -> safe(rs::unattestedActiveCount))
+                .tag("status", "unattested")
                 .register(metrics);
     }
 

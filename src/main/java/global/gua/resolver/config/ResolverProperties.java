@@ -35,6 +35,7 @@ public class ResolverProperties {
     private final Claims claims = new Claims();
     private final Admin admin = new Admin();
     private final Abuse abuse = new Abuse();
+    private final Roster roster = new Roster();
     private final DevHomeserver devHomeserver = new DevHomeserver();
 
     public Mode getMode() { return mode; }
@@ -46,6 +47,7 @@ public class ResolverProperties {
     public Claims getClaims() { return claims; }
     public Admin getAdmin() { return admin; }
     public Abuse getAbuse() { return abuse; }
+    public Roster getRoster() { return roster; }
     public DevHomeserver getDevHomeserver() { return devHomeserver; }
 
     /** The published authority key set (verify) + this node's signing key (authority mode). This configured
@@ -268,6 +270,24 @@ public class ResolverProperties {
         public void setClientExpiry(Duration v) { this.clientExpiry = v; }
         public boolean isTraceEnabled() { return traceEnabled; }
         public void setTraceEnabled(boolean v) { this.traceEnabled = v; }
+    }
+
+    /**
+     * Member self-signed roster entries (ADM-007). The transition flag is a cutover, not a feature switch:
+     * with it on, an ACTIVE entry that carries no valid member self-signature is excluded from the signed
+     * roster, from placement and from existing-account resolution, so every ACTIVE member must be attested
+     * before it is turned on. Turning it back off restores tolerance without a code rollout.
+     */
+    public static class Roster {
+        /** Whether an ACTIVE entry without a valid member self-signature is excluded from the roster. */
+        private boolean requireMemberSignature = false;
+        /** Longest validity window a member entry may claim between notBefore and notAfter. */
+        private Duration memberMaxLifetime = Duration.ofDays(400);
+
+        public boolean isRequireMemberSignature() { return requireMemberSignature; }
+        public void setRequireMemberSignature(boolean v) { this.requireMemberSignature = v; }
+        public Duration getMemberMaxLifetime() { return memberMaxLifetime; }
+        public void setMemberMaxLifetime(Duration v) { this.memberMaxLifetime = v; }
     }
 
     /** The single homeserver the authority seeds its roster with on first boot (Phase 1 / fresh DB). */

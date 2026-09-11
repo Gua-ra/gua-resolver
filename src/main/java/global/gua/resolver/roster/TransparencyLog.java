@@ -11,11 +11,28 @@ package global.gua.resolver.roster;
  */
 public interface TransparencyLog {
 
+    /**
+     * Leaf type for an accepted member self-signed entry (ADM-007). Its payload is the SHA-256 of the
+     * {@code gua-member-entry.v1} canonical bytes, so the log commits to the exact entry that was accepted.
+     * ADMIT and the status leaves are unchanged, so an admission carrying a member block appends two leaves.
+     */
+    String MEMBER_ATTEST = "MEMBER_ATTEST";
+
     /** A single membership event (the leaf that gets hashed into the tree). */
     record Event(long index, String type, String homeserverId, String payloadHash, String recordedAt) {}
 
-    /** Append an event; returns its checkpoint (root + size) after inclusion. */
-    SignedRoster.LogCheckpoint append(String type, String homeserverId, String payloadHash);
+    /**
+     * Append an event at a caller-supplied time; returns its checkpoint (root + size) after inclusion. The
+     * caller passes the time when that same instant is the one it validated against, so the sequenced time
+     * in the leaf is the acceptance time and not a second, slightly later reading of the clock (ADM-001 L11).
+     */
+    SignedRoster.LogCheckpoint append(String type, String homeserverId, String payloadHash,
+                                      java.time.Instant recordedAt);
+
+    /** Append an event now; returns its checkpoint (root + size) after inclusion. */
+    default SignedRoster.LogCheckpoint append(String type, String homeserverId, String payloadHash) {
+        return append(type, homeserverId, payloadHash, java.time.Instant.now());
+    }
 
     /** Current checkpoint (Merkle root + tree size). */
     SignedRoster.LogCheckpoint head();
