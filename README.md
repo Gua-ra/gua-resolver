@@ -38,7 +38,7 @@ The `exists` flag stays in the response contract: the iOS and Android clients ch
 
 The code on `main` is the current implementation. The decision record defines the target. Three things differ in what this service serves today:
 
-- **Resolution.** Today: the resolver evaluates policy on every request. Target: the answer is backed by a committed, signed placement record.
+- **Resolution.** Today: for a new account the resolver evaluates policy on every request; for an existing account it reads the phone directory. Nothing writes that directory over HTTP any more (the member write endpoint was removed under ADM-001 L1b); the rows already there stay, and are still read, until placement records replace them. Target: the answer is backed by a committed, signed placement record.
 - **Roster.** Today: the roster carries authority signatures and a log checkpoint. Target: each entry is also self-signed by the member it describes.
 - **Directory pepper.** Today: `directory.pepper` is a secret shared with identity-service. Target: blinded routing keys replace it. The migration plan has a phase for this. The construction is not chosen yet.
 

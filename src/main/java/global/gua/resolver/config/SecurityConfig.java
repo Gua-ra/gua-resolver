@@ -17,13 +17,11 @@ import org.springframework.security.web.SecurityFilterChain;
  * {@code /resolve} is rate-limited per client and globally by {@code ResolveAbuseFilter}, registered for
  * that path only and ordered ahead of this chain; it still answers {@code exists} for any raw E.164, so it
  * remains an existence oracle, only no longer a free one (ADM-001 L16 requires layered controls that do not
- * assume an account session). {@code /directory/entries} is unauthenticated at the transport layer and
- * checked in the controller for a homeserver membership signature; that signature proves the writer is a
- * member, not that it hosts the account, and the endpoint is scheduled for deletion (ADM-001 L1b).
- * {@code /directory/lookup} is the mirror-facing, rate-limited, peppered-HMAC read. The
- * {@code /authority/**} admin surface (admission, status changes) requires the {@code ADMIN} role via HTTP
- * Basic, and fails closed: with no admin password hash configured there are no admin users, so those
- * endpoints stay denied. Everything else is denied.
+ * assume an account session). {@code /directory/lookup} is the mirror-facing, rate-limited, peppered-HMAC
+ * read; the directory has no write endpoint (ADM-001 L1b). The {@code /authority/**} admin surface
+ * (admission, status changes) requires the {@code ADMIN} role via HTTP Basic, and fails closed: with no
+ * admin password hash configured there are no admin users, so those endpoints stay denied. Everything else
+ * is denied.
  */
 @Configuration
 public class SecurityConfig {
@@ -35,7 +33,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/resolve", "/roster", "/roster/log", "/roster/log/consistency",
                                 "/policy/routing", "/policy/routing/status", "/policy/log",
-                                "/directory/entries", "/directory/lookup", "/directory/checkpoint",
+                                "/directory/lookup", "/directory/checkpoint",
                                 "/actuator/**",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/authority/**").hasRole("ADMIN")

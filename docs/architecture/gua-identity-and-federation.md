@@ -110,7 +110,7 @@ Everything above is target. On `main` today:
 **Built, being replaced:**
 
 - One global identity-service holding credentials and login for every homeserver. The target moves authentication to each homeserver; the decision record and a follow-up cover its future role.
-- A directory of phone-number fingerprints any member can write to. The target replaces it with verifier-signed bindings; the write endpoint is scheduled for removal.
+- A directory of phone-number fingerprints that members used to write to. The write endpoint has been removed (ADM-001 L1b); the existing rows stay, and are still read, until placement records replace them. The target replaces the directory with verifier-signed bindings.
 - Routing computed per request from policy, with no committed placement record. The target makes placement a signed record.
 
 **Not built yet:**

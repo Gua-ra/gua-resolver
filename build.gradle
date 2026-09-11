@@ -38,8 +38,8 @@ dependencies {
     implementation 'com.github.ben-manes.caffeine:caffeine'
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.13'
 
-    // Persistent roster + transparency log + the member-written phone->homeserver directory (scheduled for
-    // removal, ADM-001 L1b).
+    // Persistent roster + transparency log + the phone->homeserver directory (its member write endpoint is
+    // removed, ADM-001 L1b; existing rows stay until placement records replace them).
     // Ed25519 authority/roster signatures use the JDK-native provider (java.security, "Ed25519"); no extra
     // crypto lib is needed. JdbcTemplate (not JPA) keeps the persistence thin + the SQL explicit.
     implementation 'org.springframework.boot:spring-boot-starter-jdbc'

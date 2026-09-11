@@ -3,11 +3,11 @@ package global.gua.resolver.directory;
 import java.util.Optional;
 
 /**
- * The persistent phone/username to homeserver directory, written by federation members through
- * {@code POST /directory/entries}. Any ACTIVE member key can write any row; the store does not check
- * that the writer hosts the account. The resolver reads it to route an existing account. This
- * member-written directory is scheduled for removal (ADM-001 L1b) in favour of attested binding records
- * (ADM-001 L7).
+ * The persistent phone/username to homeserver directory. It has no HTTP write path: the member-written
+ * {@code POST /directory/entries} was removed (ADM-001 L1b). The write methods below are an internal API
+ * (tests seed rows with them, and the placement work will need writers); no controller calls them. Rows
+ * written before the removal stay, and the resolver reads them to route an existing account, until
+ * attested binding records replace them (ADM-001 L7).
  *
  * <p>Privacy: phones are addressed only by {@link PhoneHasher peppered HMAC}, never raw, and there is no
  * list/scan/bulk-export method (mirrors query rows one at a time; they do not replicate the directory).
@@ -25,8 +25,8 @@ public interface DirectoryStore {
     Optional<String> homeserverIdForUsername(String username);
 
     /**
-     * Upsert a phone→homeserver row of the member-written directory. ADM-001 L1b removes this directory and
-     * L7 replaces it with attested binding records.
+     * Upsert a phone→homeserver row. Internal API only: no HTTP path reaches it (ADM-001 L1b). ADM-001 L7
+     * replaces these rows with attested binding records.
      */
     void putPhone(String e164Phone, String homeserverId);
 
