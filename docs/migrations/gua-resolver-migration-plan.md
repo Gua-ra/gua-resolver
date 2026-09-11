@@ -64,24 +64,29 @@ Governance signing leaves the resolver process and is anchored in a pinned feder
 
 **Changes**
 
-- Today: `RoutingClaimsVerifier` falls back to the authority keys when its trusted-key list is unset, and dev runs that way.
-- Create the `FederationGenesis` with its threshold set of governance keys, and the registry roots under it (`HomeserverRegistry`, `VerifierRegistry`, `PolicyRegistry`, `WitnessRegistry`), as ADM-001 L10 specifies. Distribute it out of band: pinned in first-party builds and published at a well-known location.
-- That governance key set, outside the resolver, signs membership epochs and accreditations. Until a second key holder, custody and recovery procedures exist, every independence guarantee reduces to one operator; documentation must say so.
-- The resolver's key signs checkpoints and serves records; it can no longer admit or accredit.
-- `RoutingClaimsVerifier` fails closed on an unset trusted-key list.
+- Today: the resolver loads a pinned `FederationGenesis` with its threshold set of governance keys, verifies it against the id it is pinned to, applies any governance key transitions, and publishes it at `GET /.well-known/gua-federation`. The four registry roots (`HomeserverRegistry`, `VerifierRegistry`, `PolicyRegistry`, `WitnessRegistry`) are named in it; only `HomeserverRegistry` has a code path.
+- Today: that governance key set, held outside the resolver, signs membership epochs. A signed `HomeserverRegistry` epoch is submitted through `POST /authority/registry/homeservers/epoch`, verified back to the genesis with the threshold counted by `operatorId`, committed to the log as a `MEMBERSHIP_EPOCH` leaf, and served at `GET /registry/homeservers/epoch/current|{n}`.
+- Today: with `gua.resolver.governance.required` on, the resolver's key can no longer admit or change a member's status. An admission lands `PENDING` and stays out of the signed roster entirely until an epoch admits it, and a suspend or revoke records intent only, on the log as a `STATUS_INTENT` leaf; an epoch is what makes either take effect. The flag is off in both environments until the key ceremony has run (`docs/runbooks/governance-keys.md`).
+- Today: `gua.resolver.genesis.expected-chain-head` pins how far the governance key transition chain has run, so a truncated or removed transitions file is a startup failure rather than a silent downgrade to a key set that was rotated out.
+- Today: policy signing has left the process. `POST /authority/policy/sign` is replaced by `POST /authority/policy/validate`, which validates against the live roster and reports whether the bundle verifies under the governance keys; bundles are signed offline with the governance tool.
+- Today: `RoutingClaimsVerifier` fails closed on an unset trusted-key list, `RoutingPolicyVerifier` verifies under the governance key set and no longer falls back to the authority keys, and `RoutingPolicySigner` has no authority fallback.
+- Accreditations are Phase 5, witnesses Phase 9, and a PolicyRegistry epoch object is deferred until `IdentifierProofPolicy` needs it.
+- Clients pin the genesis per environment. Not started: client enforcement is Phase 6, so the chain is data to them, not a gate.
 
 **Validation**
 
 - Governance signatures from the operational key alone are rejected.
-- Membership, accreditations and policy verify back to the pinned genesis through the registry roots.
+- Membership and policy verify back to the pinned genesis; a genesis file that does not match the pinned id fails startup.
+- With the flag on, a direct admission cannot become ACTIVE without an epoch, and is not served in any form before one.
+- A transitions file shorter than the pinned chain head fails startup.
 
 **Rollback**
 
-Revert the cutover commit; the operational key regains governance powers. A genesis already pinned in client builds stays; clients do not enforce it before Phase 6.
+`gua.resolver.governance.required=false` restores the direct admission path without a code rollout. Reverting the fail-closed commit restores in-process policy signing and the verifier fallbacks. A genesis already pinned in client builds stays; clients do not enforce it before Phase 6.
 
 **Blocked by**
 
-S5.
+Was blocked by S5. Unblocked by the minimal custody rule in [ADM-007](../decisions/ADM-007-canonical-encoding-and-member-entries.md) "Phase 2 objects" (key held off-cluster, encrypted at rest, offline backup, never a Kubernetes Secret in a resolver namespace, manual signing, `k = 1` at one operator stated plainly). S5 itself stays open: nothing here makes the governance key set a genuinely separate trust domain.
 
 ## Phase 3: `AccountGenesis` and `accountId`
 
