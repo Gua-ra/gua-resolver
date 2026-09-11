@@ -297,7 +297,9 @@ public class ResolverProperties {
     /**
      * The pinned federation genesis (ADM-001 L10). The file is public and committed; the pin is
      * {@code expected-id}, which is what makes swapping the file for another validly signed genesis fail at
-     * startup instead of silently changing the federation's trust root. Leave {@code file} unset to run
+     * startup instead of silently changing the federation's trust root. {@code expected-chain-head} pins
+     * how far the key transition chain has run, so a truncated transitions file fails at startup too rather
+     * than downgrading the key set. Leave {@code file} unset to run
      * without governance, which is the default and the pre-Phase-2 behaviour.
      */
     public static class Genesis {
@@ -307,6 +309,13 @@ public class ResolverProperties {
         private String transitionsFile;
         /** The genesis id this resolver is pinned to; a mismatch is a startup failure. */
         private String expectedId;
+        /**
+         * The governance key chain head this resolver is pinned to: the genesis id while no transition has
+         * been applied, the hash of the last applied transition after that. It is what a truncated or
+         * missing transitions file runs into, since the chain checks alone accept a shortened chain and
+         * would put a rotated-out key back in force.
+         */
+        private String expectedChainHead;
 
         public String getFile() { return file; }
         public void setFile(String file) { this.file = file; }
@@ -314,6 +323,8 @@ public class ResolverProperties {
         public void setTransitionsFile(String transitionsFile) { this.transitionsFile = transitionsFile; }
         public String getExpectedId() { return expectedId; }
         public void setExpectedId(String expectedId) { this.expectedId = expectedId; }
+        public String getExpectedChainHead() { return expectedChainHead; }
+        public void setExpectedChainHead(String head) { this.expectedChainHead = head; }
     }
 
     /**

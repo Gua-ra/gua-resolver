@@ -8,7 +8,8 @@ import global.gua.resolver.crypto.CanonicalEncoder;
  * The {@code gua-federation-genesis.v1} canonical bytes, encoded with {@code gua-lp.v1} (ADM-007).
  *
  * <p>Field order: schema tag; federationLabel; createdAt (int64 epoch ms); hashSuite; threshold (int64);
- * keys as a list sorted by keyId, each {keyId, alg, publicKey, operatorId}; registries as a set.
+ * keys as a list sorted by keyId, each {keyId, alg, publicKey, operatorId}; registries as a set, sorted
+ * here, so the order the JSON carries them in changes nothing and never changes the genesisId.
  * Signatures are outside these bytes.
  */
 public final class CanonicalGenesis {

@@ -64,7 +64,8 @@ Governance signing leaves the resolver process and is anchored in a pinned feder
 
 - Today: the resolver loads a pinned `FederationGenesis` with its threshold set of governance keys, verifies it against the id it is pinned to, applies any governance key transitions, and publishes it at `GET /.well-known/gua-federation`. The four registry roots (`HomeserverRegistry`, `VerifierRegistry`, `PolicyRegistry`, `WitnessRegistry`) are named in it; only `HomeserverRegistry` has a code path.
 - Today: that governance key set, held outside the resolver, signs membership epochs. A signed `HomeserverRegistry` epoch is submitted through `POST /authority/registry/homeservers/epoch`, verified back to the genesis with the threshold counted by `operatorId`, committed to the log as a `MEMBERSHIP_EPOCH` leaf, and served at `GET /registry/homeservers/epoch/current|{n}`.
-- Today: with `gua.resolver.governance.required` on, the resolver's key can no longer admit or change a member's status. An admission lands `PENDING` and a suspend or revoke records intent only; an epoch is what makes either take effect. The flag is off in both environments until the key ceremony has run (`docs/runbooks/governance-keys.md`).
+- Today: with `gua.resolver.governance.required` on, the resolver's key can no longer admit or change a member's status. An admission lands `PENDING` and stays out of the signed roster entirely until an epoch admits it, and a suspend or revoke records intent only, on the log as a `STATUS_INTENT` leaf; an epoch is what makes either take effect. The flag is off in both environments until the key ceremony has run (`docs/runbooks/governance-keys.md`).
+- Today: `gua.resolver.genesis.expected-chain-head` pins how far the governance key transition chain has run, so a truncated or removed transitions file is a startup failure rather than a silent downgrade to a key set that was rotated out.
 - Today: policy signing has left the process. `POST /authority/policy/sign` is replaced by `POST /authority/policy/validate`, which validates against the live roster and reports whether the bundle verifies under the governance keys; bundles are signed offline with the governance tool.
 - Today: `RoutingClaimsVerifier` fails closed on an unset trusted-key list, `RoutingPolicyVerifier` verifies under the governance key set and no longer falls back to the authority keys, and `RoutingPolicySigner` has no authority fallback.
 - Accreditations are Phase 5, witnesses Phase 9, and a PolicyRegistry epoch object is deferred until `IdentifierProofPolicy` needs it.
@@ -74,7 +75,8 @@ Governance signing leaves the resolver process and is anchored in a pinned feder
 
 - Governance signatures from the operational key alone are rejected.
 - Membership and policy verify back to the pinned genesis; a genesis file that does not match the pinned id fails startup.
-- With the flag on, a direct admission cannot become ACTIVE without an epoch.
+- With the flag on, a direct admission cannot become ACTIVE without an epoch, and is not served in any form before one.
+- A transitions file shorter than the pinned chain head fails startup.
 
 **Rollback**
 

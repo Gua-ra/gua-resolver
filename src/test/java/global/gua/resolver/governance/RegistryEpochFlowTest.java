@@ -1,5 +1,6 @@
 package global.gua.resolver.governance;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -13,11 +14,15 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
+import global.gua.resolver.admission.AdmissionRequest;
 import global.gua.resolver.admission.AdmissionService;
 import global.gua.resolver.crypto.Ed25519;
+import global.gua.resolver.domain.Homeserver;
+import global.gua.resolver.placement.ClaimPredicate;
 import global.gua.resolver.roster.JdbcTransparencyLog;
 import global.gua.resolver.roster.RosterEntry;
 import global.gua.resolver.roster.RosterStore;
+import global.gua.resolver.roster.SignedRoster;
 import global.gua.resolver.roster.TransparencyLog;
 import global.gua.resolver.roster.store.RosterEntryRepository;
 
@@ -169,7 +174,14 @@ class RegistryEpochFlowTest {
         registry.commit(signPending(List.of(GOVERNANCE)), registry.pending().content());
         assertThat(rosterStore.current().activeEntries()).hasSize(1);
 
+        long beforeIntent = transparencyLog.head().size();
         admission.setStatus("dev", RosterEntry.Status.SUSPENDED);
+
+        // The request reaches the log even though nothing served changed, so a suspend governance never
+        // ratifies is still auditable.
+        assertThat(transparencyLog.head().size()).isEqualTo(beforeIntent + 1);
+        assertThat(transparencyLog.eventsOfType(TransparencyLog.STATUS_INTENT)).singleElement()
+                .satisfies(e -> assertThat(e.homeserverId()).isEqualTo("dev"));
 
         // Still ACTIVE and still served: recording the intent is not the act.
         assertThat(entries.findById("dev").orElseThrow().status()).isEqualTo(RosterEntry.Status.ACTIVE);
@@ -198,6 +210,9 @@ class RegistryEpochFlowTest {
                 .isEqualTo(RosterEntry.Status.PENDING);
         assertThat(rosterStore.current().activeEntries())
                 .noneSatisfy(e -> assertThat(e.homeserver().id()).isEqualTo("governed"));
+        // Not in the published document either, in any status: PENDING is not something a client is shown.
+        assertThat(rosterStore.served().entries())
+                .noneSatisfy(e -> assertThat(e.homeserver().id()).isEqualTo("governed"));
 
         registry.commit(signPending(List.of(GOVERNANCE)), registry.pending().content());
 
@@ -224,6 +239,72 @@ class RegistryEpochFlowTest {
         assertThatThrownBy(() -> registry.commit(replay, second.content()))
                 .isInstanceOf(GovernanceException.class)
                 .hasMessageContaining("expected epoch 3");
+    }
+
+    @Test
+    void aPendingEntryIsNotInTheRosterTheAuthoritySignsAndServes() {
+        // The seeded entry is PENDING, so the served document holds no entries at all: not an entry marked
+        // PENDING, no entry. The signed bytes say nothing about a member governance has not admitted, and
+        // the status never reaches a mirror or a client that would have to parse it.
+        assertThat(entries.findById("dev").orElseThrow().status()).isEqualTo(RosterEntry.Status.PENDING);
+        assertThat(rosterStore.served().entries()).isEmpty();
+
+        registry.commit(signPending(List.of(GOVERNANCE)), registry.pending().content());
+
+        SignedRoster after = rosterStore.served();
+        assertThat(after.entries()).extracting(e -> e.homeserver().id()).containsExactly("dev");
+        assertThat(after.entries()).extracting(RosterEntry::status)
+                .containsExactly(RosterEntry.Status.ACTIVE);
+    }
+
+    @Test
+    void twoAdmissionsClaimingTheSameAccountsCannotBothWaitForAnEpoch() {
+        admitClaiming("hs-a", "hs-a.gua.global", "72411");
+
+        // Both would be PENDING, so a gate that looked only at ACTIVE entries would admit the second and the
+        // epoch that ratified them would make the overlap real.
+        assertThatThrownBy(() -> admitClaiming("hs-b", "hs-b.gua.global", "72411"))
+                .isInstanceOf(AdmissionService.AdmissionException.class)
+                .hasMessageContaining("overlap");
+
+        assertThat(entries.findById("hs-b")).isEmpty();
+        assertThat(entries.findById("hs-a").orElseThrow().status()).isEqualTo(RosterEntry.Status.PENDING);
+    }
+
+    @Test
+    void anEpochThatWouldLeaveTwoMembersClaimingTheSameAccountsIsRefused() {
+        // Inserted past the admission gate on purpose: the gate is one guard, and an epoch applies claims as
+        // well as statuses, so it is the last point at which the overlap could become real.
+        entries.insert(new RosterEntry(homeserver("hs-a", "hs-a.gua.global"), List.of(claiming("72411")),
+                Instant.now(), RosterEntry.Status.PENDING));
+        entries.insert(new RosterEntry(homeserver("hs-b", "hs-b.gua.global"), List.of(claiming("72411")),
+                Instant.now(), RosterEntry.Status.PENDING));
+
+        RegistryService.PendingEpoch pending = registry.pending();
+        assertThatThrownBy(() -> registry.commit(signPending(List.of(GOVERNANCE)), pending.content()))
+                .isInstanceOf(GovernanceException.class)
+                .hasMessageContaining("claiming the same accounts");
+
+        assertThat(entries.findById("hs-a").orElseThrow().status()).isEqualTo(RosterEntry.Status.PENDING);
+    }
+
+    /** Admit a homeserver claiming one carrier, through the ordinary gate. */
+    private void admitClaiming(String id, String serverName, String mccmnc) {
+        Ed25519.KeyPairB64 key = Ed25519.generate();
+        String proof = Ed25519.sign(Ed25519.privateKey(key.privateKeyB64()),
+                serverName.getBytes(StandardCharsets.UTF_8));
+        admission.admit(new AdmissionRequest(id, serverName, "https://" + serverName,
+                "https://account." + serverName, "BR", 1, true, key.publicKeyB64(), proof,
+                "dns-txt-proof-token", List.of(claiming(mccmnc)), null, null));
+    }
+
+    private static ClaimPredicate claiming(String mccmnc) {
+        return new ClaimPredicate(null, mccmnc, null, null, null, null, null, 100);
+    }
+
+    private static Homeserver homeserver(String id, String serverName) {
+        return new Homeserver(id, serverName, "https://" + serverName, "https://account." + serverName,
+                "BR", 1, true, "");
     }
 
     @Test

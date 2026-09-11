@@ -99,8 +99,14 @@ public class AdmissionService {
         if (entries.existsByServerName(req.serverName())) {
             throw new AdmissionException(req.serverName() + " is already admitted");
         }
-        List<RosterEntry> existing = entries.findAll().stream().filter(RosterEntry::isActive).toList();
-        for (RosterEntry e : existing) {
+        // Non-REVOKED, not only ACTIVE: a suspended member keeps the range it was admitted for while it is
+        // out of service, and under governance an admitted entry sits in PENDING holding that range until an
+        // epoch ratifies it. Checking ACTIVE entries alone would let two homeservers claiming the same
+        // accounts both be admitted while they wait, and the epoch that made them ACTIVE would make the
+        // overlap real, which is exactly what ClaimOverlap exists to prevent.
+        List<RosterEntry> holdingClaims = entries.findAll().stream()
+                .filter(e -> e.status() != RosterEntry.Status.REVOKED).toList();
+        for (RosterEntry e : holdingClaims) {
             if (ClaimOverlap.conflicts(req.claims(), e.claims())) {
                 throw new AdmissionException(
                         "requested claims overlap those of " + e.homeserver().serverName());
@@ -132,8 +138,9 @@ public class AdmissionService {
                     + "this entry until its operator attests it (ADM-007)", req.serverName());
         }
 
-        // Under governance an admission is an intent, not an act: the entry waits in PENDING and is never
-        // served until a governance-signed membership epoch makes it ACTIVE (ADM-001 L10).
+        // Under governance an admission is an intent, not an act: the entry waits in PENDING, stays out of
+        // the signed roster entirely, and is served only once a governance-signed membership epoch makes it
+        // ACTIVE (ADM-001 L10).
         RosterEntry.Status initial = genesis.governanceRequired()
                 ? RosterEntry.Status.PENDING
                 : RosterEntry.Status.ACTIVE;
@@ -277,6 +284,12 @@ public class AdmissionService {
         }
         if (genesis.governanceRequired()) {
             entries.setPendingStatus(id, status);
+            // The request is logged even though nothing served changes. A suspend governance never ratifies
+            // would otherwise be recorded nowhere an auditor can see it, and who asked for a member to be
+            // taken out of service is the kind of thing this log exists to answer. The leaf commits to the
+            // request; the epoch that carries it commits to the change.
+            transparencyLog.append(TransparencyLog.STATUS_INTENT, id,
+                    MerkleTree.sha256Hex(id + ":" + status + ":intent"));
             log.info("Recorded intent to set homeserver {} status -> {}. It stays as it is until a "
                     + "governance-signed membership epoch carries the change (ADM-001 L10)", id, status);
             return rosterStore.current();

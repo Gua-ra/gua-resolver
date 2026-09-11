@@ -85,6 +85,12 @@ The genesis file is public and committed to gua-deploy; the **pin** is what make
 
 - Record `genesisId` as the resolver's `GUA_RESOLVER_GENESIS_EXPECTED_ID`. A file that does not hash to the
   pinned id fails startup, so whoever controls the mount cannot swap in another validly signed genesis.
+- Record the chain head as `GUA_RESOLVER_GENESIS_EXPECTED_CHAIN_HEAD`. Before the first rotation it is the
+  `genesisId` itself. Pinning the root alone leaves a downgrade open: a truncated or deleted transitions file
+  is still a well formed chain, so the resolver would start on the genesis key set and put a key that was
+  rotated out, possibly because it was compromised, back in force. The head pin makes that a startup failure
+  (ADM-001 O8). The resolver logs the head it loaded, and `/.well-known/gua-federation` serves it as
+  `chainHead`.
 - Publish the fingerprint on the public landing page and in the gua-deploy README, so the value can be
   compared across channels that are not the resolver serving it.
 - Clients pin the genesis JSON and its id per environment at build time.
@@ -106,14 +112,19 @@ Do not reorder these. Steps 3 and 4 below are the ones that take an environment 
    operational key will not verify, the file policy source refuses to start with no loadable bundle, and the
    resolver will not come up. An environment with policy disabled skips this step.
 4. Set `GUA_RESOLVER_GOVERNANCE_REQUIRED=true` and restart. Verify that a direct admission now lands
-   `PENDING`, that a suspend records intent without changing what is served, and that only an epoch moves a
-   status.
+   `PENDING` and is absent from `/roster` altogether, that a suspend records intent without changing what is
+   served and appends a `STATUS_INTENT` leaf to `/roster/log`, and that only an epoch moves a status.
 5. Soak, then do the same in the next environment.
 
-**Rollback** at any point is `GUA_RESOLVER_GOVERNANCE_REQUIRED=false` and a restart: the direct admission path
-returns, no code rollout and no schema change. The published genesis and any client pin stay and are
-harmless, because nothing enforces them on the client side yet. Reverting the fail-closed policy commit
-restores in-process signing.
+**Rollback** of the cutover is `GUA_RESOLVER_GOVERNANCE_REQUIRED=false` and a restart: the direct admission
+path returns, no code rollout and no schema change. The published genesis and any client pin stay and are
+harmless, because nothing enforces them on the client side yet.
+
+The flag is not the rollback for step 3. The fail-closed policy verifier and the removal of in-process policy
+signing ship with the code and apply whether the flag is on or off, so a bundle still signed by the
+operational key stops verifying the moment that code is deployed, and the file policy source then refuses to
+start with no loadable bundle. Rolling that back is a revert of that commit, not a flag flip. Treat the two
+as separate changes with separate rollbacks.
 
 ## 5. Sign a membership epoch
 
@@ -171,8 +182,11 @@ so governance cannot be handed to a key nobody can use.
 Build the transition naming `genesisId`, the next `index`, `previousHash` (the genesis id at index 1, the
 previous transition's hash after that), `newThreshold` and `newKeys`. Then run `transition sign` once per key
 holder, with each holder's own key, and merge the signature lists into one object. Add the file to
-`GUA_RESOLVER_GENESIS_TRANSITIONS_FILE` as a JSON array in chain order and restart; the resolver verifies the
-whole chain at startup and refuses to start on a broken one.
+`GUA_RESOLVER_GENESIS_TRANSITIONS_FILE` as a JSON array in chain order, update
+`GUA_RESOLVER_GENESIS_EXPECTED_CHAIN_HEAD` to the new head, and restart; the resolver verifies the whole
+chain at startup and refuses to start on a broken one, on a shortened one, or on one whose head is not the
+pinned value. The new head is the transition hash that `transition sign` printed, and the resolver logs the
+head it loaded.
 
 The genesis itself never changes. Losing every key in the current set is not recoverable by transition, and
 the answer is a new genesis and a client re-pin.
@@ -190,5 +204,11 @@ the answer is a new genesis and a client re-pin.
   again.
 - `governance threshold N exceeds the M distinct operator(s)`: the threshold can never be met. Either add a
   key held by a genuinely different operator, or lower the threshold to the truth.
+- `refusing to start on a chain that is not the pinned one`: the transitions file is shorter than, longer
+  than, or different from the chain `GUA_RESOLVER_GENESIS_EXPECTED_CHAIN_HEAD` pins. After a rotation, update
+  the pin to the new head. Otherwise find out why the file changed before touching the pin.
+- `this epoch would leave X and Y claiming the same accounts`: two members would be left claiming the same
+  signups, which makes placement ambiguous. Revoke or narrow one of them, then fetch the pending content and
+  sign it again.
 - `gua.resolver.governance.required is on but no gua.resolver.genesis.file is configured`: the flag promises
   governance the resolver cannot perform. Mount the genesis first.

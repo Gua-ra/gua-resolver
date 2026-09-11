@@ -2,6 +2,7 @@ package global.gua.resolver.governance;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 
 /**
  * The pinned root of the federation's trust chain (ADM-001 L10): a threshold set of governance keys, the
@@ -20,7 +21,8 @@ import java.util.List;
  * @param hashSuite        {@code SHA-256}
  * @param threshold        governance k: how many distinct operators must sign a governance act
  * @param keys             the enumerated governance keys, each recording the operator that holds it
- * @param registries       the registry names, fixed in v1 to the four ADM-001 L10 names
+ * @param registries       the registry names, fixed in v1 to the four ADM-001 L10 names. They are a set:
+ *                         the JSON list order is not significant and the canonical bytes sort them
  * @param signatures       outside the canonical bytes; at least {@code threshold} from distinct operators
  */
 public record FederationGenesis(
@@ -65,8 +67,14 @@ public record FederationGenesis(
         if (createdAt == null || createdAt.getNano() % 1_000_000 != 0) {
             throw new GovernanceException("createdAt is required at millisecond precision");
         }
-        if (!registries.equals(Registry.allWireNames())) {
-            throw new GovernanceException("a v1 genesis enumerates exactly " + Registry.allWireNames());
+        // Compared as a set, because a set is what the canonical bytes encode: two genesis files listing the
+        // four names in different orders have identical bytes and the same genesisId, so refusing one of
+        // them over its transport order would reject a conforming object for nothing. Duplicates are still
+        // refused, which a set comparison on its own would hide.
+        if (registries.size() != Set.copyOf(registries).size()
+                || !Set.copyOf(registries).equals(Set.copyOf(Registry.allWireNames()))) {
+            throw new GovernanceException("a v1 genesis enumerates exactly " + Registry.allWireNames()
+                    + ", in any order and without duplicates");
         }
         GovernanceKeySet.validateKeys(keys, threshold);
     }

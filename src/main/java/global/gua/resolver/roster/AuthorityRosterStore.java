@@ -86,8 +86,13 @@ public class AuthorityRosterStore implements RosterStore {
 
     private synchronized SignedRoster rebuild(SignedRoster.LogCheckpoint head) {
         Instant now = Instant.now();
-        List<RosterEntry> all = entries.findAll();
-        RosterVerifier.VerifiedView view = verifier.verifiedView(all, now, id -> null, Set.of());
+        // A PENDING entry is an admission the governance keys have not ratified, so it is not part of what
+        // this authority asserts: it stays out of the canonical bytes, out of the signature over them, and
+        // out of GET /roster. That is what makes "an admission under governance is never served" true of the
+        // published document and not only of placement, and it keeps PENDING off the wire, where an older
+        // mirror or client build would meet a status value it cannot parse.
+        List<RosterEntry> admitted = entries.findAll().stream().filter(e -> !e.isPending()).toList();
+        RosterVerifier.VerifiedView view = verifier.verifiedView(admitted, now, id -> null, Set.of());
         report(view);
 
         long version = head.size();

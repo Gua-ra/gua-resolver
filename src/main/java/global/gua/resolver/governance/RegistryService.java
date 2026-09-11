@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import global.gua.resolver.admission.ClaimOverlap;
 import global.gua.resolver.governance.store.RegistryEpochRepository;
 import global.gua.resolver.roster.RosterEntry;
 import global.gua.resolver.roster.RosterStore;
@@ -149,6 +150,7 @@ public class RegistryService {
             throw new GovernanceException("the signed membership is not the membership this resolver built; "
                     + "fetch the pending content again and sign that");
         }
+        requireNoOverlappingClaims(content);
 
         GovernanceVerifier.require(keys, CanonicalRegistryEpoch.bytes(submitted), submitted.signatures(),
                 Registry.HOMESERVERS.wireName() + " epoch " + submitted.epoch());
@@ -156,6 +158,8 @@ public class RegistryService {
         String epochHash = CanonicalRegistryEpoch.hash(submitted);
         Instant acceptedAt = Instant.now().truncatedTo(ChronoUnit.MILLIS);
         for (RegistryMember member : content.members()) {
+            // The cast is safe because validateShape refuses a weight above the 32-bit maximum the roster
+            // column holds, rather than letting one be narrowed silently here.
             int updated = entries.applyGovernedStatus(member.homeserverId(), member.status(),
                     (int) member.weight(), member.acceptsNew(), member.claims(), submitted.epoch());
             if (updated == 0) {
@@ -176,6 +180,29 @@ public class RegistryService {
                 GovernanceVerifier.count(keys, CanonicalRegistryEpoch.bytes(submitted),
                         submitted.signatures()).operators());
         return rosterStore.refresh();
+    }
+
+    /**
+     * The claim non-overlap invariant, re-checked over the membership this epoch would make real. The
+     * admission gate refuses an applicant whose claims overlap an admitted entry's, but an epoch applies
+     * claims as well as statuses and is the last point at which two homeservers could end up claiming the
+     * same accounts. That would make placement ambiguous and let one operator take another's range, so an
+     * epoch that would leave two members overlapping is refused rather than applied.
+     */
+    private static void requireNoOverlappingClaims(HomeserverRegistryContent content) {
+        List<RegistryMember> holdingClaims = content.members().stream()
+                .filter(m -> m.status() != RosterEntry.Status.REVOKED).toList();
+        for (int i = 0; i < holdingClaims.size(); i++) {
+            for (int j = i + 1; j < holdingClaims.size(); j++) {
+                RegistryMember a = holdingClaims.get(i);
+                RegistryMember b = holdingClaims.get(j);
+                if (ClaimOverlap.conflicts(a.claims(), b.claims())) {
+                    throw new GovernanceException("this epoch would leave " + a.homeserverId() + " and "
+                            + b.homeserverId() + " claiming the same accounts; revoke or narrow one of them "
+                            + "and build the epoch again");
+                }
+            }
+        }
     }
 
     private PublishedEpoch published(RegistryEpochRepository.StoredEpoch stored) {

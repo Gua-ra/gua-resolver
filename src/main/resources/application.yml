@@ -152,6 +152,10 @@ gua:
       file: ${GUA_RESOLVER_GENESIS_FILE:}
       transitions-file: ${GUA_RESOLVER_GENESIS_TRANSITIONS_FILE:}
       expected-id: ${GUA_RESOLVER_GENESIS_EXPECTED_ID:}
+      # How far the governance key chain has run: the genesis id until a key is rotated, then the hash of
+      # the last transition. Pinning it is what makes a truncated or removed transitions file a startup
+      # failure instead of a silent downgrade to a rotated-out key (ADM-001 O8). Update it at each rotation.
+      expected-chain-head: ${GUA_RESOLVER_GENESIS_EXPECTED_CHAIN_HEAD:}
 
     # governance.required is a cutover: with it on, an admission lands PENDING, a suspend or revoke records
     # intent only, and only a governance-signed membership epoch changes a served status. Set it back to

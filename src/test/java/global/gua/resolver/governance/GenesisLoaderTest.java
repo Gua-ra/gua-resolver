@@ -177,6 +177,93 @@ class GenesisLoaderTest {
     }
 
     @Test
+    void withNoTransitionsTheChainHeadIsTheGenesisIdAndCanBePinned() throws Exception {
+        GovernanceFixtures.Holder holder = GovernanceFixtures.Holder.of("gov-1", "operator-a");
+        FederationGenesis genesis = GovernanceFixtures.singleOperator("gua-test", holder);
+        String genesisId = CanonicalGenesis.id(genesis);
+        Path file = GovernanceFixtures.write(dir, "genesis.json", genesis);
+
+        ResolverProperties props = props(file, genesisId, false);
+        props.getGenesis().setExpectedChainHead(genesisId);
+
+        assertThat(new GenesisLoader(props, JSON).chainHead()).isEqualTo(genesisId);
+    }
+
+    @Test
+    void aTruncatedTransitionChainIsRefusedWhenTheHeadIsPinned() throws Exception {
+        GovernanceFixtures.Holder outgoing = GovernanceFixtures.Holder.of("gov-1", "operator-a");
+        GovernanceFixtures.Holder incoming = GovernanceFixtures.Holder.of("gov-2", "operator-a");
+        FederationGenesis genesis = GovernanceFixtures.singleOperator("gua-test", outgoing);
+        String genesisId = CanonicalGenesis.id(genesis);
+        Path genesisFile = GovernanceFixtures.write(dir, "genesis.json", genesis);
+
+        GovernanceTransition unsigned = new GovernanceTransition(GovernanceTransition.SCHEMA, genesisId, 1,
+                genesisId, Instant.parse("2026-10-01T00:00:00Z"), 1, List.of(incoming.key()), List.of());
+        byte[] canonical = CanonicalGovernanceTransition.bytes(unsigned);
+        GovernanceTransition signed = unsigned.withSignatures(
+                List.of(outgoing.sign(canonical), incoming.sign(canonical)));
+        String head = CanonicalGovernanceTransition.hash(signed);
+
+        Path transitions = dir.resolve("transitions.json");
+        Files.writeString(transitions, JSON.writeValueAsString(List.of(signed)));
+        ResolverProperties props = props(genesisFile, genesisId, false);
+        props.getGenesis().setTransitionsFile(transitions.toString());
+        props.getGenesis().setExpectedChainHead(head);
+
+        GenesisLoader loaded = new GenesisLoader(props, JSON);
+        assertThat(loaded.chainHead()).isEqualTo(head);
+        assertThat(loaded.requireKeySet().keys()).extracting(GovernanceKey::keyId).containsExactly("gov-2");
+
+        // A truncated chain is not a broken chain: the empty one is well formed, and it leaves in force the
+        // very key set gov-2 replaced. Only the head pin catches it.
+        Files.writeString(transitions, "[]");
+
+        assertThatThrownBy(() -> new GenesisLoader(props, JSON))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("refusing to start on a chain that is not the pinned one");
+
+        // Unpinned, the downgrade goes through and the rotated-out key is back in force. That is the hole.
+        props.getGenesis().setExpectedChainHead(null);
+        assertThat(new GenesisLoader(props, JSON).requireKeySet().keys())
+                .extracting(GovernanceKey::keyId).containsExactly("gov-1");
+    }
+
+    @Test
+    void theRegistryNamesMayArriveInAnyOrder() throws Exception {
+        GovernanceFixtures.Holder holder = GovernanceFixtures.Holder.of("gov-1", "operator-a");
+        FederationGenesis declared = GovernanceFixtures.singleOperator("gua-test", holder);
+        List<String> sorted = Registry.allWireNames().stream().sorted().toList();
+        assertThat(sorted).isNotEqualTo(Registry.allWireNames());
+
+        FederationGenesis reordered = GovernanceFixtures.signed(
+                new FederationGenesis(FederationGenesis.SCHEMA, "gua-test",
+                        Instant.parse("2026-09-01T00:00:00Z"), FederationGenesis.HASH_SUITE, 1,
+                        List.of(holder.key()), sorted, List.of()), List.of(holder));
+        String genesisId = CanonicalGenesis.id(declared);
+
+        // The canonical bytes encode the registries as a set, so these two files are the same object and a
+        // client that emits them sorted is not serving a different genesis.
+        assertThat(CanonicalGenesis.id(reordered)).isEqualTo(genesisId);
+        assertThat(load(GovernanceFixtures.write(dir, "reordered.json", reordered), genesisId).configured())
+                .isTrue();
+    }
+
+    @Test
+    void aDuplicatedRegistryNameIsRefused() throws Exception {
+        GovernanceFixtures.Holder holder = GovernanceFixtures.Holder.of("gov-1", "operator-a");
+        FederationGenesis duplicated = new FederationGenesis(FederationGenesis.SCHEMA, "gua-test",
+                Instant.parse("2026-09-01T00:00:00Z"), FederationGenesis.HASH_SUITE, 1,
+                List.of(holder.key()),
+                List.of("HomeserverRegistry", "HomeserverRegistry", "VerifierRegistry", "PolicyRegistry",
+                        "WitnessRegistry"), List.of());
+        Path file = GovernanceFixtures.write(dir, "duplicated.json", duplicated);
+
+        assertThatThrownBy(() -> load(file, null))
+                .isInstanceOf(GovernanceException.class)
+                .hasMessageContaining("without duplicates");
+    }
+
+    @Test
     void aTransitionTheIncomingKeySetDidNotSignIsRefused() throws Exception {
         GovernanceFixtures.Holder outgoing = GovernanceFixtures.Holder.of("gov-1", "operator-a");
         GovernanceFixtures.Holder incoming = GovernanceFixtures.Holder.of("gov-2", "operator-a");

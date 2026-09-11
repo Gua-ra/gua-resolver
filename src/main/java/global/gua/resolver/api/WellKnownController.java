@@ -39,8 +39,13 @@ public class WellKnownController {
     /**
      * @param genesisId   SHA-256 of the genesis canonical bytes: the federation's identity
      * @param fingerprint the first 16 hex characters grouped in fours, for comparison by eye
+     * @param chainHead   how far the governance key chain has run: the genesis id while no transition has
+     *                    been applied, the hash of the last applied transition after that. It is the value
+     *                    an operator pins, and the one a reader compares to see that a resolver is not
+     *                    serving from a shortened chain
      */
-    public record FederationDocument(String genesisId, String fingerprint, FederationGenesis genesis,
+    public record FederationDocument(String genesisId, String fingerprint, String chainHead,
+                                     FederationGenesis genesis,
                                      List<GovernanceTransition> transitions) {}
 
     @GetMapping("/.well-known/gua-federation")
@@ -52,7 +57,7 @@ public class WellKnownController {
                 .eTag("\"" + id + "\"")
                 .cacheControl(CacheControl.maxAge(1, TimeUnit.DAYS).cachePublic())
                 .body(new FederationDocument(id,
-                        global.gua.resolver.governance.CanonicalGenesis.fingerprint(id), loaded,
-                        genesis.transitions()));
+                        global.gua.resolver.governance.CanonicalGenesis.fingerprint(id),
+                        genesis.chainHead(), loaded, genesis.transitions()));
     }
 }

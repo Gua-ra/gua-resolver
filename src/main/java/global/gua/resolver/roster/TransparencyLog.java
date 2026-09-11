@@ -25,6 +25,15 @@ public interface TransparencyLog {
      */
     String MEMBERSHIP_EPOCH = "MEMBERSHIP_EPOCH";
 
+    /**
+     * Leaf type for a status change requested while governance is required (ADM-001 L10). It records that
+     * the operational key asked for a suspend or a revoke, not that one happened: nothing served changes
+     * until a {@link #MEMBERSHIP_EPOCH} carries it. Without this leaf, a request governance never ratifies
+     * would be auditable nowhere, which would leave the intent path the one part of the membership history
+     * the log does not cover.
+     */
+    String STATUS_INTENT = "STATUS_INTENT";
+
     /** A single membership event (the leaf that gets hashed into the tree). */
     record Event(long index, String type, String homeserverId, String payloadHash, String recordedAt) {}
 
