@@ -132,19 +132,33 @@ public class RosterEntryRepository {
      * Replace the member-controlled columns with the accepted, signed values and record the attestation.
      * Only the fields the member signs are written here; weight, acceptsNew, claims and status stay as the
      * authority holds them (ADM-007).
+     *
+     * <p>The write is conditional on the entry still carrying {@code expectedSequence}, the accepted
+     * sequence the caller verified this attestation against. A plain read-check-write does not serialise
+     * at READ COMMITTED: two concurrent attestations carrying different sequences can both pass the
+     * caller's check and both commit, leaving the lower sequence last and regressing the served entry. A
+     * mirror that already accepted the higher sequence reads that regression as tampering and, with the
+     * transition flag on, drops the homeserver from its routing view. Zero rows updated means the entry
+     * moved underneath the check, so the attestation is refused rather than applied over the winner.
+     *
+     * @param expectedSequence the accepted sequence the attestation was verified against; 0 for an entry
+     *                         that carries no member block yet
+     * @return rows updated: 1 when accepted, 0 when another attestation won the race
      */
-    public void updateMember(String id, Homeserver attested, MemberAttestation member, String entryHash) {
-        jdbc.update("""
+    public int updateMember(String id, Homeserver attested, MemberAttestation member, String entryHash,
+                            long expectedSequence) {
+        return jdbc.update("""
                 UPDATE roster_entry SET
                     base_url = ?, mas_issuer = ?, region = ?, search_visibility = ?, search_groups_json = ?,
                     signing_key = ?, member_key_id = ?, member_sequence = ?, member_not_before = ?,
                     member_not_after = ?, member_signatures_json = ?, member_entry_hash = ?
-                WHERE id = ?
+                WHERE id = ? AND (member_sequence IS NULL OR member_sequence = ?)
                 """,
                 attested.baseUrl(), attested.masIssuer(), attested.region(),
                 attested.searchVisibility().name(), writeGroups(attested.searchGroups()),
                 attested.signingKey(), member.keyId(), member.sequence(), utc(member.notBefore()),
-                utc(member.notAfter()), writeSignatures(member.signatures()), entryHash, id);
+                utc(member.notAfter()), writeSignatures(member.signatures()), entryHash, id,
+                expectedSequence);
     }
 
     public void insertMemberHistory(String homeserverId, MemberAttestation member, String signingKey,

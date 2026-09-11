@@ -199,7 +199,15 @@ public class AdmissionService {
         }
         requireNoUnexpectedSignatures(request.member(), rotation);
 
-        entries.updateMember(id, attested, request.member(), result.entryHash());
+        // Conditional on the entry still holding the sequence this attestation was verified against: the
+        // read above and this write are not serialised against a concurrent attest, and the loser of that
+        // race must not overwrite the winner with a lower sequence.
+        int updated = entries.updateMember(id, attested, request.member(), result.entryHash(),
+                prior.sequence());
+        if (updated == 0) {
+            throw new AdmissionException("a concurrent attestation changed " + id + " while this one was "
+                    + "verified against sequence " + prior.sequence() + "; retry against the current entry");
+        }
         RosterEntry accepted = new RosterEntry(attested, stored.claims(), stored.admittedAt(),
                 stored.status(), request.member());
         recordAttestation(accepted, result.entryHash(), acceptedAt);
