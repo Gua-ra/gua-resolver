@@ -23,7 +23,7 @@ import global.gua.resolver.crypto.MerkleTree;
  * WITHOUT being an authority: it can never mint roster entries, only relay verified ones.
  *
  * <p>The directory is deliberately NOT mirrored here; a mirror queries the AUTHORITY-mode node's
- * member-written directory (scheduled for removal, ADM-001 L1b) row by row; only the public roster is
+ * directory (whose member write endpoint is removed, ADM-001 L1b) row by row; only the public roster is
  * replicated.
  */
 @Component
