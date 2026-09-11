@@ -142,7 +142,13 @@ public class AuthorityRosterStore implements RosterStore {
         ResolverProperties.DevHomeserver d = props.getDevHomeserver();
         Homeserver hs = new Homeserver(d.getId(), d.getServerName(), d.getBaseUrl(), d.getMasIssuer(),
                 d.getRegion(), 1, true, d.getSigningKey() == null ? "" : d.getSigningKey());
-        RosterEntry entry = new RosterEntry(hs, List.of(), Instant.now(), RosterEntry.Status.ACTIVE);
+        // The seed is a bootstrap convenience, not a governance act: with governance required it waits in
+        // PENDING like any other admission, so a fresh database cannot put an ACTIVE member into the roster
+        // without a signed membership epoch.
+        RosterEntry.Status seeded = props.getGovernance().isRequired()
+                ? RosterEntry.Status.PENDING
+                : RosterEntry.Status.ACTIVE;
+        RosterEntry entry = new RosterEntry(hs, List.of(), Instant.now(), seeded);
         entries.insert(entry);
         transparencyLog.append("ADMIT", hs.id(),
                 global.gua.resolver.crypto.MerkleTree.sha256Hex(

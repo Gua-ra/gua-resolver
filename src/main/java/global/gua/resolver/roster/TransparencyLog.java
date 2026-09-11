@@ -18,6 +18,13 @@ public interface TransparencyLog {
      */
     String MEMBER_ATTEST = "MEMBER_ATTEST";
 
+    /**
+     * Leaf type for an accepted governance-signed registry epoch (ADM-001 L10). Its payload is the epoch
+     * hash, the SHA-256 of the {@code gua-registry-epoch.v1} canonical bytes, so the log commits to the
+     * exact epoch that changed membership and an auditor can tie every status change to a governance act.
+     */
+    String MEMBERSHIP_EPOCH = "MEMBERSHIP_EPOCH";
+
     /** A single membership event (the leaf that gets hashed into the tree). */
     record Event(long index, String type, String homeserverId, String payloadHash, String recordedAt) {}
 

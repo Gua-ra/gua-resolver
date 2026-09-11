@@ -18,6 +18,7 @@ import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.crypto.Ed25519;
 import global.gua.resolver.crypto.MerkleTree;
 import global.gua.resolver.domain.Homeserver;
+import global.gua.resolver.governance.GenesisLoader;
 import global.gua.resolver.roster.CanonicalMemberEntry;
 import global.gua.resolver.roster.CanonicalRoster;
 import global.gua.resolver.roster.MemberAttestation;
@@ -54,17 +55,20 @@ public class AdmissionService {
     private final DomainOwnershipVerifier domainVerifier;
     private final RosterVerifier rosterVerifier;
     private final ResolverProperties props;
+    private final GenesisLoader genesis;
     private final ObjectMapper json;
 
     public AdmissionService(RosterEntryRepository entries, TransparencyLog transparencyLog,
                             RosterStore rosterStore, DomainOwnershipVerifier domainVerifier,
-                            RosterVerifier rosterVerifier, ResolverProperties props, ObjectMapper json) {
+                            RosterVerifier rosterVerifier, ResolverProperties props, GenesisLoader genesis,
+                            ObjectMapper json) {
         this.entries = entries;
         this.transparencyLog = transparencyLog;
         this.rosterStore = rosterStore;
         this.domainVerifier = domainVerifier;
         this.rosterVerifier = rosterVerifier;
         this.props = props;
+        this.genesis = genesis;
         this.json = json;
     }
 
@@ -128,15 +132,23 @@ public class AdmissionService {
                     + "this entry until its operator attests it (ADM-007)", req.serverName());
         }
 
-        RosterEntry entry = new RosterEntry(hs, req.claims(), acceptedAt, RosterEntry.Status.ACTIVE,
-                req.member());
+        // Under governance an admission is an intent, not an act: the entry waits in PENDING and is never
+        // served until a governance-signed membership epoch makes it ACTIVE (ADM-001 L10).
+        RosterEntry.Status initial = genesis.governanceRequired()
+                ? RosterEntry.Status.PENDING
+                : RosterEntry.Status.ACTIVE;
+        RosterEntry entry = new RosterEntry(hs, req.claims(), acceptedAt, initial, req.member());
         entries.insert(entry, hs.signingKey(), selfSigned ? null : req.keyPossessionProof(), entryHash);
         appendLog("ADMIT", entry);
         if (selfSigned) {
             recordAttestation(entry, entryHash, acceptedAt);
         }
-        log.info("Admitted homeserver {} ({}) with {} claim(s), member self-signature: {}",
-                id, hs.serverName(), req.claims().size(), selfSigned);
+        log.info("Admitted homeserver {} ({}) with {} claim(s), member self-signature: {}, status: {}",
+                id, hs.serverName(), req.claims().size(), selfSigned, initial);
+        if (initial == RosterEntry.Status.PENDING) {
+            log.info("{} stays PENDING and is not served until a governance-signed membership epoch admits "
+                    + "it (docs/runbooks/governance-keys.md)", id);
+        }
         return rosterStore.refresh();
     }
 
@@ -249,11 +261,26 @@ public class AdmissionService {
         }
     }
 
-    /** Suspend (temporarily) or revoke (permanently) an admitted homeserver; logged + re-signed. */
+    /**
+     * Suspend (temporarily) or revoke (permanently) an admitted homeserver.
+     *
+     * <p>With governance required this records intent and changes nothing that is served. That is the whole
+     * point: if recording the intent also took the member out of service, the operational key would still be
+     * able to deny a member service on its own, and the power ADM-001 L10 moves to the governance keys would
+     * not have moved. The change takes effect when a membership epoch carries it.
+     */
     @Transactional
     public SignedRoster setStatus(String id, RosterEntry.Status status) {
-        RosterEntry entry = entries.findById(id)
-                .orElseThrow(() -> new AdmissionException("no such homeserver: " + id));
+        entries.findById(id).orElseThrow(() -> new AdmissionException("no such homeserver: " + id));
+        if (status == RosterEntry.Status.PENDING) {
+            throw new AdmissionException("PENDING is how an entry waits for governance, not a status to set");
+        }
+        if (genesis.governanceRequired()) {
+            entries.setPendingStatus(id, status);
+            log.info("Recorded intent to set homeserver {} status -> {}. It stays as it is until a "
+                    + "governance-signed membership epoch carries the change (ADM-001 L10)", id, status);
+            return rosterStore.current();
+        }
         entries.updateStatus(id, status);
         transparencyLog.append(status.name(), id, MerkleTree.sha256Hex(id + ":" + status));
         log.info("Set homeserver {} status -> {}", id, status);

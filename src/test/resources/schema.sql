@@ -1,7 +1,10 @@
--- Test schema (H2/PostgreSQL mode), mirrors db/migration/V1 to V4 by hand. Flyway is disabled
+-- Test schema (H2/PostgreSQL mode), mirrors db/migration/V1 to V5 by hand. Flyway is disabled
 -- in tests; Spring SQL init runs this. DROP-first so each test context starts clean.
+-- SchemaParityTest applies the real migrations to one database and this script to another and compares the
+-- resulting columns, so a drift between the two fails the build rather than a deployment.
 DROP TABLE IF EXISTS roster_entry;
 DROP TABLE IF EXISTS roster_member_history;
+DROP TABLE IF EXISTS registry_epoch;
 DROP TABLE IF EXISTS transparency_log;
 DROP TABLE IF EXISTS directory_entry;
 DROP TABLE IF EXISTS username_index;
@@ -28,9 +31,25 @@ CREATE TABLE roster_entry (
     member_signatures_json TEXT,
     member_entry_hash VARCHAR(64),
     genesis_signing_key VARCHAR(255),
-    genesis_key_proof TEXT
+    genesis_key_proof TEXT,
+    registry_epoch BIGINT,
+    pending_status VARCHAR(16)
 );
 CREATE UNIQUE INDEX ux_roster_entry_server_name ON roster_entry (server_name);
+
+CREATE TABLE registry_epoch (
+    registry        VARCHAR(32)  NOT NULL,
+    epoch           BIGINT       NOT NULL,
+    genesis_id      VARCHAR(64)  NOT NULL,
+    previous_hash   VARCHAR(64)  NOT NULL,
+    epoch_hash      VARCHAR(64)  NOT NULL,
+    issued_at       TIMESTAMP    NOT NULL,
+    content_json    TEXT         NOT NULL,
+    signatures_json TEXT         NOT NULL,
+    accepted_at     TIMESTAMP    NOT NULL,
+    log_leaf_index  BIGINT,
+    PRIMARY KEY (registry, epoch)
+);
 
 CREATE TABLE roster_member_history (
     homeserver_id   VARCHAR(64)  NOT NULL,
