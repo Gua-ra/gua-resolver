@@ -18,10 +18,12 @@ import org.springframework.security.web.SecurityFilterChain;
  * that path only and ordered ahead of this chain; it still answers {@code exists} for any raw E.164, so it
  * remains an existence oracle, only no longer a free one (ADM-001 L16 requires layered controls that do not
  * assume an account session). {@code /directory/lookup} is the mirror-facing, rate-limited, peppered-HMAC
- * read; the directory has no write endpoint (ADM-001 L1b). The {@code /authority/**} admin surface
- * (admission, status changes, member attestation) requires the {@code ADMIN} role via HTTP Basic, and fails closed: with no
- * admin password hash configured there are no admin users, so those endpoints stay denied. Everything else
- * is denied.
+ * read; the directory has no write endpoint (ADM-001 L1b). {@code /.well-known/gua-federation} publishes the
+ * pinned federation genesis and {@code /registry/**} the governance-signed registry epochs; both are public
+ * by design, because a trust root nobody can fetch and compare out of band is not a trust root (ADM-001
+ * L10). The {@code /authority/**} admin surface (admission, status changes, member attestation, epoch
+ * submission) requires the {@code ADMIN} role via HTTP Basic, and fails closed: with no admin password hash
+ * configured there are no admin users, so those endpoints stay denied. Everything else is denied.
  */
 @Configuration
 public class SecurityConfig {
@@ -34,6 +36,7 @@ public class SecurityConfig {
                         .requestMatchers("/resolve", "/roster", "/roster/log", "/roster/log/consistency",
                                 "/policy/routing", "/policy/routing/status", "/policy/log",
                                 "/directory/lookup", "/directory/checkpoint",
+                                "/.well-known/gua-federation", "/registry/**",
                                 "/actuator/**",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/authority/**").hasRole("ADMIN")

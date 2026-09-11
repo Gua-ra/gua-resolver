@@ -3,6 +3,8 @@ package global.gua.resolver.placement;
 import java.util.List;
 import java.util.Map;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 /**
  * A declarative claim attached to a homeserver's signed roster entry: "I host accounts that match this."
  *
@@ -66,6 +68,12 @@ public record ClaimPredicate(
         return true;
     }
 
+    /**
+     * Derived from {@code remoteClaimUrl}, so it is not serialized: it is not state, it is not in any
+     * canonical byte encoding, and emitting it put a field on the wire that a strict reader of a signed
+     * object (a governance registry epoch's content) has to refuse as unknown.
+     */
+    @JsonIgnore
     public boolean isRemote() {
         return remoteClaimUrl != null && !remoteClaimUrl.isBlank();
     }
