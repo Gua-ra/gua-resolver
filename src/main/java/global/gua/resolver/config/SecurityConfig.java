@@ -13,9 +13,10 @@ import org.springframework.security.web.SecurityFilterChain;
 
 /**
  * Explicit public allowlist plus deny-by-default. The resolver front door is public by design:
- * {@code /resolve}, {@code /roster*}, {@code /policy/routing*}, health + docs are unauthenticated. The only
- * rate limit in this service is the resilience4j bucket on {@code /directory/lookup}; {@code /resolve} has
- * none, so it is an unrestricted existence oracle today (ADM-001 L16 requires layered controls that do not
+ * {@code /resolve}, {@code /roster*}, {@code /policy/routing*}, health + docs are unauthenticated.
+ * {@code /resolve} is rate-limited per client and globally by {@code ResolveAbuseFilter}, registered for
+ * that path only and ordered ahead of this chain; it still answers {@code exists} for any raw E.164, so it
+ * remains an existence oracle, only no longer a free one (ADM-001 L16 requires layered controls that do not
  * assume an account session). {@code /directory/lookup} is the mirror-facing, rate-limited, peppered-HMAC
  * read; the directory has no write endpoint (ADM-001 L1b). The {@code /authority/**} admin surface
  * (admission, status changes) requires the {@code ADMIN} role via HTTP Basic, and fails closed: with no

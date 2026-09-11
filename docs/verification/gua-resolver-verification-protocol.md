@@ -39,7 +39,16 @@ These are the only inputs the verifier trusts. Everything else is fetched and ve
   run the log steps below today.
 - `GET /policy/log` -> the `POLICY_PUBLISH` history + checkpoint.
 - `POST /resolve` with `trace: true` -> the decision plus the artifact coordinates it used
-  (`rosterVersion`, `policyId`, `policyVersion`).
+  (`rosterVersion`, `policyId`, `policyVersion`), only where the deployment has opted in with
+  `gua.resolver.abuse.trace-enabled=true`. It is off by default because the trace names policy internals to
+  anonymous callers (README, "Interim abuse controls"); with it off the response carries no `trace` field
+  and is otherwise unchanged. Without the trace, the verifier takes the coordinates from the artifacts it
+  fetched and verified itself (the roster's `version`, the bundle's `policyId` and `version`) and
+  reproduces the decision in section 3 against those. They can be newer than the ones the resolver decided
+  against, since the roster version moves with every transparency-log leaf, so a mismatch is repeated once
+  with a fresh `/resolve` call and freshly fetched artifacts before it counts as a failure under "Failure
+  handling". `/resolve` is also rate-limited per client (20 per minute by default, `429` with
+  `Retry-After`); a verifier that loops over it honours that header.
 
 ## 1. Verify the roster
 

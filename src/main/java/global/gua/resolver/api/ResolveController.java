@@ -18,6 +18,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 
 import global.gua.resolver.claims.RoutingClaimsEnvelope;
 import global.gua.resolver.claims.RoutingClaimsVerifier;
+import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.directory.DirectoryUnavailableException;
 import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.placement.NoPlacementAvailableException;
@@ -33,7 +34,9 @@ import io.micrometer.core.instrument.MeterRegistry;
  * phone number and learns which homeserver to authenticate against; for a phone with no account it learns
  * where to register. Nothing about the phone is verified here: the endpoint is unauthenticated and takes a
  * raw E.164, so today it also answers whether an account exists for any number (ADM-001 L16 names this as
- * the enumeration oracle to close). This is what replaces the clients' hardcoded
+ * the enumeration oracle to close). Interim controls: {@code global.gua.resolver.abuse.ResolveAbuseFilter}
+ * rate-limits the endpoint per client and globally, and the decision trace is returned only when
+ * {@code gua.resolver.abuse.trace-enabled} is on. This is what replaces the clients' hardcoded
  * {@code GuaDefaultAccountProvider}.
  *
  * <p>Read-mostly and cacheable. Designed to run as a mirrorable fleet; both deployed environments run a
@@ -45,14 +48,17 @@ public class ResolveController {
     private final ResolutionService resolution;
     private final RosterStore rosterStore;
     private final RoutingClaimsVerifier routingClaimsVerifier;
+    private final ResolverProperties.Abuse abuse;
     private final Counter resolveExisting;
     private final Counter resolveRegister;
 
     public ResolveController(ResolutionService resolution, RosterStore rosterStore,
-                             RoutingClaimsVerifier routingClaimsVerifier, MeterRegistry metrics) {
+                             RoutingClaimsVerifier routingClaimsVerifier, ResolverProperties props,
+                             MeterRegistry metrics) {
         this.resolution = resolution;
         this.rosterStore = rosterStore;
         this.routingClaimsVerifier = routingClaimsVerifier;
+        this.abuse = props.getAbuse();
         // gua_resolver_resolve_total{outcome=...}: login (existing account) vs register (new placement).
         this.resolveExisting = Counter.builder("gua.resolver.resolve").tag("outcome", "existing").register(metrics);
         this.resolveRegister = Counter.builder("gua.resolver.resolve").tag("outcome", "register").register(metrics);
@@ -60,13 +66,15 @@ public class ResolveController {
 
     /**
      * Resolve a phone to its existing homeserver (login) or to a placement target (register).
-     * An existing account is looked up first; only a phone with no account runs placement.
+     * An existing account is looked up first; only a phone with no account runs placement. The decision
+     * trace is honoured only when the deployment enables it: it names the matched rule, policy id/version
+     * and delegated zone, which is policy internals an anonymous caller has no business seeing.
      */
     @PostMapping("/resolve")
     public ResolveResponse resolve(@Valid @RequestBody ResolveRequest request) {
         // The roster version the decision is made against; clients pin + verify this exact version.
         long rosterVersion = rosterStore.current().version();
-        boolean trace = Boolean.TRUE.equals(request.trace());
+        boolean trace = abuse.isTraceEnabled() && Boolean.TRUE.equals(request.trace());
 
         Optional<Homeserver> existing = resolution.resolvePhone(request.phone());
         if (existing.isPresent()) {

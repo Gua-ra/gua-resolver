@@ -1,5 +1,11 @@
 # Test profile: in-memory H2 (PostgreSQL compatibility mode), schema via Spring SQL init (Flyway off in
 # tests). The Ed25519 keys below are THROWAWAY test keys, generated solely for the unit/integration tests.
+server:
+  # Same pin as the shipped profile. Test resources shadow src/main/resources/application.yml on the test
+  # classpath, so it has to be repeated here; ClientKeyThroughTomcatTest sends forwarded chains through the
+  # RemoteIpValve this installs and asserts that both profiles carry the pin.
+  forward-headers-strategy: native
+
 spring:
   datasource:
     url: jdbc:h2:mem:resolver;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
@@ -18,6 +24,10 @@ gua:
     mode: AUTHORITY
     directory:
       pepper: test-pepper-do-not-use-in-prod
+    abuse:
+      # The contract tests assert the decision trace; prod-style config leaves it off. The rate limits keep
+      # their defaults (20 per minute per client) so the tests exercise the shipped values.
+      trace-enabled: true
     authority:
       threshold: 1
       signing-key-id: gua-authority-test
