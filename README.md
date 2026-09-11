@@ -9,6 +9,7 @@ The resolver serves and verifies routing information. It does not authenticate a
 > - The frozen decisions behind the target design: [ADM-001](docs/decisions/ADM-001-identifier-binding-placement-trust.md).
 > - How a client verifies what this service serves today: [verification protocol](docs/verification/gua-resolver-verification-protocol.md).
 > - How the current code gets to the target: [migration plan](docs/migrations/gua-resolver-migration-plan.md).
+> - How an operator signs a homeserver's own roster entry: [member attestation runbook](docs/runbooks/member-attestation.md).
 >
 > This README is the operational document. It describes what the code on `main` does. Where the target differs, the target is marked.
 
