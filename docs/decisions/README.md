@@ -5,6 +5,17 @@ The memos that produced it are preserved under [rationale/](rationale/) with onl
 
 - [ADM-007](ADM-007-canonical-encoding-and-member-entries.md): the `gua-lp.v1` canonical encoding and self-signed member roster entries. Closes the part of O2 that Phase 1 needs; nothing locked in ADM-001 is reopened.
 
+
+## Proposed records
+
+These are proposals. They are not normative until a decision freezes them, and they do not override ADM-001.
+
+- [ADM-002](ADM-002-account-recovery.md): Recovering an account authority key and resetting login factors, with what stays unrecoverable. Status: Proposed.
+- [ADM-003](ADM-003-private-identifier-lookup.md): A routing key that does not put identifiers in replicated state, and the construction choices it needs reviewed. Status: Proposed.
+- [ADM-004](ADM-004-passkey-discovery-and-relying-party.md): How a returning device finds the right homeserver before offering a passkey. Status: Proposed.
+- [ADM-005](ADM-005-federation-state-replication-witnesses-ordering.md): Replication, witnesses, checkpoints and what a second operator changes. Status: Proposed.
+- [ADM-006](ADM-006-matrix-portability.md): What moving an account can and cannot mean, given what Matrix supports today. Status: Proposed.
+- [ADM-008](ADM-008-account-genesis-and-placement-records.md): Account genesis, bootstrap identity and placement record formats. Status: Accepted for implementation.
 ## Implementation status
 
 Which ADM-001 decisions the code on `main` has reached. Everything not listed is still target.
