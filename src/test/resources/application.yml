@@ -31,5 +31,6 @@ gua:
       base-url: https://matrix.gua.local
       mas-issuer: https://account.gua.local
       region: dev
-      # Membership credential — matches the homeserver private key the directory-write test signs with.
+      # Membership credential: matches the private key DirectoryFlowTest signs with to prove that a validly
+      # signed directory write is refused.
       signing-key: MCowBQYDK2VwAyEAg+PkHYfc3kRJjw/Nssh+8NvEHkWK0m1n3FGqP5xVQ5o=
