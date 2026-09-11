@@ -34,7 +34,7 @@ Allocation is like the rule for where new pupils go; placement is the class regi
 
 A phone number, email address or organisation login is an identifier: what a person types on a new device to reach their account. A binding is the record "this identifier refers to that account".
 
-A binding is an attribute of the account, not the account itself. If a carrier reassigns a phone number, the binding moves to the new owner. The old account, its history, credentials and placement stay put.
+A binding is an attribute of the account, not the account itself. If a carrier reassigns a phone number, the number may eventually be bound to a new account. That does not transfer the old Gua account. Its history, credentials and placement stay put.
 
 A binding rests on a signed statement from an identifier verifier, a party that checks the person really controls the identifier. Verifiers are accredited by federation governance: the small group whose keys define membership and routing rules.
 
@@ -68,7 +68,7 @@ sequenceDiagram
     App->>Homeserver: sign in here
 ```
 
-No party can create a bound account alone. The homeserver agrees to host, which proves nothing about the identifier. The verifier confirms the person controls the identifier but cannot place the account. The app ties the two under the account's own authority. The federation records binding and placement together or not at all.
+Each party has a separate role. The homeserver agrees to host, which proves nothing about the identifier. The verifier confirms the person controls the identifier but cannot place the account. The app ties the two under the account's own authority. The federation accepts identifier ownership only when its configured identifier proof policy (`IdentifierProofPolicy`) is satisfied. That policy may require verifiers from several independent trust domains. The federation records binding and placement together or not at all.
 
 ## Returning-user flow
 
@@ -92,7 +92,7 @@ Anyone can run a resolver, and running one grants no authority, so the design mu
 - Each binding is signed by the verifier that checked it, each placement by the homeserver that holds the account.
 - The app ships with the federation's root trust built in and checks every answer back to it.
 
-An invented binding or fake homeserver has no valid signature. An old answer fails a freshness check. Independent parties watch the published history and catch a rewritten one. A dishonest resolver can still refuse or stall. That is a reliability problem, not a security one, and why anyone can run another resolver.
+An invented binding or fake homeserver has no valid signature. The target also publishes signed checkpoints, so a client can tell how current an answer is, and independent witnesses check the published history. The exact rules for how clients pin that history and which witnesses they require are still open. A dishonest resolver may still deny or delay service, but it should not be able to forge a valid routing decision. That is why anyone can run another resolver.
 
 Full reasoning: [ADM-001](../decisions/ADM-001-identifier-binding-placement-trust.md).
 
@@ -125,7 +125,7 @@ See also: [verification protocol](../verification/gua-resolver-verification-prot
 
 ## What is target architecture
 
-The decision record groups frozen decisions as locked, open, or spikes. Locked decisions are reopened by evidence, not by argument. Locked:
+The decision record groups frozen decisions as locked, open, or spikes. Locked decisions change on concrete evidence, not preference. Locked:
 
 - the four-way separation above;
 - `AccountGenesis` and `accountId`;

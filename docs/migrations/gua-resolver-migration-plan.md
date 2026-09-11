@@ -13,16 +13,18 @@ identity-service is the only OIDC provider and credential store for every homese
 
 **Goal**
 
-Close two paths exploitable without any key compromise.
+Close two unsafe legacy paths.
 
 **Changes**
 
-- Delete identity-service's legacy non-interactive `GET /oauth2/authorize` branch. Today: an OTP alone yields an authorization code, with no PIN, passkey or registration check.
-- Delete `POST /directory/entries` and its caller in `ResolverDirectoryClient`. Today: any active member can bind any phone number to itself, with no uniqueness check.
+- Delete the legacy non-interactive `phone_number` + `otp_code` branch of identity-service's `GET /oauth2/authorize`. The endpoint stays for the interactive flow. Today: control of the SMS channel alone yields an authorization code, with no PIN, passkey or registration check.
+- Delete `POST /directory/entries` and its caller in `ResolverDirectoryClient`. Today: any admitted member's signing key can bind any phone number to itself, with no uniqueness check.
 
 **Validation**
 
-- Both endpoints 404; interactive login still works.
+- A `phone_number` + `otp_code` request to `/oauth2/authorize` no longer produces an authorization code.
+- The normal interactive OAuth flow still completes.
+- `POST /directory/entries` is gone.
 
 **Rollback**
 
@@ -56,22 +58,24 @@ O2 (canonical self-signed entry encoding), L4.
 
 **Goal**
 
-Governance signing leaves the resolver process.
+Governance signing leaves the resolver process and is anchored in a pinned federation genesis.
 
 **Changes**
 
 - Today: `RoutingClaimsVerifier` falls back to the authority keys when its trusted-key list is unset, and dev runs that way.
-- A governance key set outside the resolver signs membership epochs and accreditations. Until a second key holder, custody and recovery procedures exist, every independence guarantee reduces to one operator; documentation must say so.
+- Create the `FederationGenesis` with its threshold set of governance keys, and the registry roots under it (`HomeserverRegistry`, `VerifierRegistry`, `PolicyRegistry`, `WitnessRegistry`), as ADM-001 L10 specifies. Distribute it out of band: pinned in first-party builds and published at a well-known location.
+- That governance key set, outside the resolver, signs membership epochs and accreditations. Until a second key holder, custody and recovery procedures exist, every independence guarantee reduces to one operator; documentation must say so.
 - The resolver's key signs checkpoints and serves records; it can no longer admit or accredit.
 - `RoutingClaimsVerifier` fails closed on an unset trusted-key list.
 
 **Validation**
 
 - Governance signatures from the operational key alone are rejected.
+- Membership, accreditations and policy verify back to the pinned genesis through the registry roots.
 
 **Rollback**
 
-Revert the cutover commit; the operational key regains governance powers.
+Revert the cutover commit; the operational key regains governance powers. A genesis already pinned in client builds stays; clients do not enforce it before Phase 6.
 
 **Blocked by**
 
@@ -131,9 +135,9 @@ Identifier ownership becomes a signed, attested record; identity-service's phone
 **Changes**
 
 - Today: `RosterVerifier` dedupes on key id.
-- The verifier's accreditation is governance-signed under Phase 2's keys and records `operatorId`.
+- The verifier's accreditation is governance-signed under Phase 2's keys and records `operatorId` as a lookup key.
 - Existing identifiers get binding records attested by that verifier; `IdentifierProofPolicy` publishes `k = 1` for phone.
-- Attestation counting dedupes on `operatorId`; do not reuse `RosterVerifier` as is.
+- The threshold counts independently governed verifier trust domains, resolved through accreditation. `operatorId` is a lookup key, not the security boundary. Do not reuse `RosterVerifier`, which counts keys.
 
 **Validation**
 
@@ -157,19 +161,19 @@ Clients check signatures before connecting.
 
 - Today: both clients take `baseUrl` from the resolver response verbatim.
 - Before handing the SDK an address, the client verifies the chain: pinned genesis, roster, self-signature, binding and placement records, checkpoint.
-- An unpinned client pins the first checkpoint it sees for that account. Decide chain-change behaviour before shipping: a naive fail-closed rule makes an attacker's early pin permanent.
+- Verification ships in shadow (log-only) mode first. Enforcement waits for the pinning semantics decision.
 
 **Validation**
 
-- Log-only mode reports unverifiable responses; enforcement refuses them.
+- Shadow mode reports unverifiable responses without blocking any connection.
 
 **Rollback**
 
-Verification ships in log-only mode first.
+Turn enforcement off; shadow mode keeps reporting.
 
 **Blocked by**
 
-O10 (pinning on a chain change).
+O10 (pinning semantics), for enforcement only. Phase 2 (pinned genesis).
 
 ## Phase 7: authentication moves to homeservers
 

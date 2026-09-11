@@ -1,6 +1,6 @@
 > **Normative architecture decision record.** This is the frozen decision set for Gua identifier binding, account placement, resolver trust and federation governance. It is the authority when any other document in any Gua repository disagrees with it.
 >
-> **Frozen pending implementation evidence.** Locked decisions are not reopened by argument. They are reopened by evidence from a spike, a benchmark or an implementation that contradicts them. Open decisions and spikes proceed normally. Each closes in its own follow-up record.
+> **Frozen pending implementation evidence.** Locked decisions are not reopened by preference or speculative alternatives. They are reopened by a concrete counterexample, a changed threat model or requirement, standards or cryptographic evidence, spike or benchmark evidence, or implementation evidence. Open decisions and spikes proceed normally. Each closes in its own follow-up record.
 >
 > **How to use it.** Link to the decision by its label (`L7`, `O11`, `S1`) rather than restating its reasoning elsewhere. The plain-language explanation is the [architecture guide](../architecture/gua-identity-and-federation.md). Read that first if you are new to the design.
 >
@@ -12,8 +12,9 @@
 # ADM-001: final decision set
 
 > **Status: ARCHITECTURE FROZEN pending implementation evidence.**
-> Locked decisions are not reopened by argument. They are reopened by evidence from a spike, a
-> benchmark, or an implementation that contradicts them. Open decisions and spikes proceed normally.
+> Locked decisions are not reopened by preference or speculative alternatives. They are reopened by a
+> concrete counterexample, a changed threat model or requirement, standards or cryptographic evidence,
+> spike or benchmark evidence, or implementation evidence. Open decisions and spikes proceed normally.
 
 Supersedes the decision sections of ADM-001, R1 and R2. Those remain as the reasoning record.
 This is not the repository architecture document.
@@ -28,7 +29,7 @@ Tags: **[CODE]** verified against `main` or live config. **[TARGET]** what the p
 
 ## L1. Delete two live paths
 
-**L1a.** Delete the legacy non-interactive branch of `GET /oauth2/authorize`. **[CODE]** With `phone_number` and `otp_code` present, it verifies only the OTP, provisions an account if none exists, and issues an authorization code. The client is declared with no secret and is therefore public. No PIN, no passkey, no registration guard. *Compromise required: none. One SMS.*
+**L1a.** Delete the legacy non-interactive branch of `GET /oauth2/authorize`. **[CODE]** With `phone_number` and `otp_code` present, it verifies only the OTP, provisions an account if none exists, and issues an authorization code. The client is declared with no secret and is therefore public. No PIN, no passkey, no registration guard. *Compromise required: no Gua credential beyond current control of the SMS channel. The PIN, passkey and any other configured factor are bypassed.*
 
 **L1b.** Delete `POST /directory/entries`. **[CODE]** Any `ACTIVE` roster member can bind any phone to itself with a signature over a constant string. There is no uniqueness check. The upsert is unconditional. The signed bytes carry the raw E.164.
 
@@ -36,7 +37,7 @@ Both are deletions, not deprecations. Neither depends on anything else in this m
 
 ## L2. The three concepts stay separate
 
-The federation validates identifier ownership. The federation coordinates placement. The target homeserver decides authentication. A federation-issued identifier-ownership artifact is never a login credential or session grant.
+The federation validates identifier ownership for globally routable identifier bindings. It does not validate homeserver-local credentials or homeserver-local identifiers. The federation coordinates placement. The target homeserver decides authentication. A federation-issued identifier-ownership artifact is never a login credential or session grant.
 
 The test for whether a flow violates this has four questions. Was the artifact issued by a federation-scope component? Does any party treat it as evidence that *this human is present now* rather than *who owns an identifier*? Could a party holding only that artifact obtain a session? Does the homeserver still independently authenticate? A yes to the third or a no to the fourth is a violation. Ordinary homeserver-local OTP login is **not** a violation merely because an OTP is a short-lived bearer secret.
 
@@ -93,11 +94,11 @@ First-party clients generate account authority at creation. B1, where the bindin
 
 ## L7. The generation-1 compromise condition
 
-> **For a previously unbound identifier, forging a binding requires the compromise of `k` distinct accredited verifier operators, where `k` is the value the configured `IdentifierProofPolicy` specifies for that identifier type.**
+> **For a previously unbound identifier, forging a binding requires one of two things: compromising enough independently governed verifier trust domains to satisfy the configured `IdentifierProofPolicy` for that identifier type (`k` of them), or compromising enough governance authority to change that policy or to accredit attacker-controlled verifiers.**
 
-The condition is **derived from policy**, not fixed by the protocol. Different key: `k` verifier signing keys. Different process: as many as the operators run. Different operator or trust domain: `k` distinct ones, enforced by the evaluation rule in L8. Governance threshold: not required to forge, but required to *change* `k`, since the policy is governance-signed.
+The condition is **derived from policy**, not fixed by the protocol. Different key: `k` verifier signing keys. Different process: as many as the operators run. Different operator or trust domain: `k` independently governed ones, enforced by the evaluation rule in L8. Governance threshold: the second route. Governance signs the policy and the accreditations, so compromising the governance threshold lets an attacker lower `k` or accredit verifiers it controls, then satisfy the policy without compromising any honest verifier.
 
-At `k = 1` this reduces to a single accredited verifier operator. That is the beta configuration. It should be understood as a policy choice with a stated cost, not as a property of the design.
+At `k = 1` the first route reduces to a single accredited verifier trust domain. That is the beta configuration. It should be understood as a policy choice with a stated cost, not as a property of the design.
 
 This replaces R2's condition of "verifier operator **and** one homeserver operator". That condition counted an honestly obtained signature as a security gate. See L6 for why `HostingAcceptance` contributes no compromise term.
 
@@ -109,10 +110,10 @@ This replaces R2's condition of "verifier operator **and** one homeserver operat
 
 Federation policy is keyed by identifier type. It lives in the already-decided `PolicyRegistry` under `GovernanceRoot` and reuses the shipped policy-bundle envelope. Per identifier type it specifies three things: `k`, the number of attestations required; the permitted proof types; and a challenge freshness bound. This is the `IdentifierProofPolicy` from which L7's compromise condition is derived. Changing `k` is a governance-signed act.
 
-**Independence is an evaluation rule, not a new field.** The rule resolves each attestation's verifier key to the `operatorId` already carried in verifier accreditations. It then requires distinct operators. **No `trustDomainId` field is introduced.**
+**Independence means independently governed trust domains.** Different keys are not independence, and neither are different `operatorId` strings. The evaluation rule resolves each attestation's verifier key, through its accreditation, to the `operatorId` recorded there. That `operatorId` is an implementation lookup key, not the security boundary. The threshold counts independently governed trust domains, so verifiers under common governance or control count once. How accreditation records that grouping is an implementation detail.
 
 Two locked implementation constraints, both from live code:
-- **[CODE]** `RosterVerifier.countValidSignatures` dedupes on `authorityKeyId` with the comment "one vote per authority key". Reusing that shape for attestations yields a threshold satisfiable by **one operator holding k keys**. Attestation counting must dedupe on operator, not key.
+- **[CODE]** `RosterVerifier.countValidSignatures` dedupes on `authorityKeyId` with the comment "one vote per authority key". Reusing that shape for attestations yields a threshold satisfiable by **one operator holding k keys**. Attestation counting must dedupe on trust domain, not key.
 - **[CODE]** `RoutingClaimsVerifier` falls back to the authority trusted keys when its own trusted-key list is unset. It is live in that fallback state in dev. **Any independence rule must fail closed. No fallback, ever.**
 
 **What this protects against, and what it does not.** k-of-n raises the bar for **forging** attestations from a compromised verifier. It does **nothing** about compromise of the identifier channel itself. Under a real SIM swap, *k* honest verifiers all correctly attest that the attacker presently controls the number. That residual is irreducible for phone and email. No federation machinery touches it.
@@ -145,7 +146,7 @@ A witness co-signature is admissible only if that witness independently did all 
 
 **Two witness classes are locked, because they have different costs.** Log-only witnesses are cheap and numerous and provide equivocation resistance. Full-replay witnesses are expensive and provide integrity.
 
-**The design constraint locked with it:** every state-affecting input must be an **explicitly authenticated and sequenced input**. That includes authoritative time and any relevant request context. They are permitted, and they are permitted *as inputs in the log*. A replaying witness then sees exactly what the sequencer saw.
+**The design constraint locked with it:** every state-affecting input must be an **explicitly authenticated and sequenced input**. That includes authoritative time and any relevant request context. They are permitted, and they are permitted *as inputs in the log*. A replaying witness then sees exactly what the sequencer saw. Security-sensitive sequenced time must be monotonic and is checked against the defined time policy on replay. The sequencer records the time; it does not choose it arbitrarily.
 
 What is forbidden is narrower. It is the thing that actually breaks replay: **dependence on unsynchronized local observations**. A transition may not read the replaying node's own clock, its own environment, or anything else that differs between the sequencer and a witness. Time-based rules are fine when the time is a sequenced, authenticated input. They are not fine when each node consults its own clock.
 
@@ -164,6 +165,8 @@ A consistent, non-equivocating, highly available, perfectly ordered history can 
 | **Censorship** | detectable, not preventable, by a single sequencer | the sequencer alone |
 | **Availability** | not provided by witnessing | the sequencer alone |
 | **Ordering** | the distinguished sequencer | the sequencer alone |
+
+**Witness quorums must intersect.** The witness quorums a client accepts must have the required intersection property, so that two conflicting checkpoints cannot each gather an acceptable honest quorum unnoticed.
 
 **When BFT is justified.** Byzantine state-machine replication is justified when governance refuses any distinguished sequencer. It is also justified when the federation requires **continued operation despite malicious or failing independent ordering nodes**. That is an availability and censorship-resistance requirement. It is a legitimate trigger on its own. Threshold signatures and transparency address neither.
 
