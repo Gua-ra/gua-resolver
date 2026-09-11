@@ -12,8 +12,9 @@ import io.micrometer.core.instrument.MeterRegistry;
 /**
  * Two-layer token-bucket limiter for {@code POST /resolve}: one bucket per client key, held in a bounded
  * cache (max size + idle expiry), and one global ceiling for the whole process. Both are per pod: with more
- * than one replica each pod enforces its own copy, so the limit shared across replicas is the ingress-level
- * limiter in gua-deploy, and this is the floor that holds even for a request that reaches a pod directly.
+ * than one replica each pod enforces its own copy, so the effective per-client rate is replicas times the
+ * configured limit. The per-source limit shared across replicas is the rate-limit middleware on the resolver
+ * ingress, defined in gua-deploy; this is the floor that holds even for a request that reaches a pod directly.
  *
  * <p>Order: the client bucket is charged first, so an abuser is the one that runs dry and gets identified;
  * the global bucket is checked second. A request refused by the global bucket has already spent one client

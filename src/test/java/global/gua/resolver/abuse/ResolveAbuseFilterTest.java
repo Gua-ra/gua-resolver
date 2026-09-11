@@ -53,7 +53,7 @@ class ResolveAbuseFilterTest {
 
     private MockHttpServletRequest resolveRequest(String client) {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/resolve");
-        request.addHeader(ClientKey.FORWARDED_FOR, client);
+        request.setRemoteAddr(client);
         request.setContentType("application/json");
         request.setContent(("{\"phone\":\"" + PHONE + "\"}").getBytes());
         return request;
@@ -110,7 +110,7 @@ class ResolveAbuseFilterTest {
     }
 
     @Test
-    void clientsAreKeyedByTheForwardedAddressSoAnotherClientIsNotAffected() throws Exception {
+    void clientsAreKeyedByTheRemoteAddressSoAnotherClientIsNotAffected() throws Exception {
         run(resolveRequest(CLIENT), new MockFilterChain());
         run(resolveRequest(CLIENT), new MockFilterChain());
         assertThat(run(resolveRequest(CLIENT), new MockFilterChain()).getStatus()).isEqualTo(429);

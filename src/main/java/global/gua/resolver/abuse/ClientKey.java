@@ -10,15 +10,26 @@ import java.util.Locale;
 import jakarta.servlet.http.HttpServletRequest;
 
 /**
- * Derives the per-client rate-limit key for {@code POST /resolve} from the request's network origin.
+ * Derives the per-client rate-limit key for {@code POST /resolve} from the request's remote address, and
+ * from nothing else.
  *
- * <p>The service runs behind the ingress, which sets {@code X-Forwarded-For}. A caller can send its own
- * {@code X-Forwarded-For}; the ingress then appends the address it actually saw the connection come from,
- * so the LAST entry is the only one the ingress vouches for and every earlier entry is caller-controlled.
- * Taking the last entry therefore cannot be spoofed through the ingress, and a request that reaches the pod
- * without the header (a port-forward, an in-cluster caller) falls back to the socket peer address. The rule
- * assumes exactly one trusted proxy hop, which is how the ingress is deployed; a second trusted hop would
- * make the last entry the first proxy's address and fold every client into one key.
+ * <p>The forwarded chain the pod receives has two trusted hops, not one. The public edge terminates the
+ * client connection and appends the client address to {@code X-Forwarded-For}; the in-cluster ingress trusts
+ * forwarded headers from the private ranges, keeps that chain and appends the address it saw the connection
+ * come from, which is an internal one (the service load balancer masquerades). At the pod the header reads
+ * "{@code <caller-supplied entries>, <client>, <internal hop>}": the last entry is never the client, and
+ * keying on it would fold every client into one bucket, while every entry in front of the client is
+ * caller-controlled.
+ *
+ * <p>The service therefore pins {@code server.forward-headers-strategy=native}, which installs Tomcat's
+ * {@code RemoteIpValve} ahead of every filter. The valve walks the chain from the right, skips each address
+ * in the internal-proxies set (Spring Boot's default covers RFC 1918, 100.64/10, loopback, link-local and
+ * IPv6 unique-local, which is every hop in this chain), sets the remote address to the first other address,
+ * the one the edge appended, and rewrites the header to hold only the caller-supplied leftovers. This class
+ * reads {@link HttpServletRequest#getRemoteAddr()} and deliberately never the header: after the valve, the
+ * header is exactly the part an attacker chose. A request that reaches the pod without a chain (a
+ * port-forward, an in-cluster caller) is keyed by its socket peer, which is what the remote address already
+ * is.
  *
  * <p>IPv6 clients are keyed by their /64: a single subscriber is routinely handed a whole /64, and keying on
  * the full address would hand an attacker 2^64 free buckets. IPv4-mapped IPv6 literals key by the embedded
@@ -26,21 +37,17 @@ import jakarta.servlet.http.HttpServletRequest;
  */
 public final class ClientKey {
 
-    public static final String FORWARDED_FOR = "X-Forwarded-For";
     static final String UNKNOWN = "unknown";
     private static final int LOG_HANDLE_CHARS = 12;
 
     private ClientKey() {}
 
     public static String of(HttpServletRequest request) {
-        return of(request.getHeader(FORWARDED_FOR), request.getRemoteAddr());
+        return of(request.getRemoteAddr());
     }
 
-    static String of(String forwardedFor, String remoteAddr) {
-        String candidate = lastAddress(forwardedFor);
-        if (candidate == null) {
-            candidate = remoteAddr == null ? null : remoteAddr.trim();
-        }
+    static String of(String remoteAddr) {
+        String candidate = remoteAddr == null ? null : remoteAddr.trim();
         if (candidate == null || candidate.isEmpty()) {
             return UNKNOWN;
         }
@@ -58,21 +65,6 @@ public final class ClientKey {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 unavailable", e);
         }
-    }
-
-    /** The last non-empty, comma-separated entry, or null when the header is absent or has none. */
-    static String lastAddress(String forwardedFor) {
-        if (forwardedFor == null) {
-            return null;
-        }
-        String[] parts = forwardedFor.split(",");
-        for (int i = parts.length - 1; i >= 0; i--) {
-            String part = parts[i].trim();
-            if (!part.isEmpty()) {
-                return part;
-            }
-        }
-        return null;
     }
 
     /** Strip a port suffix, then key IPv6 by /64 (or embedded IPv4); anything else is used verbatim. */

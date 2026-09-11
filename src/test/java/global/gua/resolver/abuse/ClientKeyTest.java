@@ -6,33 +6,43 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Key derivation from the forwarded headers. Every address below is from the documentation ranges
- * reserved by RFC 5737 (192.0.2/24, 198.51.100/24, 203.0.113/24) and RFC 3849 (2001:db8::/32); none of
- * them routes anywhere.
+ * Key derivation from the remote address. Every address below is from the documentation ranges reserved by
+ * RFC 5737 (192.0.2/24, 198.51.100/24, 203.0.113/24) and RFC 3849 (2001:db8::/32); none of them routes
+ * anywhere. The forwarded chain is resolved by Tomcat's RemoteIpValve before this class runs;
+ * {@link ClientKeyThroughTomcatTest} covers that against a real listener.
  */
 class ClientKeyTest {
 
     @Test
-    void withoutForwardedHeaderTheSocketPeerIsTheKey() {
-        assertThat(ClientKey.of(null, "198.51.100.7")).isEqualTo("198.51.100.7");
-        assertThat(ClientKey.of("", "198.51.100.7")).isEqualTo("198.51.100.7");
-        assertThat(ClientKey.of(" , ", "198.51.100.7")).isEqualTo("198.51.100.7");
+    void theRemoteAddressIsTheKey() {
+        assertThat(ClientKey.of("198.51.100.7")).isEqualTo("198.51.100.7");
+        assertThat(ClientKey.of(" 198.51.100.7 ")).isEqualTo("198.51.100.7");
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRemoteAddr("198.51.100.7");
+        assertThat(ClientKey.of(request)).isEqualTo("198.51.100.7");
     }
 
     @Test
-    void lastForwardedAddressWinsBecauseOnlyThatOneComesFromTheIngress() {
-        // A caller-supplied X-Forwarded-For is prepended, the ingress appends the address it saw: the last
-        // entry is the only one it vouches for.
-        assertThat(ClientKey.of("192.0.2.1, 192.0.2.2, 203.0.113.9", "198.51.100.7")).isEqualTo("203.0.113.9");
-        assertThat(ClientKey.of("203.0.113.9", "198.51.100.7")).isEqualTo("203.0.113.9");
-        assertThat(ClientKey.of("192.0.2.1 , 203.0.113.9 , ", "198.51.100.7")).isEqualTo("203.0.113.9");
-    }
+    void forwardedHeadersAreNeverReadEvenWhenPresent() {
+        // Regression for the removed header rule. After the valve, whatever is left in X-Forwarded-For is the
+        // caller-supplied part of the chain, so an address named there must neither pick a different bucket
+        // nor reach a victim's.
+        MockHttpServletRequest chain = new MockHttpServletRequest();
+        chain.setRemoteAddr("198.51.100.7");
+        chain.addHeader("X-Forwarded-For", "192.0.2.1, 203.0.113.9");
+        assertThat(ClientKey.of(chain)).isEqualTo("198.51.100.7");
 
-    @Test
-    void forgedLeadingEntriesDoNotChangeTheKey() {
-        String honest = ClientKey.of("203.0.113.9", null);
-        String forged = ClientKey.of("192.0.2.1, 192.0.2.2, 192.0.2.3, 203.0.113.9", null);
-        assertThat(forged).isEqualTo(honest);
+        MockHttpServletRequest victim = new MockHttpServletRequest();
+        victim.setRemoteAddr("198.51.100.7");
+        victim.addHeader("X-Forwarded-For", "203.0.113.9");
+        assertThat(ClientKey.of(victim)).isEqualTo(ClientKey.of(chain)).isNotEqualTo("203.0.113.9");
+
+        MockHttpServletRequest rfc7239 = new MockHttpServletRequest();
+        rfc7239.setRemoteAddr("198.51.100.7");
+        rfc7239.addHeader("Forwarded", "for=203.0.113.9");
+        rfc7239.addHeader("X-Real-IP", "203.0.113.9");
+        assertThat(ClientKey.of(rfc7239)).isEqualTo("198.51.100.7");
     }
 
     @Test
@@ -51,6 +61,8 @@ class ClientKeyTest {
         // a neighbouring /64 is a different client
         assertThat(ClientKey.normalize("2001:db8:1:3::9")).isEqualTo("2001:db8:1:3::/64");
         assertThat(ClientKey.normalize("::1")).isEqualTo("0:0:0:0::/64");
+        // the form Tomcat reports the IPv6 loopback peer in
+        assertThat(ClientKey.of("0:0:0:0:0:0:0:1")).isEqualTo("0:0:0:0::/64");
     }
 
     @Test
@@ -72,20 +84,8 @@ class ClientKeyTest {
 
     @Test
     void noAddressAtAllYieldsTheUnknownKey() {
-        assertThat(ClientKey.of(null, null)).isEqualTo(ClientKey.UNKNOWN);
-        assertThat(ClientKey.of(null, "  ")).isEqualTo(ClientKey.UNKNOWN);
-    }
-
-    @Test
-    void servletRequestOverloadReadsHeaderThenRemoteAddr() {
-        MockHttpServletRequest withHeader = new MockHttpServletRequest();
-        withHeader.setRemoteAddr("198.51.100.7");
-        withHeader.addHeader(ClientKey.FORWARDED_FOR, "192.0.2.1, 203.0.113.9");
-        assertThat(ClientKey.of(withHeader)).isEqualTo("203.0.113.9");
-
-        MockHttpServletRequest withoutHeader = new MockHttpServletRequest();
-        withoutHeader.setRemoteAddr("198.51.100.7");
-        assertThat(ClientKey.of(withoutHeader)).isEqualTo("198.51.100.7");
+        assertThat(ClientKey.of((String) null)).isEqualTo(ClientKey.UNKNOWN);
+        assertThat(ClientKey.of("  ")).isEqualTo(ClientKey.UNKNOWN);
     }
 
     @Test

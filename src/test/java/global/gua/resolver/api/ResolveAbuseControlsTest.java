@@ -9,8 +9,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-
-import global.gua.resolver.abuse.ClientKey;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -39,8 +38,19 @@ class ResolveAbuseControlsTest {
     @Autowired
     private MockMvc mockMvc;
 
+    /**
+     * MockMvc never runs Tomcat's RemoteIpValve, so this sets the remote address the valve would have left;
+     * the chain itself is covered by ClientKeyThroughTomcatTest against a real listener.
+     */
+    private static RequestPostProcessor from(String client) {
+        return request -> {
+            request.setRemoteAddr(client);
+            return request;
+        };
+    }
+
     private static MockHttpServletRequestBuilder resolve(String client, String body) {
-        return post("/resolve").header(ClientKey.FORWARDED_FOR, client)
+        return post("/resolve").with(from(client))
                 .contentType(MediaType.APPLICATION_JSON).content(body);
     }
 
@@ -81,7 +91,7 @@ class ResolveAbuseControlsTest {
                 .andExpect(jsonPath("$.exists").value(false));
 
         // The filter is registered for /resolve only: the exhausted client can still read the roster.
-        mockMvc.perform(get("/roster").header(ClientKey.FORWARDED_FOR, client))
+        mockMvc.perform(get("/roster").with(from(client)))
                 .andExpect(status().isOk());
     }
 

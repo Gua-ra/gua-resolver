@@ -1,5 +1,15 @@
 server:
   port: 8095
+  # Pinned, not left to Boot's platform detection (which deduces native only when it detects Kubernetes),
+  # because the /resolve per-client key depends on it. The pod receives X-Forwarded-For as
+  # "<caller-supplied entries>, <client>, <internal hop>": the public edge appends the client address, then
+  # the in-cluster ingress appends the address it saw the connection come from, which is always internal.
+  # native installs Tomcat's RemoteIpValve, which walks that chain from the right, skips every address in
+  # the internal-proxies set (Boot's default: RFC 1918, 100.64/10, loopback, link-local and IPv6
+  # unique-local, which covers every hop in this chain), sets the remote address to the first other address
+  # (the client) and leaves only the caller-supplied leftovers in the header. The abuse controls key on the
+  # remote address and never read the header.
+  forward-headers-strategy: native
 
 spring:
   application:
@@ -67,11 +77,15 @@ gua:
     admin:
       username: ${GUA_RESOLVER_ADMIN_USER:admin}
       password-hash: ${GUA_RESOLVER_ADMIN_PASSWORD_HASH:}
-    # Interim abuse controls on POST /resolve (ADM-001 L16). Two token buckets: one per client key (the last
-    # X-Forwarded-For address, which is the one the ingress appends, else the peer address; IPv6 keyed by
-    # /64) and one global ceiling for the whole process. Both are per pod: the limit shared across replicas
-    # is the ingress-level limiter in gua-deploy. Over the limit: 429 with Retry-After and a constant JSON
-    # body, before the request body is read. Everything here defaults on.
+    # Interim abuse controls on POST /resolve (ADM-001 L16). Two token buckets: one per client key (the
+    # request's remote address after Tomcat's RemoteIpValve has resolved the forwarded chain, see
+    # server.forward-headers-strategy above; the X-Forwarded-For header itself is never read; IPv6 keyed by
+    # /64) and one global ceiling for the whole process. Both are per pod, so with the resolver autoscaled to
+    # 2 or 3 replicas the effective in-service per-client rate is replicas x client-limit-for-period per
+    # period. The per-source limit shared across replicas is the Traefik rateLimit middleware on the resolver
+    # ingress, defined in gua-deploy (k8s/services/login-ingress.sh) and applied by its deploy script; these
+    # buckets are the floor for a request that reaches a pod without passing the ingress. Over the limit: 429
+    # with Retry-After and a constant JSON body, before the request body is read. Everything here defaults on.
     abuse:
       # Rollback lever for the rate limits only; trace-enabled is independent of it.
       enabled: ${GUA_RESOLVER_ABUSE_ENABLED:true}
