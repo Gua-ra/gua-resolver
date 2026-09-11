@@ -30,8 +30,8 @@ management:
       export:
         enabled: true
 
-# Rate-limit the directory lookup (anti-enumeration): per the design the phone graph is queried, never
-# bulk-exported, so the read path is throttled.
+# Rate-limit the directory lookup: the phone graph is queried, never bulk-exported. This is the only rate
+# limit in the service; /resolve, which answers exists true/false for any raw E.164, has none (ADM-001 L16).
 resilience4j:
   ratelimiter:
     instances:
@@ -42,10 +42,12 @@ resilience4j:
 
 gua:
   resolver:
-    # AUTHORITY (owns + signs the roster) or MIRROR (pulls + verifies an upstream authority's roster).
+    # AUTHORITY (builds, logs and signs the roster) or MIRROR (pulls + verifies an upstream node's roster).
+    # A process mode, not a governance role: running a resolver grants no authority (ADM-001 O12).
     mode: ${GUA_RESOLVER_MODE:AUTHORITY}
     directory:
-      # Shared HMAC pepper for the phone directory — MUST match identity-service. Required at runtime.
+      # Shared HMAC pepper for the phone directory. MUST match identity-service. Required at runtime.
+      # Non-rotatable as built; scheduled for replacement (ADM-001 L15).
       pepper: ${GUA_RESOLVER_DIRECTORY_PEPPER:}
       fail-open-on-lookup-error: ${GUA_RESOLVER_DIRECTORY_FAIL_OPEN_ON_LOOKUP_ERROR:false}
       # How often the authority signs + logs a directory checkpoint (Merkle root over the mappings).
@@ -78,7 +80,8 @@ gua:
       threshold: ${GUA_RESOLVER_AUTHORITY_THRESHOLD:1}
       signing-key-id: ${GUA_RESOLVER_AUTHORITY_KEY_ID:}
       signing-private-key: ${GUA_RESOLVER_AUTHORITY_PRIVATE_KEY:}
-      # The published authority key set (n). Phase 1 is n=1 (Gua); add entries to grow toward k-of-n.
+      # The published authority key set (n). Today n=1. Adding entries raises the roster signing threshold;
+      # federation governance itself is rooted in a pinned genesis outside this list (ADM-001 L10, S5).
       trusted-keys:
         - id: ${GUA_RESOLVER_AUTHORITY_KEY_ID:}
           public-key: ${GUA_RESOLVER_AUTHORITY_PUBLIC_KEY:}

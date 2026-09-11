@@ -1,147 +1,251 @@
-# Gua Resolver Migration Plan
+# Migration to ADM-001
 
-Date: 2026-07-03
+> **Status: target architecture, governed by [ADM-001](../decisions/ADM-001-identifier-binding-placement-trust.md).**
+> The path from `main` to the frozen target, superseding the [July 2026 plan](history/gua-resolver-migration-plan-2026-07.md) (phases 0 to 3 done).
 
-## Migration Goals
+"Today:" marks current `main` behaviour.
 
-- Keep public and mobile clients working.
-- Introduce signed routing policy gradually.
-- Avoid routing split-brain.
-- Preserve MAS/OIDC compatibility.
-- Make rollback possible.
+## Starting point
 
-## Phase 0: Current Compatible Release
+identity-service is the only OIDC provider and credential store for every homeserver. The OIDC subject is the full Matrix ID, fusing identity and placement. The resolver routes from roster and policy, storing no placement; the shared directory is empty. Each environment runs one resolver in `AUTHORITY` mode at `k = 1, n = 1`, and one operator holds every key.
 
-Ship code with:
+## Phase 0: remove the two live paths
 
-- `gua.resolver.policy.enabled=false`,
-- deterministic fallback,
-- trace support,
-- security default deny,
-- signed routing-claims verifier available,
-- mirror directory lookup fail-closed by default,
-- policy endpoints returning empty status/no policy.
+**Goal**
 
-Expected behavior:
+Close two unsafe legacy paths.
 
-- existing `/resolve` clients continue to work,
-- no routing-policy file required,
-- roster claims keep working.
+**Changes**
 
-Validation:
+- Delete the legacy non-interactive `phone_number` + `otp_code` branch of identity-service's `GET /oauth2/authorize`. The endpoint stays for the interactive flow. Today: control of the SMS channel alone yields an authorization code, with no PIN, passkey or registration check.
+- Delete `POST /directory/entries` and its caller in `ResolverDirectoryClient`. Today: any admitted member's signing key can bind any phone number to itself, with no uniqueness check.
 
-```sh
-./gradlew test --no-daemon
-curl -s -X POST http://localhost:8095/resolve \
-  -H 'content-type: application/json' \
-  -d '{"phone":"+5511987654321"}'
-curl -s -X POST http://localhost:8095/resolve \
-  -H 'content-type: application/json' \
-  -d '{"phone":"+5511987654321","trace":true}'
-```
+**Validation**
 
-## Phase 1: Dev Policy Shadow Mode
+- A `phone_number` + `otp_code` request to `/oauth2/authorize` no longer produces an authorization code.
+- The normal interactive OAuth flow still completes.
+- `POST /directory/entries` is gone.
 
-Create an unsigned or test-signed policy file based on
-`src/main/resources/policies/delegated-routing.example.json`.
+**Rollback**
 
-Run with signatures optional only in local/dev:
+Revert the two commits.
 
-```sh
-GUA_RESOLVER_POLICY_ENABLED=true \
-GUA_RESOLVER_POLICY_FILE=/path/to/delegated-routing.dev.json \
-GUA_RESOLVER_POLICY_REQUIRE_SIGNATURES=false \
-./gradlew bootRun
-```
+## Phase 1: self-signed roster entries
 
-Use `/policy/routing/status` and trace mode to confirm rules match as expected.
+**Goal**
 
-## Phase 2: Signed Dev Policy
+The authority alone can no longer rewrite roster entries.
 
-Generate a policy signing key or reuse dev authority key.
+**Changes**
 
-Configure:
+- Today: `AdmissionService` checks possession then drops the key; entries carry no self-signature; only the authority signs.
+- Admission retains the member's genesis key.
+- Each entry carries a member self-signature over endpoint and key metadata (not `CanonicalRoster`'s delimiter form); clients verify both and refuse entries without one.
 
-```text
-GUA_RESOLVER_POLICY_ENABLED=true
-GUA_RESOLVER_POLICY_FILE=/etc/gua/policy/routing.json
-GUA_RESOLVER_POLICY_REQUIRE_SIGNATURES=true
-GUA_RESOLVER_POLICY_SIGNATURE_THRESHOLD=1
-GUA_RESOLVER_POLICY_KEY_ID=<dev-policy-key>
-GUA_RESOLVER_POLICY_PRIVATE_KEY=<private-key-for-signing-node-only>
-```
+**Validation**
 
-Policy-serving mirrors should have trusted public keys but no private signing key.
+- Both testbed homeservers re-admit with retained genesis keys; a substituted `baseUrl` fails client verification.
 
-## Phase 3: Mirror Rollout
+**Rollback**
 
-Run at least two resolver nodes:
+A transition flag tolerates missing self-signatures; remove it afterwards.
 
-- national/public resolver,
-- institutional or regional mirror.
+**Blocked by**
 
-Each mirror must:
+O2 (canonical self-signed entry encoding), L4.
 
-- verify roster,
-- verify routing policy,
-- expose status,
-- configure `GUA_RESOLVER_MIRROR_CACHE_FILE` before production,
-- keep `GUA_RESOLVER_DIRECTORY_FAIL_OPEN_ON_LOOKUP_ERROR=false` unless there is a documented legacy need.
+## Phase 2: separate governance keys
 
-## Phase 4: Production Governance
+**Goal**
 
-Move from 1-of-1 to k-of-n signing:
+Governance signing leaves the resolver process and is anchored in a pinned federation genesis.
 
-- roster threshold >= 2 where practical,
-- policy threshold >= 2 where practical,
-- separate keys for roster and routing policy if governance roles differ,
-- documented emergency revocation process.
+**Changes**
 
-Replace placeholder domain proof verifier with DNS or well-known challenge before admitting real third-party
-homeservers.
+- Today: `RoutingClaimsVerifier` falls back to the authority keys when its trusted-key list is unset, and dev runs that way.
+- Create the `FederationGenesis` with its threshold set of governance keys, and the registry roots under it (`HomeserverRegistry`, `VerifierRegistry`, `PolicyRegistry`, `WitnessRegistry`), as ADM-001 L10 specifies. Distribute it out of band: pinned in first-party builds and published at a well-known location.
+- That governance key set, outside the resolver, signs membership epochs and accreditations. Until a second key holder, custody and recovery procedures exist, every independence guarantee reduces to one operator; documentation must say so.
+- The resolver's key signs checkpoints and serves records; it can no longer admit or accredit.
+- `RoutingClaimsVerifier` fails closed on an unset trusted-key list.
 
-Configure trusted routing-claims keys:
+**Validation**
 
-```text
-GUA_RESOLVER_CLAIMS_AUDIENCE=gua-resolver
-GUA_RESOLVER_CLAIMS_MAX_LIFETIME=PT5M
-GUA_RESOLVER_CLAIMS_REPLAY_PROTECTION_ENABLED=true
-gua.resolver.claims.trusted-keys[0].id=<mas-or-identity-key-id>
-gua.resolver.claims.trusted-keys[0].public-key=<base64-x509-ed25519-public-key>
-```
+- Governance signatures from the operational key alone are rejected.
+- Membership, accreditations and policy verify back to the pinned genesis through the registry roots.
 
-MAS/identity-service must generate a fresh nonce per signed routing-claims envelope. Reusing a nonce should
-be treated as a client/auth bug: resolver replicas share the `routing_claim_nonce` table and will reject the
-second use.
+**Rollback**
 
-## Phase 5: Directory Availability
+Revert the cutover commit; the operational key regains governance powers. A genesis already pinned in client builds stays; clients do not enforce it before Phase 6.
 
-Do not rely indefinitely on one authority directory.
+**Blocked by**
 
-Choose one:
+S5.
 
-- HA Postgres and multiple authority pods,
-- signed privacy-preserving directory shards,
-- short-lived mirror caches with staleness budget,
-- identity-service-assisted account routing for existing users.
+## Phase 3: `AccountGenesis` and `accountId`
 
-Returning-user lookup should not silently become new-user placement during directory outage.
+**Goal**
 
-## Rollback
+New accounts get an on-device `AccountGenesis`; every account gets an `accountId`. Routing and login do not change.
 
-Set:
+**Changes**
 
-```text
-GUA_RESOLVER_POLICY_ENABLED=false
-```
+- Today: `routeExistingUser` derives `preferredUsername` from `localpartOf(userId)`. Re-keying `user_id` to a value containing a colon, with `on_conflict: add` live, merges every returning user onto one account.
+- New first-party accounts generate an `AccountGenesis` on device and register its `accountId`, never in a field MAS derives a localpart from.
+- Existing accounts get a bootstrap `accountId`, marked so auditors can tell them apart; adoption comes later.
 
-This restores legacy roster-claim plus deterministic fallback behavior. Keep the code change because
-deterministic fallback and security allowlist are improvements independent of policy.
+**Validation**
 
-## Backward Compatibility Notes
+- `accountId` is populated; nothing reads it yet.
 
-- `/resolve` request still requires only `phone`.
-- `/resolve` response still has `exists`, `homeserver`, and `registerAt`.
-- `trace` is opt-in and omitted otherwise.
-- Existing Android, iOS, and web clients decode the legacy fields.
-- Existing identity-service directory writes still use the same canonical signature string.
+**Rollback**
+
+Drop the column.
+
+**Blocked by**
+
+Severing that derivation in `routeExistingUser` (the S6 trap) and auditing every other localpart derivation.
+
+## Phase 4: placement records for existing accounts
+
+**Goal**
+
+Record where each existing account really lives.
+
+**Changes**
+
+- Today: the directory's `homeserver_id` reads `default` for every account, including one a federation test proved lives elsewhere.
+- Only each MAS's `upstream_oauth_links` table records true placement.
+- Each holding homeserver signs a generation-1 placement record for its accounts.
+- Comparison mode: answer from policy as today, log where the record disagrees, serve nothing from records yet.
+
+**Validation**
+
+- Zero disagreements except the known testbed placements.
+
+**Rollback**
+
+Records are additive; comparison mode is a flag.
+
+## Phase 5: binding records and first verifier
+
+**Goal**
+
+Identifier ownership becomes a signed, attested record; identity-service's phone verification is the first accredited verifier.
+
+**Changes**
+
+- Today: `RosterVerifier` dedupes on key id.
+- The verifier's accreditation is governance-signed under Phase 2's keys and records `operatorId` as a lookup key.
+- Existing identifiers get binding records attested by that verifier; `IdentifierProofPolicy` publishes `k = 1` for phone.
+- The threshold counts independently governed verifier trust domains, resolved through accreditation. `operatorId` is a lookup key, not the security boundary. Do not reuse `RosterVerifier`, which counts keys.
+
+**Validation**
+
+- Unaccredited bindings are rejected and logged as rejection leaves.
+
+**Rollback**
+
+Bindings are additive; Phase 4 records still answer.
+
+**Blocked by**
+
+Phase 2.
+
+## Phase 6: clients verify before connecting
+
+**Goal**
+
+Clients check signatures before connecting.
+
+**Changes**
+
+- Today: both clients take `baseUrl` from the resolver response verbatim.
+- Before handing the SDK an address, the client verifies the chain: pinned genesis, roster, self-signature, binding and placement records, checkpoint.
+- Verification ships in shadow (log-only) mode first. Enforcement waits for the pinning semantics decision.
+
+**Validation**
+
+- Shadow mode reports unverifiable responses without blocking any connection.
+
+**Rollback**
+
+Turn enforcement off; shadow mode keeps reporting.
+
+**Blocked by**
+
+O10 (pinning semantics), for enforcement only. Phase 2 (pinned genesis).
+
+## Phase 7: authentication moves to homeservers
+
+**Goal**
+
+Each homeserver authenticates its own users; its own decision record comes first.
+
+**Changes**
+
+- Today: MAS keys upstream links on `(provider ULID, subject)` with a unique index and never rewrites a subject.
+- Each MAS gains local authentication, passkeys first. A new subject meaning is a new provider row plus a link association pass, never an in-place update.
+- Customer passkeys can ship through identity-service earlier; this phase moves the ceremony to homeservers.
+- Pre-ceremony homeserver discovery stays an open decision, outside this phase. The Phase 7 decision record settles identity-service's remaining role: federation verifier without login credentials, or retirement.
+
+**Validation**
+
+- Set in that record.
+
+**Rollback**
+
+Set in that record.
+
+**Blocked by**
+
+That record. O11 (passkey discovery and relying party). S6 (OIDC subject migration).
+
+## Phase 8: blinded routing keys
+
+**Goal**
+
+Keep raw phone numbers and email addresses out of replicated federation state.
+
+**Changes**
+
+- The construction cannot be swapped later, so both gates must settle first.
+
+**Validation**
+
+- Defined with the construction.
+
+**Rollback**
+
+Defined with the validation.
+
+**Blocked by**
+
+S1 (cryptographic review of the threshold construction). O4 (RFC 9497 versus an updatable construction).
+
+## Phase 9: independent witnesses
+
+**Goal**
+
+A second party confirms the log neither equivocates nor miscomputes state.
+
+**Changes**
+
+- Build the checkpoint format and witness verification path earlier; claim nothing until a second party holds witness keys.
+
+**Validation**
+
+- A second operator's witness co-signs checkpoints.
+
+**Rollback**
+
+Nothing to roll back.
+
+**Blocked by**
+
+A second witness operator.
+
+## Deliberately out of scope
+
+- Account recovery: four requirements in the decision record; the mechanism gets its own record.
+- Matrix identity migration between homeservers: nothing native preserves device keys, cross-signing, membership or history across a move; placement migration is separate.
+- Catastrophic governance-key loss; deferred to its own decision.

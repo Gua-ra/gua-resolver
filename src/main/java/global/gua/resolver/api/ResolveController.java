@@ -29,11 +29,15 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 
 /**
- * The federation front door consumed by iOS / Web / Android BEFORE OIDC login. The client sends a
- * verified phone and learns which homeserver to authenticate against; for a new phone it learns where to
- * register. This is what replaces the clients' hardcoded {@code GuaDefaultAccountProvider}.
+ * The federation front door consumed by the iOS and Android clients BEFORE OIDC login. The client sends a
+ * phone number and learns which homeserver to authenticate against; for a phone with no account it learns
+ * where to register. Nothing about the phone is verified here: the endpoint is unauthenticated and takes a
+ * raw E.164, so today it also answers whether an account exists for any number (ADM-001 L16 names this as
+ * the enumeration oracle to close). This is what replaces the clients' hardcoded
+ * {@code GuaDefaultAccountProvider}.
  *
- * <p>Read-mostly and cacheable — the service is designed to run as a horizontally-scaled, mirrorable fleet.
+ * <p>Read-mostly and cacheable. Designed to run as a mirrorable fleet; both deployed environments run a
+ * single node today (ADM-001 O12).
  */
 @RestController
 public class ResolveController {
@@ -49,7 +53,7 @@ public class ResolveController {
         this.resolution = resolution;
         this.rosterStore = rosterStore;
         this.routingClaimsVerifier = routingClaimsVerifier;
-        // gua_resolver_resolve_total{outcome=...} — login (existing account) vs register (new placement).
+        // gua_resolver_resolve_total{outcome=...}: login (existing account) vs register (new placement).
         this.resolveExisting = Counter.builder("gua.resolver.resolve").tag("outcome", "existing").register(metrics);
         this.resolveRegister = Counter.builder("gua.resolver.resolve").tag("outcome", "register").register(metrics);
     }
@@ -94,7 +98,7 @@ public class ResolveController {
                 verified.affiliations(), verified.attributes(), verified.verified());
     }
 
-    /** The signed, public roster — what mirrors and clients verify (threshold sigs + log checkpoint). */
+    /** The signed, public roster: what mirrors and clients verify (threshold sigs + log checkpoint). */
     @GetMapping("/roster")
     public Object roster() {
         return rosterStore.current();
@@ -103,7 +107,7 @@ public class ResolveController {
     /**
      * A phone that isn't valid E.164 is a client error, not a server fault. Map it to 400 so callers
      * get a clear "fix your input" signal (and a friendly message) instead of an opaque 500. The phone
-     * is never echoed back — only a generic, non-PII message.
+     * is never echoed back, only a generic, non-PII message.
      */
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
@@ -143,7 +147,7 @@ public class ResolveController {
             RoutingClaimsEnvelope routingClaims,
             Boolean trace) {}
 
-    /** Minimal homeserver reference the client needs to start OIDC — never leaks ":server" to the user. */
+    /** Minimal homeserver reference the client needs to start OIDC; never leaks ":server" to the user. */
     public record HomeserverRef(String serverName, String baseUrl, String masIssuer, String region) {
         static HomeserverRef of(Homeserver hs) {
             return new HomeserverRef(hs.serverName(), hs.baseUrl(), hs.masIssuer(), hs.region());

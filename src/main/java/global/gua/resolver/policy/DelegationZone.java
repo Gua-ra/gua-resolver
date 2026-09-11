@@ -11,7 +11,9 @@ import java.util.List;
  * grant (its scope, allowed homeservers, validity, and the delegate's public key {@code delegatePublicKey}
  * identified by {@code delegateKeyId}). The delegate then signs the rules inside this zone with that key
  * (see {@code RoutingPolicyBundle.delegateSignatures}). A rule is trusted only when BOTH hold, so a delegate
- * controls its own rules within an authority-granted scope and nobody can forge them. A zone whose
+ * controls its own rules within an authority-granted scope: a rule cannot be produced without the zone's
+ * attested delegate key. This constrains delegates, not the authority, which attests the delegate key by
+ * signing the bundle and can publish a zone whose delegate key it holds (ADM-001 L6). A zone whose
  * {@code delegateKeyId} is an authority key is authority self-delegation (e.g. public onboarding rules).
  */
 public record DelegationZone(

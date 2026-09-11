@@ -35,7 +35,8 @@ dependencies {
     implementation 'io.github.resilience4j:resilience4j-ratelimiter:2.2.0'
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.13'
 
-    // Persistent roster + transparency log + shared phone->homeserver directory.
+    // Persistent roster + transparency log + the member-written phone->homeserver directory (scheduled for
+    // removal, ADM-001 L1b).
     // Ed25519 authority/roster signatures use the JDK-native provider (java.security, "Ed25519"); no extra
     // crypto lib is needed. JdbcTemplate (not JPA) keeps the persistence thin + the SQL explicit.
     implementation 'org.springframework.boot:spring-boot-starter-jdbc'

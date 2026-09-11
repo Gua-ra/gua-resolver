@@ -21,15 +21,21 @@ import global.gua.resolver.roster.RosterVerifier;
 import global.gua.resolver.roster.SignedRoster;
 
 /**
- * Reference client-side verifier. Because resolver placement is a deterministic pure function of (verified
- * roster, verified policy, context), a client does not have to trust a resolver's {@code /resolve} answer: it
- * fetches the signed roster and signed policy, verifies their authority (k-of-n) and delegate signatures, and
- * reproduces the decision locally. This class is the canonical reference implementation of that algorithm
- * (see docs/verification/gua-resolver-verification-protocol.md); it reuses the server's own verification and
- * placement code so the two can never diverge. Platform verifiers (web / iOS / Android) port the same spec.
+ * Reference client-side verifier. Because resolver placement is a re-evaluation of the same rules over the
+ * same inputs (verified roster, verified policy, context), a client does not have to trust a resolver's
+ * {@code /resolve} answer: it fetches the signed roster and signed policy, verifies their authority (k-of-n)
+ * and delegate signatures, and reproduces the decision locally. The answer is stable only for a fixed
+ * transparency-log size: the weighted fallback reseeds on every log leaf, so it moves whenever a policy or
+ * checkpoint leaf is appended even when membership did not change (ADM-001 L6). This class is the canonical
+ * reference implementation of that algorithm (see docs/verification/gua-resolver-verification-protocol.md);
+ * it reuses the server's own verification and placement code so the two can never diverge. Platform
+ * verifiers (web / iOS / Android) port the same spec.
  *
- * <p>New-account placement is fully client-reproducible. Existing-account (directory) results are verified
- * separately against the signed directory checkpoint + inclusion proof (see the directory-HA design).
+ * <p>New-account placement is client-reproducible in that sense. Existing-account (directory) results are
+ * not verifiable per mapping today: no per-lookup inclusion proof is served, and there is no directory-HA
+ * design that specifies one. What a client can check is that the returned homeserver id is currently ACTIVE
+ * in the verified roster; the signed directory checkpoint commits the authority node to a directory state as
+ * a whole and carries no proof for an individual mapping (ADM-001 L11, O1).
  */
 public final class ResolverVerifier {
 
@@ -39,7 +45,9 @@ public final class ResolverVerifier {
     /**
      * @param authorityKeys      published authority public keys (n) the client trusts
      * @param authorityThreshold k of n required for a roster / policy authority signature
-     * @param policyKeys         policy-signing keys; pass empty to reuse the authority keys as the root
+     * @param policyKeys         policy-signing keys. Empty falls back to the authority keys, a fallback that
+     *                           collapses the two trust roots to one key set and is scheduled for removal
+     *                           (ADM-001 L8)
      * @param policyThreshold    k required for a policy authority signature
      */
     public ResolverVerifier(List<ResolverProperties.TrustedKey> authorityKeys, int authorityThreshold,

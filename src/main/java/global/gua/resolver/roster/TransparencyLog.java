@@ -2,9 +2,12 @@ package global.gua.resolver.roster;
 
 /**
  * Append-only, Merkle-hash-chained log of every federation membership change (admit / update / suspend /
- * revoke / authority-set change). This is the "verifiability without PoW" core (CT / Sigstore Rekor /
- * Go checksum DB style): history cannot be retroactively altered, anyone can audit it, and resolvers
- * gossip checkpoints to detect split-views. See docs/FEDERATION_ROUTING_DESIGN.md §5.
+ * revoke / authority-set change), plus POLICY_PUBLISH and DIRECTORY_CHECKPOINT leaves. This is the
+ * "verifiability without PoW" core (CT / Sigstore Rekor / Go checksum DB style): appended history cannot be
+ * rewritten without detection by a reader that compares against a checkpoint it saw earlier. Leaves carry
+ * payload hashes, not payloads, and directory mutations are not logged, so an auditor can confirm that a
+ * hash was appended, not replay the transition (ADM-001 L11). There is no checkpoint gossip between
+ * resolvers; equivocation resistance needs witnesses and cross-channel comparison (ADM-001 L12).
  */
 public interface TransparencyLog {
 
@@ -19,7 +22,7 @@ public interface TransparencyLog {
 
     /**
      * Verify that the given checkpoint is consistent with (an append-only extension of) a previously seen
-     * one — the gossip check a mirror runs so the authority can't present a forked history.
+     * one: the check a mirror runs against its own last checkpoint so a rewritten history is detected.
      */
     boolean verifyConsistency(SignedRoster.LogCheckpoint older, SignedRoster.LogCheckpoint newer);
 }

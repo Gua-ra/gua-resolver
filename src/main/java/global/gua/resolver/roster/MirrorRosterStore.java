@@ -20,10 +20,11 @@ import global.gua.resolver.crypto.MerkleTree;
  * Mirror-mode {@link RosterStore} (§4): pulls the signed roster from an upstream authority, verifies the
  * k-of-n authority signatures AND transparency-log consistency before serving it, then refreshes
  * periodically. An institution runs this to get a local, low-latency, sovereign copy of the roster
- * WITHOUT being an authority — it can never mint roster entries, only relay verified ones.
+ * WITHOUT being an authority: it can never mint roster entries, only relay verified ones.
  *
- * <p>The directory (phone graph) is deliberately NOT mirrored here — it is queried, rate-limited, against
- * the authoritative store; only the public roster is replicated.
+ * <p>The directory is deliberately NOT mirrored here; a mirror queries the AUTHORITY-mode node's
+ * member-written directory (scheduled for removal, ADM-001 L1b) row by row; only the public roster is
+ * replicated.
  */
 @Component
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "MIRROR")
@@ -85,7 +86,8 @@ public class MirrorRosterStore implements RosterStore {
         verifier.requireVerified(pulled);
 
         // 2. Transparency-log consistency: the new checkpoint must be an append-only extension of the last
-        //    one we accepted (gossip check — detects a forked/rewritten history / split view).
+        //    one this mirror accepted. A local check against our own last checkpoint, not gossip: it detects
+        //    a history rewritten since we last looked, not a split view between readers (ADM-001 L12).
         if (lastCheckpoint != null && lastCheckpoint.size() > 0) {
             requireConsistentLog(lastCheckpoint, pulled.logCheckpoint());
         }

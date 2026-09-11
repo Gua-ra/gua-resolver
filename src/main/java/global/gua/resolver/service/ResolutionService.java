@@ -7,7 +7,8 @@ import global.gua.resolver.placement.PlacementContext;
 import global.gua.resolver.placement.PlacementDecision;
 
 /**
- * The read front-door logic: given a verified phone (or username), where does / should the account live?
+ * The read front-door logic: given a phone (or username), where does / should the account live? Nothing
+ * about the identifier is verified by the resolver (ADM-001 L16).
  *
  * <p>Privacy: the phone is looked up by peppered HMAC against the shared directory; raw numbers are never
  * stored or logged, lookups are rate-limited, and the directory is never bulk-exported to mirrors (see

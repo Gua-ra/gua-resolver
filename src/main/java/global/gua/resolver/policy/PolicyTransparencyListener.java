@@ -12,7 +12,9 @@ import global.gua.resolver.roster.JdbcTransparencyLog;
  * Appends each adopted routing-policy version to the authority's transparency log as a {@code POLICY_PUBLISH}
  * leaf (subject = {@code policyId:v<version>}, payload = SHA-256 of the canonical bundle). Because it lands in
  * the same Merkle log as membership, the published checkpoint and consistency proofs cover policy too, so a
- * single signer cannot serve different policy to different clients undetectably. Authority mode only.
+ * client can detect a policy history rewritten since its own last checkpoint. That is detection, not
+ * prevention: it does not rule out two clients being served different policy (ADM-001 L11, L12). Authority
+ * mode only.
  */
 @Component
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)

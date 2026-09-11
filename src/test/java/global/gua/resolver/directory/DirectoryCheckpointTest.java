@@ -12,7 +12,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * The authority signs a Merkle checkpoint over the directory and anchors it in the transparency log
- * (idempotent per root), so existing-account routing is committed, verifiable, and non-equivocable.
+ * (idempotent per root), so a client can detect a change against the checkpoint it stored earlier. It does
+ * not prevent two clients being served different views (ADM-001 L11, L12).
  */
 @SpringBootTest
 class DirectoryCheckpointTest {

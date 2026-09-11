@@ -15,7 +15,9 @@ import global.gua.resolver.crypto.MerkleTree;
  * Persistent, RFC 6962 transparency log (§5). Every membership change (admit/update/suspend/revoke/
  * authority-set change) is appended as an immutable, hash-chained leaf; the published checkpoint is the
  * Merkle root over all leaves plus the tree size. Survives restarts (rows in {@code transparency_log}) so
- * the audit trail is durable from day 0, and mirrors can prove the authority never rewrote history.
+ * the audit trail is durable from day 0, and a mirror can detect history rewritten since its own last
+ * checkpoint. That is detection, not prevention: it does not rule out two readers being served different
+ * views (ADM-001 L11, L12).
  */
 @Component
 public class JdbcTransparencyLog implements TransparencyLog {
@@ -52,7 +54,7 @@ public class JdbcTransparencyLog implements TransparencyLog {
     /**
      * Authority-side consistency check: confirm {@code older} is a genuine prefix of the current log (i.e.
      * the current head extends it append-only). Computes the proof from the stored leaves and verifies it
-     * against both roots — the same check a mirror performs with the proof shipped over the wire.
+     * against both roots, the same check a mirror performs with the proof shipped over the wire.
      */
     @Override
     public boolean verifyConsistency(SignedRoster.LogCheckpoint older, SignedRoster.LogCheckpoint newer) {

@@ -22,11 +22,12 @@ import global.gua.resolver.roster.RosterStore;
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 
 /**
- * The shared directory's write + lookup surface (§4). Writes are authenticated by the hosting homeserver's
- * <b>membership credential</b> (the Ed25519 signing key in its roster entry): a homeserver can only write
- * rows for accounts it hosts, because the write must be signed by the key the authority admitted for that
- * {@code homeserverId}. identity-service calls this at account provisioning. The lookup is rate-limited and
- * keyed by peppered HMAC (mirrors query it; no bulk export exists).
+ * The shared directory's write + lookup surface (§4). Writes are authenticated by a <b>membership
+ * credential</b> (the Ed25519 signing key in the writer's roster entry). That proves membership only: any
+ * ACTIVE member key can write any row, binding any phone or username to its own homeserver id, with no
+ * check that the writer hosts the account. identity-service calls this at account provisioning. The write
+ * endpoint is scheduled for removal (ADM-001 L1b). The lookup is rate-limited and keyed by peppered HMAC
+ * (mirrors query it; no bulk export exists).
  */
 @RestController
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)
@@ -66,7 +67,7 @@ public class DirectoryController {
         return ResponseEntity.noContent().build();
     }
 
-    /** Rate-limited lookup by peppered phone hash or username — what a mirror queries (never a bulk copy). */
+    /** Rate-limited lookup by peppered phone hash or username: what a mirror queries (never a bulk copy). */
     @GetMapping("/directory/lookup")
     @RateLimiter(name = "directoryLookup")
     public LookupResponse lookup(@RequestParam(required = false) String phoneHash,

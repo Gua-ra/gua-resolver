@@ -1,48 +1,71 @@
 ![gua-resolver](https://github.com/user-attachments/assets/01bd66c7-6250-42ce-a4d0-1f8ade952ca2)
 
-The **federation routing front door** for Gua: the service clients hit *before* login to discover which
-homeserver they belong to, and the service that tracks/trusts the set of federated homeservers.
+gua-resolver is the routing front door of the Gua federation. Before login, a client asks it which homeserver an identifier leads to. It also serves the signed list of federated homeservers.
 
-It is deliberately separate from `identity-service` (the credential-holding IdP): the resolver is the
-public, read-mostly, horizontally-scalable, **anyone-can-mirror** entry point to the federated network.
+The resolver serves and verifies routing information. It does not authenticate anyone and it never holds a credential. It is public and read-mostly. Running a resolver grants no authority over the federation.
 
-## Three responsibilities
+> **Which document do you want?**
+> - How routing, placement and binding fit together: [architecture guide](docs/architecture/gua-identity-and-federation.md).
+> - The frozen decisions behind the target design: [ADM-001](docs/decisions/ADM-001-identifier-binding-placement-trust.md).
+> - How a client verifies what this service serves today: [verification protocol](docs/verification/gua-resolver-verification-protocol.md).
+> - How the current code gets to the target: [migration plan](docs/migrations/gua-resolver-migration-plan.md).
+>
+> This README is the operational document. It describes what the code on `main` does. Where the target differs, the target is marked.
 
-1. **Resolution**: `POST /resolve` : verified phone → which homeserver to log in to, or where to register.
-2. **Roster**: `GET /roster` : the signed, transparency-logged set of federated homeservers (mirrorable).
-3. **Placement engine**: a pluggable, priority-ordered rule pipeline that decides where a *new* account
-   lives. Operator-specific placement (a carrier claiming its numbers, a university claiming its affiliates)
-   is **declarative data in the signed roster**, not code — adding one is a roster edit, no redeploy.
+## What it does today
 
-The current architecture also supports optional **signed routing policy bundles** (`GET /policy/routing`)
-that split routing policy from roster membership. Policy bundles can define delegated authority zones
-(carrier, institution, OIDC issuer) and are verified before routing. Legacy roster claims remain supported.
-Institution/OIDC policy rules require a signed routing-claims envelope from MAS / identity-service; public
-clients can transport claims but cannot self-assert institutional authority. Signed routing claims are
-short-lived by default (5 minutes max) and replay-protected with a DB-backed nonce table shared by resolver
-replicas.
+Callers use three endpoints.
 
+**`POST /resolve`.** A phone number goes in. A homeserver to log in to or register at comes out. Today the resolver evaluates the routing policy against the roster on every request.
 
-Persistence is Postgres (Flyway migration in `db/migration/`); tests run on in-memory H2.
+**`GET /roster`.** The signed list of federated homeservers, recorded in a transparency log. Each roster carries `k`-of-`n` authority signatures and a Merkle log checkpoint. Mirrors can serve it.
 
-### Modes & key config (`gua.resolver.*`)
-- `mode: AUTHORITY | MIRROR`
-- `authority.threshold` (k), `authority.trusted-keys[]` (n), `authority.signing-{key-id,private-key}`
-- `directory.pepper` — **must match identity-service**
-- `policy.enabled`, `policy.file`, `policy.require-signatures`, `policy.signature-threshold`
-- `claims.audience`, `claims.max-lifetime`, `claims.replay-protection-enabled`, `claims.trusted-keys[]`
-- `mirror.upstream-url`, `mirror.refresh-interval`, `mirror.cache-file`
+**`GET /policy/routing`.** Signed policy bundles. They keep routing rules separate from roster membership. A bundle can delegate zones to carriers, institutions and sign-on issuers. Institution and issuer rules need a routing-claims envelope that is signed, short-lived and replay-protected. A public client can carry such a claim but cannot create one on its own.
 
-## Run (dev)
+## How this relates to the target architecture
+
+The code on `main` is the current implementation. The decision record defines the target. Three things differ in what this service serves today:
+
+- **Resolution.** Today: the resolver evaluates policy on every request. Target: the answer is backed by a committed, signed placement record.
+- **Roster.** Today: the roster carries authority signatures and a log checkpoint. Target: each entry is also self-signed by the member it describes.
+- **Directory pepper.** Today: `directory.pepper` is a secret shared with identity-service. Target: blinded routing keys replace it. The migration plan has a phase for this. The construction is not chosen yet.
+
+Mirror mode exists and is exercised in tests. How an independently operated resolver bootstraps and verifies its state is still an open decision. Nothing like that runs today.
+
+How the pieces fit together is in the [architecture guide](docs/architecture/gua-identity-and-federation.md). The reasoning behind each target, and the open decisions, are in [ADM-001](docs/decisions/ADM-001-identifier-binding-placement-trust.md).
+
+## Configuration (`gua.resolver.*`)
+
+- `mode`: `AUTHORITY` or `MIRROR`.
+- `authority.threshold` (`k`), `authority.trusted-keys[]` (`n`), `authority.signing-key-id`, `authority.signing-private-key`.
+- `policy.enabled`, `policy.file`, `policy.require-signatures`, `policy.signature-threshold`.
+- `claims.audience`, `claims.max-lifetime`, `claims.replay-protection-enabled`, `claims.trusted-keys[]`.
+- `mirror.upstream-url`, `mirror.refresh-interval`, `mirror.cache-file`.
+- `directory.pepper`: must match identity-service. Scheduled for replacement; see the migration plan.
+
+Both deployed environments run a single node in `AUTHORITY` mode with `k = 1` and `n = 1`. One operator holds every key. The `k`-of-`n` signing and the mirror mode work and are exercised in tests, but no multi-operator deployment exists yet.
+
+## Run it locally
 
 ```sh
 ./gradlew bootRun        # :8095
 curl -s localhost:8095/roster | jq
 curl -s -XPOST localhost:8095/resolve -H 'content-type: application/json' \
-  -d '{"phone":"+5511987654321"}' | jq    # -> register at the dev homeserver
+  -d '{"phone":"+5511987654321"}' | jq
 curl -s -XPOST localhost:8095/resolve -H 'content-type: application/json' \
   -d '{"phone":"+5511987654321","trace":true}' | jq
 curl -s localhost:8095/policy/routing/status | jq
 ```
 
-Stack: Java 21 · Spring Boot 3.5.6
+### Dependencies
+
+- Postgres for persistence. Flyway migrations live in `db/migration/`.
+- H2 for tests.
+
+## Relationship to identity-service
+
+Today identity-service is the single login provider and credential store for every homeserver. The resolver shares its directory pepper with identity-service. That is the current implementation, not the target.
+
+Under the target, each homeserver's own auth service owns authentication. What remains of identity-service's role is decided in a follow-up record. The resolver's role does not change either way: it routes, and it never holds a credential.
+
+Stack: Java 21, Spring Boot 3.5.6.

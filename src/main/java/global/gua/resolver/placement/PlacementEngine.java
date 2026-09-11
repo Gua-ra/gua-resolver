@@ -10,8 +10,9 @@ import org.springframework.stereotype.Component;
 
 /**
  * Runs the registered {@link PlacementRule}s in priority order and returns the first match. Placement is a
- * pure function of (context, current roster) so it is deterministic: the same input always yields the same
- * homeserver. The decision is made once, at account creation (MXIDs are immutable).
+ * re-evaluation of the same rules over the same inputs (context, current roster); the answer is stable only
+ * for a fixed transparency-log size, because the weighted fallback reseeds on every log leaf (ADM-001 L6).
+ * The decision is made once, at account creation (MXIDs are immutable).
  *
  * <p>Spring injects every {@link PlacementRule} bean; the claim rules read the signed roster, so adding a
  * carrier/institution is a roster edit, not a code change.

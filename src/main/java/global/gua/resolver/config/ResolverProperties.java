@@ -9,10 +9,16 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * All {@code gua.resolver.*} configuration. A resolver runs in one of two modes:
  * <ul>
- *   <li><b>AUTHORITY</b> — owns the roster: admits homeservers, appends to the transparency log, and
- *       threshold-signs the published roster with its authority signing key.</li>
- *   <li><b>MIRROR</b> — pulls the signed roster from an upstream authority, verifies threshold signatures
- *       + log consistency, and serves a read-only copy (an institution running its own resolver).</li>
+ *   <li><b>AUTHORITY</b>: the node that admits homeservers, appends to the transparency log, and
+ *       threshold-signs the published roster with its signing key. A mode of the process, not a governance
+ *       role: under ADM-001 the appending node is a sequencer whose checkpoints are assertions (L11),
+ *       governance keys live in a federation genesis outside this process (L10), and running a resolver
+ *       grants no authority (O12).</li>
+ *   <li><b>MIRROR</b>: pulls the signed roster from an upstream authority node, verifies threshold
+ *       signatures + log consistency, and serves a read-only copy. As built a mirror has no remote policy
+ *       source, does not relay the log or checkpoint endpoints, and needs the shared directory pepper, so an
+ *       institution cannot yet run a complete resolver of its own; the replica and bootstrap protocol is
+ *       ADM-001 O12.</li>
  * </ul>
  * Both modes verify against the same published {@code authority.trusted-keys} + {@code threshold}.
  */
@@ -40,7 +46,9 @@ public class ResolverProperties {
     public Admin getAdmin() { return admin; }
     public DevHomeserver getDevHomeserver() { return devHomeserver; }
 
-    /** Authority trust root: the published key set (verify) + this node's signing key (authority mode). */
+    /** The published authority key set (verify) + this node's signing key (authority mode). This configured
+     * list is the verifier's trust root today; ADM-001 L10 makes a pinned federation genesis the root, with
+     * the roster keys one registry beneath it. */
     public static class Authority {
         /** Minimum number of valid authority signatures required for a roster to be trusted (k of n). */
         private int threshold = 1;
@@ -117,7 +125,8 @@ public class ResolverProperties {
     }
 
     public static class Directory {
-        /** Shared secret pepper for the phone HMAC. MUST be set + identical across the fleet + identity-service. */
+        /** Shared secret pepper for the phone HMAC. MUST be set + identical across the fleet + identity-service.
+         * Non-rotatable as built and required on every mirror; scheduled for replacement (ADM-001 L15). */
         private String pepper;
         /** Mirrors should fail closed on authority lookup errors unless a deployment explicitly opts out. */
         private boolean failOpenOnLookupError = false;
@@ -144,7 +153,8 @@ public class ResolverProperties {
         private boolean requireSignatures = true;
         /** Minimum valid signatures required for a policy bundle. */
         private int signatureThreshold = 1;
-        /** Trusted policy-signing keys. Empty means reuse authority.trusted-keys as the bootstrap root. */
+        /** Trusted policy-signing keys. Empty means the code reuses authority.trusted-keys. That fallback shares
+         * one key across two roles; ADM-001 L8 requires it to fail closed instead. */
         private List<TrustedKey> trustedKeys = new ArrayList<>();
         /** This node's optional policy signing key id, for offline/bootstrap signing helpers. */
         private String signingKeyId;
@@ -186,7 +196,8 @@ public class ResolverProperties {
         private boolean requireSubjectBinding = true;
         /** How often expired nonces are removed from the replay table. */
         private Duration replayCleanupInterval = Duration.ofMinutes(10);
-        /** Trusted envelope signing keys. Empty means reuse policy keys, then authority keys. */
+        /** Trusted envelope signing keys. Empty means the code falls back to policy keys, then authority keys,
+         * which lets the authority key mint routing claims; ADM-001 L8 requires this to fail closed instead. */
         private List<TrustedKey> trustedKeys = new ArrayList<>();
 
         public String getAudience() { return audience; }
