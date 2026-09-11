@@ -213,6 +213,41 @@ class RoutingClaimsVerifierTest {
         assertThat(retainedUntil[0]).isEqualTo(signed.expiresAt().plus(props.getClaims().getMaxClockSkew()));
     }
 
+    @Test
+    void withNoClaimsTrustedKeysEveryEnvelopeIsRejectedRatherThanFallingBack() {
+        Ed25519.KeyPairB64 kp = Ed25519.generate();
+        RoutingClaimsEnvelope signed = RoutingClaimsSigner.sign(unsigned(Map.of("email_domain", "usp.br")),
+                "claims-a", kp.privateKeyB64());
+
+        // claims.trusted-keys is empty, and the policy AND authority key sets both contain the very key that
+        // signed this envelope. The verifier used to fall back to them, which let the roster-signing key mint
+        // institutional placement claims. ADM-001 L8: no fallback, ever.
+        ResolverProperties props = new ResolverProperties();
+        ResolverProperties.TrustedKey trusted = new ResolverProperties.TrustedKey();
+        trusted.setId("claims-a");
+        trusted.setPublicKey(kp.publicKeyB64());
+        props.getPolicy().setTrustedKeys(List.of(trusted));
+        props.getAuthority().setTrustedKeys(List.of(trusted));
+
+        RoutingClaimsVerifier verifier = new RoutingClaimsVerifier(props, inMemoryReplayStore());
+
+        assertThatThrownBy(() -> verifier.verify(signed, SUBJECT))
+                .isInstanceOf(RoutingClaimsVerifier.InvalidRoutingClaimsException.class)
+                .hasMessageContaining("signature is invalid");
+    }
+
+    @Test
+    void anAbsentEnvelopeIsStillSimplyUnverifiedClaims() {
+        // Fail-closed applies to a presented envelope. A request that carries none is not an error; it just
+        // gets no verified claims, so institution and OIDC rules cannot match.
+        RoutingClaimsVerifier.VerifiedRoutingClaims claims =
+                new RoutingClaimsVerifier(new ResolverProperties(), inMemoryReplayStore())
+                        .verify(null, SUBJECT);
+
+        assertThat(claims.verified()).isFalse();
+        assertThat(claims.affiliations()).isEmpty();
+    }
+
     private static RoutingClaimsEnvelope unsigned(Map<String, String> attrs) {
         return new RoutingClaimsEnvelope(RoutingClaimsEnvelope.SCHEMA_VERSION,
                 "https://account.gua.test", "gua-resolver", Instant.now().minusSeconds(10),

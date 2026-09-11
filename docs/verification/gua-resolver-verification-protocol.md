@@ -24,9 +24,14 @@ trusting the resolver. The Java reference implementation is
 A verifier is configured out of band with:
 
 - the published **authority public keys** (n) and the **authority threshold** `k`;
-- optionally distinct **policy-signing keys** + threshold. The Java reference implementation falls back to
-  the authority keys when these are unset; that fallback is the key-role sharing ADM-001 L8 requires to fail
-  closed, so do not copy it into a port.
+- the **policy-signing keys** + threshold. These are the federation's governance keys once a genesis is
+  pinned. There is no fallback to the authority keys: it was removed in Phase 2, so an unset list verifies
+  nothing rather than silently accepting a bundle signed by the operational roster key (ADM-001 L8).
+- optionally the pinned **federation genesis**, published at `GET /.well-known/gua-federation` on the
+  resolver origin as `{genesisId, fingerprint, genesis, transitions[]}`. It is signed by the keys it
+  enumerates (ADM-001 L10 locks that), so fetching it proves nothing on its own: it is a trust root only
+  once its fingerprint has been compared against an independent channel and pinned. Clients pin it per
+  environment as data; **no client enforces the chain yet**, which is Phase 6.
 
 These are the only inputs the verifier trusts. Everything else is fetched and verified against them.
 
