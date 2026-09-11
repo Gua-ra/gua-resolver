@@ -106,10 +106,14 @@ public class ResolveController {
                 verified.affiliations(), verified.attributes(), verified.verified());
     }
 
-    /** The signed, public roster: what mirrors and clients verify (threshold sigs + log checkpoint). */
+    /**
+     * The signed, public roster: what mirrors and clients verify (threshold sigs + log checkpoint). A mirror
+     * serves the upstream document verbatim here, so the upstream signature still covers exactly these bytes,
+     * while its own routing uses its verified view of it (ADM-007).
+     */
     @GetMapping("/roster")
     public Object roster() {
-        return rosterStore.current();
+        return rosterStore.served();
     }
 
     /**

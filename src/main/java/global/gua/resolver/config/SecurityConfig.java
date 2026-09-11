@@ -19,7 +19,7 @@ import org.springframework.security.web.SecurityFilterChain;
  * remains an existence oracle, only no longer a free one (ADM-001 L16 requires layered controls that do not
  * assume an account session). {@code /directory/lookup} is the mirror-facing, rate-limited, peppered-HMAC
  * read; the directory has no write endpoint (ADM-001 L1b). The {@code /authority/**} admin surface
- * (admission, status changes) requires the {@code ADMIN} role via HTTP Basic, and fails closed: with no
+ * (admission, status changes, member attestation) requires the {@code ADMIN} role via HTTP Basic, and fails closed: with no
  * admin password hash configured there are no admin users, so those endpoints stay denied. Everything else
  * is denied.
  */

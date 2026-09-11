@@ -31,9 +31,9 @@ public class JdbcTransparencyLog implements TransparencyLog {
     @Override
     @Transactional
     public synchronized SignedRoster.LogCheckpoint append(String type, String homeserverId,
-                                                          String payloadHash) {
+                                                          String payloadHash, Instant recordedAt) {
         long index = nextIndex();
-        Instant now = Instant.now();
+        Instant now = recordedAt == null ? Instant.now() : recordedAt;
         String leafData = index + "|" + type + "|" + (homeserverId == null ? "" : homeserverId)
                 + "|" + payloadHash + "|" + now.toEpochMilli();
         String leafHash = MerkleTree.leafHash(leafData.getBytes(StandardCharsets.UTF_8));

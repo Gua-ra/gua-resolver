@@ -60,3 +60,13 @@ dependencies {
 tasks.named('test') {
     useJUnitPlatform()
 }
+
+// Offline member-entry signing for a homeserver operator (ADM-007); see
+// docs/runbooks/member-attestation.md. Keys are piped in, never passed as arguments.
+tasks.register('memberEntryTool', JavaExec) {
+    group = 'application'
+    description = 'Sign, rotate or verify a gua-member-entry.v1 roster attestation'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'global.gua.resolver.tools.MemberEntryTool'
+    standardInput = System.in
+}

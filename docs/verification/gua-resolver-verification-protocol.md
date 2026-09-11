@@ -2,7 +2,7 @@
 >
 > It does **not** yet cover the guarantees added by [ADM-001](../decisions/ADM-001-identifier-binding-placement-trust.md). ADM-001 is the normative target. None of the following is implemented or verifiable today:
 >
-> - homeserver **self-signed roster entries** (L10), so a client cannot yet detect an authority that has rewritten a member's address or key;
+> - **client** verification of homeserver self-signed roster entries (L10). The resolver now verifies and logs them and refuses a substituted entry (section 1a), but a client that does not check the member block itself still cannot detect an authority that rewrote a member's address or key;
 > - **binding records** attested by accredited identifier verifiers (L7, L8), so a client cannot yet verify that an identifier legitimately refers to an account;
 > - **placement records** signed by the holding homeserver (L6), so a `/resolve` answer is still a per-request policy evaluation rather than a committed fact;
 > - a pinned **federation genesis** and governance-key chain (L10); the trust roots below are still a configured authority key set;
@@ -64,6 +64,42 @@ These are the only inputs the verifier trusts. Everything else is fetched and ve
    the client saw (`verifyConsistency`). This detects a history rewritten since this client's own last
    checkpoint; it does not by itself rule out a split view between clients (ADM-001 L11, L12).
 
+## 1a. Verify a member self-signature
+
+An entry may carry a `member` block: the homeserver's own signature over the fields it controls
+([ADM-007](../decisions/ADM-007-canonical-encoding-and-member-entries.md)). It is additive JSON, absent on
+entries that have not been attested, and outside `CanonicalRoster`, so step 1 above is unchanged either way.
+
+1. Parse the `member` block strictly. Unknown fields, duplicate keys and trailing content are refused rather
+   than ignored, so a signature cannot cover fewer fields than you go on to read. Require
+   `schema` = `gua-member-entry.v1` and `alg` = `Ed25519`.
+2. Recompute the canonical bytes with the `gua-lp.v1` rules (length-prefixed, no delimiters): the schema tag,
+   then `homeserver.id`, `serverName`, `baseUrl`, `masIssuer`, `member.alg`, `homeserver.signingKey`,
+   `member.keyId`, `member.sequence`, `notBefore` and `notAfter` as epoch milliseconds, `region` as an
+   optional (absent and empty are different bytes), `searchVisibility` by name, and `searchGroups` as a set
+   sorted by unsigned UTF-8 byte order with duplicates refused. `weight`, `acceptsNew`, `claims`,
+   `admittedAt` and `status` are authority attributes and are not covered.
+3. Require a `signatures[]` element whose `keyId` equals `member.keyId` and that verifies under
+   `homeserver.signingKey`. A substituted `baseUrl`, `masIssuer`, `signingKey` or search policy fails here.
+4. Require the acceptance time to lie in `[notBefore, notAfter]`, and the window to be no longer than the
+   published maximum entry lifetime (400 days). The authoritative acceptance time is the one sequenced in the
+   `MEMBER_ATTEST` leaf; your own clock is a staleness guard, not the decision (ADM-001 L11).
+5. If you already hold an accepted entry for that homeserver id: the sequence must not go backwards, one
+   sequence must name one entry, and a changed `signingKey` must also be signed by the previous `keyId` under
+   the previous key, with a new key id. With no prior state, step 3 plus the authority signature and log
+   inclusion are what you have; identity-change semantics are ADM-001 O10 and not decided.
+6. A failure refuses that entry. It is dropped from the verified view and counted, never partially accepted.
+
+The log commits to each accepted entry: a `MEMBER_ATTEST` leaf whose payload hash is the SHA-256 of the same
+canonical bytes, at the index the entry was accepted. Golden vectors for the encoding, the entry bytes, the
+hashes and the signatures are published in `docs/specs/gua-lp-v1-vectors.json`, so a port can be checked byte
+for byte before it is trusted.
+
+**Tolerated today.** The resolver serves entries that carry no member block, and its own transition flag
+`gua.resolver.roster.require-member-signature` decides whether an unattested ACTIVE entry is served at all.
+A verifier that refuses such entries on its own is ahead of the deployment and will see an empty roster in
+environments that have not finished attesting.
+
 ## 2. Verify the policy (if present)
 
 1. **Authority attestation.** Recompute the canonical bytes (`CanonicalRoutingPolicy`, which excludes the
@@ -118,6 +154,10 @@ institution/OIDC rules only when the context is marked claims-verified.
 - `CanonicalRoster`, `CanonicalRoutingPolicy`, `CanonicalDelegatedRules`, `CanonicalRoutingClaims` are the
   authoritative serializations. Routing-claims use backslash-escaped delimiters so the encoding is injective.
   All timestamps are epoch milliseconds; all maps/lists are sorted; all bytes are UTF-8.
+- `gua-member-entry.v1` uses `gua-lp.v1`, a length-prefixed encoding with no delimiters at all: `u32`
+  big-endian lengths, `int64` big-endian integers, a presence byte for optionals, sets sorted by unsigned
+  UTF-8 byte order. It is the encoding for every signed object added from ADM-007 onwards, and the vectors in
+  `docs/specs/gua-lp-v1-vectors.json` pin it.
 - Only the routing-claims encoding escapes. `CanonicalRoster` joins fields with a raw `0x1F` that is asserted,
   not enforced, to be absent from values, and collapses null and empty. Port it byte for byte to verify what
   is served today; do not reuse it as the encoding for any new signed object (ADM-001 L4).

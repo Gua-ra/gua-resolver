@@ -3,6 +3,8 @@ package global.gua.resolver.roster;
 import java.time.Instant;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 /**
  * The federation roster as published: a versioned, threshold-signed snapshot anchored to the transparency
  * log. Resolvers (including third-party mirrors) verify {@code authoritySignatures} (k-of-n) AND
@@ -15,6 +17,7 @@ import java.util.List;
  * @param authoritySignatures detached Ed25519 signatures over (version,issuedAt,entries,logCheckpoint);
  *                            valid only if at least the configured threshold k are present and verify
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record SignedRoster(
         long version,
         Instant issuedAt,

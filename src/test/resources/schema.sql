@@ -1,6 +1,7 @@
--- Test schema (H2/PostgreSQL mode), mirrors db/migration/V1__roster_log_directory.sql. Flyway is disabled
+-- Test schema (H2/PostgreSQL mode), mirrors db/migration/V1 to V4 by hand. Flyway is disabled
 -- in tests; Spring SQL init runs this. DROP-first so each test context starts clean.
 DROP TABLE IF EXISTS roster_entry;
+DROP TABLE IF EXISTS roster_member_history;
 DROP TABLE IF EXISTS transparency_log;
 DROP TABLE IF EXISTS directory_entry;
 DROP TABLE IF EXISTS username_index;
@@ -19,9 +20,30 @@ CREATE TABLE roster_entry (
     search_groups_json TEXT      NOT NULL DEFAULT '[]',
     claims_json    TEXT         NOT NULL DEFAULT '[]',
     admitted_at    TIMESTAMP    NOT NULL,
-    status         VARCHAR(16)  NOT NULL DEFAULT 'ACTIVE'
+    status         VARCHAR(16)  NOT NULL DEFAULT 'ACTIVE',
+    member_key_id  VARCHAR(128),
+    member_sequence BIGINT,
+    member_not_before TIMESTAMP,
+    member_not_after  TIMESTAMP,
+    member_signatures_json TEXT,
+    member_entry_hash VARCHAR(64),
+    genesis_signing_key VARCHAR(255),
+    genesis_key_proof TEXT
 );
 CREATE UNIQUE INDEX ux_roster_entry_server_name ON roster_entry (server_name);
+
+CREATE TABLE roster_member_history (
+    homeserver_id   VARCHAR(64)  NOT NULL,
+    sequence        BIGINT       NOT NULL,
+    key_id          VARCHAR(128) NOT NULL,
+    signing_key     VARCHAR(255) NOT NULL,
+    entry_json      TEXT         NOT NULL,
+    entry_hash      VARCHAR(64)  NOT NULL,
+    signatures_json TEXT         NOT NULL,
+    accepted_at     TIMESTAMP    NOT NULL,
+    log_leaf_index  BIGINT,
+    PRIMARY KEY (homeserver_id, sequence)
+);
 
 CREATE TABLE transparency_log (
     leaf_index    BIGINT       PRIMARY KEY,

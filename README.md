@@ -9,6 +9,7 @@ The resolver serves and verifies routing information. It does not authenticate a
 > - The frozen decisions behind the target design: [ADM-001](docs/decisions/ADM-001-identifier-binding-placement-trust.md).
 > - How a client verifies what this service serves today: [verification protocol](docs/verification/gua-resolver-verification-protocol.md).
 > - How the current code gets to the target: [migration plan](docs/migrations/gua-resolver-migration-plan.md).
+> - How an operator signs a homeserver's own roster entry: [member attestation runbook](docs/runbooks/member-attestation.md).
 >
 > This README is the operational document. It describes what the code on `main` does. Where the target differs, the target is marked.
 
@@ -18,7 +19,7 @@ Clients use three endpoints; mirrors and verifiers also read `/roster/log`, `/ro
 
 **`POST /resolve`.** A phone number goes in. A homeserver to log in to or register at comes out. Today the resolver reads the phone directory first and evaluates the routing policy against the roster only for a phone with no account.
 
-**`GET /roster`.** The signed list of federated homeservers, recorded in a transparency log. Each roster carries `k`-of-`n` authority signatures and a Merkle log checkpoint. Mirrors can serve it.
+**`GET /roster`.** The signed list of federated homeservers, recorded in a transparency log. Each roster carries `k`-of-`n` authority signatures and a Merkle log checkpoint. Mirrors can serve it. An entry can also carry the member's own signature over the fields that homeserver controls, so the authority alone can no longer rewrite a member's address or key; the resolver verifies it before serving and records each accepted one in the log.
 
 **`GET /policy/routing`.** Signed policy bundles. They keep routing rules separate from roster membership. A bundle can delegate zones to carriers, institutions and sign-on issuers. Institution and issuer rules need a routing-claims envelope that is signed, short-lived and replay-protected. A public client can carry such a claim but cannot create one on its own.
 
@@ -39,7 +40,7 @@ The `exists` flag stays in the response contract: the iOS and Android clients ch
 The code on `main` is the current implementation. The decision record defines the target. Three things differ in what this service serves today:
 
 - **Resolution.** Today: for a new account the resolver evaluates policy on every request; for an existing account it reads the phone directory. Nothing writes that directory over HTTP any more (the member write endpoint was removed under ADM-001 L1b); the rows already there stay, and are still read, until placement records replace them. Target: the answer is backed by a committed, signed placement record.
-- **Roster.** Today: the roster carries authority signatures and a log checkpoint. Target: each entry is also self-signed by the member it describes.
+- **Roster.** Today: the roster carries authority signatures and a log checkpoint, and an entry can also carry the member's own signature over its endpoint, key and search fields ([ADM-007](docs/decisions/ADM-007-canonical-encoding-and-member-entries.md)), which the authority verifies and commits to the log. Entries with no member signature are still served, because `roster.require-member-signature` is off, and clients do not check member signatures yet, so the protection currently holds against a resolver that rewrites its own database rather than against one that serves a client an entry it never logged. Target: every entry is self-signed and clients refuse entries without one.
 - **Directory pepper.** Today: `directory.pepper` is a secret shared with identity-service. Target: blinded routing keys replace it. The migration plan has a phase for this. The construction is not chosen yet.
 
 Mirror mode exists and is exercised in tests. How an independently operated resolver bootstraps and verifies its state is still an open decision. Nothing like that runs today.
@@ -53,6 +54,7 @@ How the pieces fit together is in the [architecture guide](docs/architecture/gua
 - `policy.enabled`, `policy.file`, `policy.require-signatures`, `policy.signature-threshold`.
 - `claims.audience`, `claims.max-lifetime`, `claims.replay-protection-enabled`, `claims.trusted-keys[]`.
 - `mirror.upstream-url`, `mirror.refresh-interval`, `mirror.cache-file`.
+- `roster.require-member-signature`, `roster.member-max-lifetime`: the member self-signature transition. With the flag on, an ACTIVE entry carrying no valid member signature is excluded from `/roster`, from placement and from existing-account resolution, so every ACTIVE member is attested first (`docs/runbooks/member-attestation.md`); setting it back to false is the rollback. Env overrides take the form `GUA_RESOLVER_ROSTER_<KEY>`.
 - `directory.pepper`: must match identity-service. Scheduled for replacement; see the migration plan.
 - `abuse.enabled`, `abuse.client-limit-for-period`, `abuse.client-refresh-period`, `abuse.client-burst`, `abuse.global-limit-for-period`, `abuse.global-refresh-period`, `abuse.global-burst`, `abuse.max-tracked-clients`, `abuse.client-expiry`, `abuse.trace-enabled`: the interim `/resolve` abuse controls above. Every key has an env override of the form `GUA_RESOLVER_ABUSE_<KEY>`.
 

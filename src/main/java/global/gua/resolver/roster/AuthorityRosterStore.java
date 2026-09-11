@@ -2,6 +2,7 @@ package global.gua.resolver.roster;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,11 +20,14 @@ import global.gua.resolver.roster.store.RosterEntryRepository;
  * does not yet support (ADM-001 L11, O12). Every rebuild re-signs with a fresh {@code issuedAt}, so the
  * served bytes are not stable across rebuilds, and if its own signature threshold is not met it logs an
  * error and still serves the under-signed roster. On a fresh database it seeds the single configured dev
- * homeserver (Phase 1) and logs an ADMIT event, so the audit trail exists from the very first entry.
+ * homeserver (Phase 1) and logs an ADMIT event, so the audit trail exists from the very first entry; that
+ * seeded entry proves nothing and stays unattested until its operator attests it (ADM-007).
  *
  * <p>The roster {@code version} tracks the transparency-log size: every membership change appends a log
  * event, so a stable log size means a stable roster, and the signed snapshot is cached + only rebuilt when
- * the log advances (or {@link #refresh()} is called).
+ * the log advances (or {@link #refresh()} is called). Member attestations add one more trigger: they carry a
+ * validity window, so the cache is also rebuilt when the next window opens or expires, which under
+ * {@code gua.resolver.roster.require-member-signature} changes the entry set without a new leaf.
  */
 @Component
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)
@@ -39,6 +43,9 @@ public class AuthorityRosterStore implements RosterStore {
 
     private volatile SignedRoster cached;
     private volatile long cachedLogSize = -1;
+    private volatile Instant cachedValidUntil;
+    private volatile long unattestedActive;
+    private volatile Set<String> reportedUnattested;
 
     public AuthorityRosterStore(RosterEntryRepository entries, TransparencyLog transparencyLog,
                                 RosterSigner signer, RosterVerifier verifier, ResolverProperties props) {
@@ -48,13 +55,14 @@ public class AuthorityRosterStore implements RosterStore {
         this.verifier = verifier;
         this.props = props;
         seedIfEmpty();
+        refresh();   // so an unattested ACTIVE entry is named at startup, not at the first request
     }
 
     @Override
     public SignedRoster current() {
         SignedRoster.LogCheckpoint head = transparencyLog.head();
         SignedRoster snapshot = cached;
-        if (snapshot == null || cachedLogSize != head.size()) {
+        if (snapshot == null || cachedLogSize != head.size() || attestationWindowPassed()) {
             snapshot = rebuild(head);
         }
         return snapshot;
@@ -65,10 +73,25 @@ public class AuthorityRosterStore implements RosterStore {
         return rebuild(transparencyLog.head());
     }
 
+    @Override
+    public long unattestedActiveCount() {
+        current();
+        return unattestedActive;
+    }
+
+    private boolean attestationWindowPassed() {
+        Instant until = cachedValidUntil;
+        return until != null && !Instant.now().isBefore(until);
+    }
+
     private synchronized SignedRoster rebuild(SignedRoster.LogCheckpoint head) {
+        Instant now = Instant.now();
         List<RosterEntry> all = entries.findAll();
+        RosterVerifier.VerifiedView view = verifier.verifiedView(all, now, id -> null, Set.of());
+        report(view);
+
         long version = head.size();
-        SignedRoster signed = signer.sign(version, Instant.now(), all, head);
+        SignedRoster signed = signer.sign(version, now, view.entries(), head);
         if (!verifier.isVerified(signed)) {
             // Authority is misconfigured (no/short of signing keys for the threshold). Don't serve an
             // unverifiable roster silently; clients/mirrors would reject it anyway.
@@ -78,7 +101,37 @@ public class AuthorityRosterStore implements RosterStore {
         }
         cached = signed;
         cachedLogSize = head.size();
+        cachedValidUntil = view.nextWindowChange();
+        unattestedActive = view.unattestedActiveCount();
         return signed;
+    }
+
+    /**
+     * Name the entries that carry no valid member self-signature, once per change of that set: an ERROR per
+     * entry the transition flag drops (it has just left {@code /roster}, placement and existing-account
+     * resolution), a WARN naming them while the flag is off.
+     */
+    private void report(RosterVerifier.VerifiedView view) {
+        Set<String> unattested = view.unattestedActiveIds();
+        if (unattested.equals(reportedUnattested)) {
+            return;
+        }
+        reportedUnattested = unattested;
+        if (unattested.isEmpty()) {
+            log.info("Every ACTIVE roster entry carries a valid member self-signature");
+            return;
+        }
+        if (verifier.requireMemberSignature()) {
+            for (RosterVerifier.MemberCheck check : view.excluded()) {
+                log.error("Excluding ACTIVE homeserver {} from the signed roster: {}",
+                        check.homeserverId(), check.result().reason());
+            }
+            return;
+        }
+        log.warn("{} ACTIVE homeserver(s) have no valid member self-signature and are served anyway: {}. "
+                        + "Attest them before setting gua.resolver.roster.require-member-signature "
+                        + "(docs/runbooks/member-attestation.md)",
+                unattested.size(), String.join(", ", unattested));
     }
 
     /** Seed the configured dev homeserver into a fresh roster (Phase 1) and record the ADMIT event. */
