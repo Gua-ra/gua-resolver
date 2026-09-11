@@ -7,7 +7,7 @@
 
 ## Starting point
 
-identity-service is the only OIDC provider and credential store for every homeserver. The OIDC subject is the full Matrix ID, fusing identity and placement. The resolver routes from roster and policy, storing no placement; the shared directory is empty. Each environment runs one resolver in `AUTHORITY` mode at `k = 1, n = 1`, and one operator holds every key.
+identity-service is the only OIDC provider and credential store for every homeserver. The OIDC subject is the full Matrix ID, fusing identity and placement. The resolver routes from roster and policy, storing no placement; the shared directory still holds the rows written before its write endpoint was removed. Each environment runs one resolver in `AUTHORITY` mode at `k = 1, n = 1`, and one operator holds every key.
 
 ## Phase 0: remove the two live paths
 
@@ -17,8 +17,8 @@ Close two unsafe legacy paths.
 
 **Changes**
 
-- Delete the legacy non-interactive `phone_number` + `otp_code` branch of identity-service's `GET /oauth2/authorize`. The endpoint stays for the interactive flow. Today: control of the SMS channel alone yields an authorization code, with no PIN, passkey or registration check.
-- Delete `POST /directory/entries` and its caller in `ResolverDirectoryClient`. Today: any admitted member's signing key can bind any phone number to itself, with no uniqueness check.
+- Delete the legacy non-interactive `phone_number` + `otp_code` branch of identity-service's `GET /oauth2/authorize`. The endpoint stays for the interactive flow. Done 2026-09-11: the non-interactive branch is gone and an authorization code is issued only by the interactive `/login/**` flow.
+- Delete `POST /directory/entries` and its caller in `ResolverDirectoryClient`. Done 2026-09-11: the endpoint and the identity-service client that called it are both gone.
 
 **Validation**
 
@@ -38,7 +38,7 @@ The authority alone can no longer rewrite roster entries.
 
 **Changes**
 
-- Today: `AdmissionService` checks possession then drops the key; entries carry no self-signature; only the authority signs.
+- Today: `AdmissionService` checks possession and keeps the member's key in the entry but discards the proof; entries carry no self-signature; only the authority signs.
 - Admission retains the member's genesis key.
 - Each entry carries a member self-signature over endpoint and key metadata (not `CanonicalRoster`'s delimiter form); clients verify both and refuse entries without one.
 
