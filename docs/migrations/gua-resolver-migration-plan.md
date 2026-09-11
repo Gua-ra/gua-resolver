@@ -11,6 +11,8 @@ identity-service is the only OIDC provider and credential store for every homese
 
 ## Phase 0: remove the two live paths
 
+Status: complete, 2026-09-11. Both paths are gone from `main`; see the implementation status in [../decisions/README.md](../decisions/README.md).
+
 **Goal**
 
 Close two unsafe legacy paths.
