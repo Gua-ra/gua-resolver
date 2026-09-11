@@ -30,8 +30,8 @@ management:
       export:
         enabled: true
 
-# Rate-limit the directory lookup: the phone graph is queried, never bulk-exported. This is the only rate
-# limit in the service; /resolve, which answers exists true/false for any raw E.164, has none (ADM-001 L16).
+# Rate-limit the directory lookup: the phone graph is queried, never bulk-exported. /resolve has its own
+# per-client + global limiter under gua.resolver.abuse below (ADM-001 L16).
 resilience4j:
   ratelimiter:
     instances:
@@ -67,6 +67,32 @@ gua:
     admin:
       username: ${GUA_RESOLVER_ADMIN_USER:admin}
       password-hash: ${GUA_RESOLVER_ADMIN_PASSWORD_HASH:}
+    # Interim abuse controls on POST /resolve (ADM-001 L16). Two token buckets: one per client key (the last
+    # X-Forwarded-For address, which is the one the ingress appends, else the peer address; IPv6 keyed by
+    # /64) and one global ceiling for the whole process. Both are per pod: the limit shared across replicas
+    # is the ingress-level limiter in gua-deploy. Over the limit: 429 with Retry-After and a constant JSON
+    # body, before the request body is read. Everything here defaults on.
+    abuse:
+      # Rollback lever for the rate limits only; trace-enabled is independent of it.
+      enabled: ${GUA_RESOLVER_ABUSE_ENABLED:true}
+      # Per client: client-limit-for-period tokens per client-refresh-period, at most client-burst in hand.
+      client-limit-for-period: ${GUA_RESOLVER_ABUSE_CLIENT_LIMIT_FOR_PERIOD:20}
+      client-refresh-period: ${GUA_RESOLVER_ABUSE_CLIENT_REFRESH_PERIOD:PT1M}
+      client-burst: ${GUA_RESOLVER_ABUSE_CLIENT_BURST:20}
+      # Global ceiling for this process, same shape.
+      global-limit-for-period: ${GUA_RESOLVER_ABUSE_GLOBAL_LIMIT_FOR_PERIOD:200}
+      global-refresh-period: ${GUA_RESOLVER_ABUSE_GLOBAL_REFRESH_PERIOD:PT1S}
+      global-burst: ${GUA_RESOLVER_ABUSE_GLOBAL_BURST:200}
+      # Bound on per-client state: at most this many client buckets in memory, each dropped after
+      # client-expiry without a request. An evicted client starts over with a full bucket; the global
+      # ceiling still bounds the total.
+      max-tracked-clients: ${GUA_RESOLVER_ABUSE_MAX_TRACKED_CLIENTS:10000}
+      client-expiry: ${GUA_RESOLVER_ABUSE_CLIENT_EXPIRY:PT5M}
+      # Whether "trace": true in a /resolve request returns the decision trace (matched rule, policy
+      # id/version, delegated zone, roster version). Off unless a deployment opts in: the trace exposes
+      # policy internals to anonymous callers. The dev testbed runbook relies on it, so the dev deployment
+      # has to set it to true.
+      trace-enabled: ${GUA_RESOLVER_ABUSE_TRACE_ENABLED:false}
     policy:
       enabled: ${GUA_RESOLVER_POLICY_ENABLED:false}
       file: ${GUA_RESOLVER_POLICY_FILE:}

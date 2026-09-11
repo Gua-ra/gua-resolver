@@ -193,7 +193,7 @@ Raw phone numbers and email addresses do not appear in replicated federation sta
 
 ## L16. `/resolve` must not be a cheap unrestricted enumeration oracle
 
-The requirement is stated this way rather than as "authenticate `/resolve`". That framing is circular, because `/resolve` is needed before any account session exists. Controls are layered, and none may assume an account session. **[CODE]** Today it is unauthenticated and un-rate-limited. It takes a raw E.164 and returns `exists`, on the public production host.
+The requirement is stated this way rather than as "authenticate `/resolve`". That framing is circular, because `/resolve` is needed before any account session exists. Controls are layered, and none may assume an account session. **[CODE]** Today it is unauthenticated. It is rate-limited per client and globally inside the service (interim controls; see the README section "Interim abuse controls"), with the limit shared across replicas at the ingress. It still takes a raw E.164 and returns `exists`, on the public production host.
 
 ---
 

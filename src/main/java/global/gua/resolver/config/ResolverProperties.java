@@ -34,6 +34,7 @@ public class ResolverProperties {
     private final Policy policy = new Policy();
     private final Claims claims = new Claims();
     private final Admin admin = new Admin();
+    private final Abuse abuse = new Abuse();
     private final DevHomeserver devHomeserver = new DevHomeserver();
 
     public Mode getMode() { return mode; }
@@ -44,6 +45,7 @@ public class ResolverProperties {
     public Policy getPolicy() { return policy; }
     public Claims getClaims() { return claims; }
     public Admin getAdmin() { return admin; }
+    public Abuse getAbuse() { return abuse; }
     public DevHomeserver getDevHomeserver() { return devHomeserver; }
 
     /** The published authority key set (verify) + this node's signing key (authority mode). This configured
@@ -220,6 +222,52 @@ public class ResolverProperties {
         }
         public List<TrustedKey> getTrustedKeys() { return trustedKeys; }
         public void setTrustedKeys(List<TrustedKey> trustedKeys) { this.trustedKeys = trustedKeys; }
+    }
+
+    /**
+     * Interim abuse controls on {@code POST /resolve} (ADM-001 L16): a token bucket per client key, a global
+     * ceiling per process, and the switch that gates the decision trace. Interim because the response still
+     * carries {@code exists}; the client verification phase changes that contract (ADM-001 S4).
+     */
+    public static class Abuse {
+        /** Master switch for the /resolve rate limits (the rollback lever). Does not affect traceEnabled. */
+        private boolean enabled = true;
+        /** Tokens each client bucket gains per clientRefreshPeriod. */
+        private int clientLimitForPeriod = 20;
+        private Duration clientRefreshPeriod = Duration.ofMinutes(1);
+        /** Capacity of a client bucket: the burst a fresh client may spend at once. */
+        private int clientBurst = 20;
+        /** Tokens the global bucket gains per globalRefreshPeriod. */
+        private int globalLimitForPeriod = 200;
+        private Duration globalRefreshPeriod = Duration.ofSeconds(1);
+        private int globalBurst = 200;
+        /** Upper bound on distinct client buckets held in memory; least recently used are evicted past it. */
+        private long maxTrackedClients = 10_000;
+        /** Idle time after which a client bucket is dropped. */
+        private Duration clientExpiry = Duration.ofMinutes(5);
+        /** Whether {@code "trace": true} returns the decision trace. Off unless a deployment opts in. */
+        private boolean traceEnabled = false;
+
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        public int getClientLimitForPeriod() { return clientLimitForPeriod; }
+        public void setClientLimitForPeriod(int v) { this.clientLimitForPeriod = v; }
+        public Duration getClientRefreshPeriod() { return clientRefreshPeriod; }
+        public void setClientRefreshPeriod(Duration v) { this.clientRefreshPeriod = v; }
+        public int getClientBurst() { return clientBurst; }
+        public void setClientBurst(int v) { this.clientBurst = v; }
+        public int getGlobalLimitForPeriod() { return globalLimitForPeriod; }
+        public void setGlobalLimitForPeriod(int v) { this.globalLimitForPeriod = v; }
+        public Duration getGlobalRefreshPeriod() { return globalRefreshPeriod; }
+        public void setGlobalRefreshPeriod(Duration v) { this.globalRefreshPeriod = v; }
+        public int getGlobalBurst() { return globalBurst; }
+        public void setGlobalBurst(int v) { this.globalBurst = v; }
+        public long getMaxTrackedClients() { return maxTrackedClients; }
+        public void setMaxTrackedClients(long v) { this.maxTrackedClients = v; }
+        public Duration getClientExpiry() { return clientExpiry; }
+        public void setClientExpiry(Duration v) { this.clientExpiry = v; }
+        public boolean isTraceEnabled() { return traceEnabled; }
+        public void setTraceEnabled(boolean v) { this.traceEnabled = v; }
     }
 
     /** The single homeserver the authority seeds its roster with on first boot (Phase 1 / fresh DB). */

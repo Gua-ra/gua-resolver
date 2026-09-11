@@ -22,6 +22,18 @@ Callers use three endpoints.
 
 **`GET /policy/routing`.** Signed policy bundles. They keep routing rules separate from roster membership. A bundle can delegate zones to carriers, institutions and sign-on issuers. Institution and issuer rules need a routing-claims envelope that is signed, short-lived and replay-protected. A public client can carry such a claim but cannot create one on its own.
 
+### Interim abuse controls
+
+`POST /resolve` answers `exists` for any raw E.164 with no account session, which ADM-001 L16 names as the enumeration oracle to close. Until the client verification phase changes the response, the endpoint carries these interim controls, all on by default and configured under `gua.resolver.abuse.*`:
+
+- **Per-client rate limit.** A token bucket per client, keyed by the last `X-Forwarded-For` address (the one the ingress appends; earlier entries are caller-controlled) or by the peer address when the header is absent. IPv6 clients are keyed by /64. Default 20 requests per minute with a burst of 20.
+- **Global ceiling.** A second bucket for the whole process, default 200 requests per second. Both buckets are per pod; the limit shared across replicas is the ingress-level limiter, which lives in gua-deploy.
+- **The 429 contract.** Over either limit the service answers `429 Too Many Requests` with a `Retry-After` header in seconds and the constant body `{"code":"rate_limited","message":"..."}`. The request body is not read, so a refused request reveals nothing about the phone.
+- **Decision trace.** `"trace": true` returns the matched rule, policy id and version, delegated zone and roster version only when `abuse.trace-enabled` is `true`. It is off by default because the trace exposes policy internals to anonymous callers; the dev testbed runbook depends on it, so the dev deployment has to set `GUA_RESOLVER_ABUSE_TRACE_ENABLED=true`.
+- **Observability.** `gua_resolver_resolve_ratelimited_total{scope="client"|"global"}` counts refusals, `gua_resolver_resolve_clients_tracked` gauges the distinct clients held (bounded by `abuse.max-tracked-clients`), and the first refusal per client per window logs a WARN carrying a truncated hash of the client key, never the phone.
+
+The `exists` flag stays in the response contract: the iOS and Android clients choose login versus create from it, and it changes only when the client verification phase changes the response, per ADM-001 L16. `abuse.enabled=false` switches the rate limits off (the rollback lever); the trace switch is independent of it.
+
 ## How this relates to the target architecture
 
 The code on `main` is the current implementation. The decision record defines the target. Three things differ in what this service serves today:
@@ -42,13 +54,14 @@ How the pieces fit together is in the [architecture guide](docs/architecture/gua
 - `claims.audience`, `claims.max-lifetime`, `claims.replay-protection-enabled`, `claims.trusted-keys[]`.
 - `mirror.upstream-url`, `mirror.refresh-interval`, `mirror.cache-file`.
 - `directory.pepper`: must match identity-service. Scheduled for replacement; see the migration plan.
+- `abuse.enabled`, `abuse.client-limit-for-period`, `abuse.client-refresh-period`, `abuse.client-burst`, `abuse.global-limit-for-period`, `abuse.global-refresh-period`, `abuse.global-burst`, `abuse.max-tracked-clients`, `abuse.client-expiry`, `abuse.trace-enabled`: the interim `/resolve` abuse controls above. Every key has an env override of the form `GUA_RESOLVER_ABUSE_<KEY>`.
 
 Both deployed environments run a single node in `AUTHORITY` mode with `k = 1` and `n = 1`. One operator holds every key. The `k`-of-`n` signing and the mirror mode work and are exercised in tests, but no multi-operator deployment exists yet.
 
 ## Run it locally
 
 ```sh
-./gradlew bootRun        # :8095
+GUA_RESOLVER_ABUSE_TRACE_ENABLED=true ./gradlew bootRun   # :8095; the trace below is off unless enabled
 curl -s localhost:8095/roster | jq
 curl -s -XPOST localhost:8095/resolve -H 'content-type: application/json' \
   -d '{"phone":"+5511987654321"}' | jq

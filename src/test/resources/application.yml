@@ -18,6 +18,10 @@ gua:
     mode: AUTHORITY
     directory:
       pepper: test-pepper-do-not-use-in-prod
+    abuse:
+      # The contract tests assert the decision trace; prod-style config leaves it off. The rate limits keep
+      # their defaults (20 per minute per client) so the tests exercise the shipped values.
+      trace-enabled: true
     authority:
       threshold: 1
       signing-key-id: gua-authority-test

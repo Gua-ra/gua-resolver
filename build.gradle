@@ -33,6 +33,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webflux'      // WebClient for roster pull + remote-claim webhooks
     implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.2.0'
     implementation 'io.github.resilience4j:resilience4j-ratelimiter:2.2.0'
+    // Bounded per-client token-bucket state for the /resolve abuse controls (max size + idle expiry); the
+    // version is managed by the Spring Boot BOM.
+    implementation 'com.github.ben-manes.caffeine:caffeine'
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.13'
 
     // Persistent roster + transparency log + the member-written phone->homeserver directory (scheduled for
