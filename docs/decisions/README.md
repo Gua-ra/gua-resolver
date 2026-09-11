@@ -1,6 +1,10 @@
 Architecture decision records for Gua. The entry point is [ADM-001](ADM-001-identifier-binding-placement-trust.md), the frozen decision set for identifier binding, account placement, resolver trust and federation governance. It is normative. Its locked decisions are reopened by concrete evidence, such as a counterexample, a changed requirement or implementation results, not by preference.
 The memos that produced it are preserved under [rationale/](rationale/) with only punctuation normalized. They are the reasoning record. They are not normative.
 
+## Accepted follow-up records
+
+- [ADM-007](ADM-007-canonical-encoding-and-member-entries.md): the `gua-lp.v1` canonical encoding and self-signed member roster entries. Closes the part of O2 that Phase 1 needs; nothing locked in ADM-001 is reopened.
+
 ## Implementation status
 
 Which ADM-001 decisions the code on `main` has reached. Everything not listed is still target.
