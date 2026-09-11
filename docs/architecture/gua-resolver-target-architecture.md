@@ -2,7 +2,7 @@
 
 Date: 2026-09-10
 
-> **Status: HISTORICAL VALIDATION/DESIGN.** The design this file held is superseded and has moved; this file is kept so that existing links keep resolving.
+> **Status: HISTORICAL VALIDATION/DESIGN.** The design this file held is superseded and has moved. This file is kept so that existing links keep resolving.
 
 The target architecture now lives in two documents:
 

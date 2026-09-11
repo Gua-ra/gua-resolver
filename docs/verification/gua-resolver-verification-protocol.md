@@ -1,6 +1,6 @@
-> **Status: CURRENT IMPLEMENTATION.** This protocol verifies what the resolver serves **today**: the signed roster, the routing policy bundle, the transparency log, and a `/resolve` decision reproduced from those artifacts. It is accurate for the code on `main` and remains the reference for platform verifiers until the target verification chain ships.
+> **Status: CURRENT IMPLEMENTATION.** This protocol verifies what the resolver serves **today**: the signed roster, the routing policy bundle, the transparency log, and a `/resolve` decision reproduced from those artifacts. It is accurate for the code on `main`. It remains the reference for platform verifiers until the target verification chain ships.
 >
-> It does **not** yet cover the guarantees added by [ADM-001](../decisions/ADM-001-identifier-binding-placement-trust.md), which is the normative target. Specifically, none of the following is implemented or verifiable today:
+> It does **not** yet cover the guarantees added by [ADM-001](../decisions/ADM-001-identifier-binding-placement-trust.md). ADM-001 is the normative target. None of the following is implemented or verifiable today:
 >
 > - homeserver **self-signed roster entries** (L10), so a client cannot yet detect an authority that has rewritten a member's address or key;
 > - **binding records** attested by accredited identifier verifiers (L7, L8), so a client cannot yet verify that an identifier legitimately refers to an account;
