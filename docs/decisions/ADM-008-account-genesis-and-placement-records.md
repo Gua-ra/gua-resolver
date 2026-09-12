@@ -1,6 +1,8 @@
 # ADM-008: Account genesis, bootstrap identity and placement records
 
 > **Status: Accepted for implementation, 2026-09-11.** Scoped to O2 for account and placement objects; revisable by implementation evidence under the same rule as ADM-001.
+>
+> **Implementation note, 2026-09-12.** Decision 6's attach step is not implementable in the deployed sign-in flow, so native accounts are bootstrap-only. See "Implementation status and direction" below. No decision here is changed.
 
 ## Context
 
@@ -131,6 +133,49 @@ The fifth criterion needs production issuance under decision 4. ADM-002 D1 fixin
 - The flip criterion for requiring genesis on native signups.
 - Retraction of records for deactivated accounts; their placement persists until defined.
 - Recovery mechanics, cancellation authority and key rotation. These sit in ADM-002, drafted but not frozen.
+
+## Implementation status and direction, 2026-09-12
+
+Recorded after acceptance, to state what the code reached and why. This section adds status and direction only. It changes no decision above, and decision 6 stands as written.
+
+Native accounts are bootstrap-only today. Every native signup takes decision 6's bootstrap branch, because the client flags are off. No native account holds an account authority key. The genesis scaffolding is present and disabled on both halves.
+
+**1. Decision 6's attach step is not implementable in the deployed flow.** The account authority private key is generated and held by the native app in the platform keystore. The profile step that would carry the attach proof executes inside the sign-in web page. On iOS that is an `ASWebAuthenticationSession`, and on Android a Chrome Custom Tab. The page has neither the genesis material nor any channel to the native signer. Redirecting out to the app's own scheme would end the OIDC session. Decision 6 assumed the party completing the profile step holds the key, and it does not.
+
+**2. An OTP-authorized attachment was designed, reviewed and rejected.** The design sealed a genesis to the phone number with an OTP before the OIDC flow. It then attached by comparing the sealed phone digest against the number the login session had verified in page.
+
+The adversarial review found a concrete exploit. An attacker registers their own genesis against a victim's number. The server sends a code to the victim's phone. The attacker reads that one code once and seals the row. They then lure the victim to an ordinary authorize URL carrying the attacker's handle. The victim passes their own login OTP normally. The victim's new account is then permanently rooted in the attacker's authority key, and under recovery framework 0x01 the recovery key too.
+
+There is no repair. An accountId is permanent under ADM-001 L3, `account_genesis.origin` is immutable, `user_id` is UNIQUE, and `ADOPT_ROOT` is unresolved under ADM-001 O9.
+
+A second, independent defect: the registration proof carries no freshness. A captured registration body can be replayed to rotate the handle and burn a victim's genesis.
+
+Under decision 6 as written the first attack is cryptographically impossible. Attaching requires a signature over server-chosen bytes that never leave the server-side login session. The amendment would have traded impossible for one intercepted SMS.
+
+**3. Native accounts remain bootstrap-only for now.** A bootstrap account is a valid, normal user account. It is not degraded, and it is not a holding state a user can perceive. The client and server genesis scaffolding stays present and disabled, with every flag defaulting off. On the server those are `identity.genesis.enabled`, `identity.genesis.production-issuance`, `identity.genesis.require-for-native` and `identity.genesis.bootstrap-backfill.enabled`, the last gated separately from the master switch. Each client carries its own off-by-default flag, and neither client's scaffolding is on its `main` branch yet.
+
+The flags are inert only as a set. Turn the server flag and a client flag on together, and a native signup that presents a handle fails outright. It does not fall back, because decision 6 allows no silent downgrade and the web page cannot produce the proof. So all of them stay off together, not merely off one by one.
+
+Shadow-mode exit criterion 5, the clients shipping genesis with `require-for-native` on, is therefore not reachable yet.
+
+**4. A secure `ADOPT_ROOT` is deferred** to a dedicated account-authority lifecycle iteration. It is not being designed here. ADM-001 O9 stays open, and nothing in this section narrows it.
+
+### Direction for that iteration, not a decision
+
+The shape below is preserved so the next iteration starts from it. It is direction, not a decision, and it is not a design.
+
+A bootstrap account, then a completed normal OAuth login, then control returns to the native app. Then a fresh strong step-up, with a passkey preferred. Then the native app generates and proves a candidate authority key. Then an account-bound one-time challenge, then a pending `ADOPT_ROOT` transition, then notification and opposition where required. Then the authority becomes active.
+
+SMS possession by itself must never authorize this transition. That is the whole lesson of the rejected design.
+
+The future design must also cover each of these explicitly:
+
+- a second phone;
+- QR or trusted-device approval;
+- a lost or replaced phone;
+- recovery;
+- web login;
+- browser sessions that may use the account but are not automatically account-authority devices.
 
 ## Relationship to ADM-001
 
