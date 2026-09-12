@@ -4,6 +4,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -58,6 +59,11 @@ final class StartupPolicyFixtures {
      * A bundle with no zones and no rules. It still has to load and verify, so it isolates the trust root
      * from the roster: with governance required the seeded member waits in PENDING, so a bundle that targeted
      * it would fail validation for a reason that has nothing to do with which key signed it.
+     *
+     * <p>That reason is itself a way this configuration fails to start, so it is not left untested here: it
+     * is the subject of {@link GovernedStartupNeedsAnActiveMemberTest}, which uses {@link #routingTo} under
+     * governance on purpose. Isolation is why this bundle exists, not an assumption that the other path is
+     * safe.
      */
     static RoutingPolicyBundle ruleless() {
         Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
@@ -79,5 +85,19 @@ final class StartupPolicyFixtures {
         Path file = Files.createTempDirectory(prefix).resolve("routing-policy.json");
         Files.writeString(file, mapper().writeValueAsString(bundle));
         return file;
+    }
+
+    /** Every message down the cause chain, which is where a startup failure puts its reason. */
+    static List<String> causeMessages(Throwable thrown) {
+        List<String> messages = new ArrayList<>();
+        for (Throwable t = thrown; t != null; t = t.getCause()) {
+            if (t.getMessage() != null) {
+                messages.add(t.getMessage());
+            }
+            if (t.getCause() == t) {
+                break;
+            }
+        }
+        return messages;
     }
 }

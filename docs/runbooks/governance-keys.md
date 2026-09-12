@@ -102,9 +102,18 @@ control is the whole point. A genesis nobody compared out of band is a document,
 
 Do not reorder these. Steps 3 and 4 below are the ones that take an environment down if inverted.
 
+The order is load-bearing in a second way, which the steps do not show on their own: **the flag may only be
+turned on against a database that already holds an ACTIVE member.** Step 1 is what puts one there. The
+resolver seeds its configured member only when the database is empty, and it seeds that member `PENDING` when
+the flag is already on. A policy bundle is validated against the roster *before* its signatures are checked,
+and every zone and rule target has to be an ACTIVE member, so a bundle naming a member the roster does not
+serve fails to load and the process exits exactly as a wrongly signed one does.
+
 1. Deploy the resolver with the genesis file mounted, `GUA_RESOLVER_GENESIS_EXPECTED_ID` set, and
    `GUA_RESOLVER_GOVERNANCE_REQUIRED=false`. Verify `/.well-known/gua-federation` serves the expected id and
-   fingerprint. Nothing has changed for clients yet.
+   fingerprint; a resolver with no genesis mounted answers `404` there, not `401`. Nothing has changed for
+   clients yet. This is also the boot that seeds the member, so on a fresh database it has to happen with the
+   flag off.
 2. Sign membership epoch 1 (section 5) and submit it. Verify `/registry/homeservers/epoch/current` and the
    `MEMBERSHIP_EPOCH` leaf in `/roster/log`.
 3. **Re-sign any live routing policy bundle with the governance key** (section 6) and update the policy
@@ -112,7 +121,9 @@ Do not reorder these. Steps 3 and 4 below are the ones that take an environment 
    trust root: a bundle still signed by it will not verify, the file policy source refuses to start with no
    loadable bundle, and the resolver will not come up. Confirm with `validate` (section 6) that
    `signaturesVerified` is true against a resolver that already has the genesis mounted. An environment with
-   policy disabled skips this step.
+   policy disabled skips this step. Note what `validate` can and cannot tell you: it answers for the roster
+   as it stands right now, on a running resolver, so it says nothing about the member state a later restart
+   will find. It passes here precisely because step 1 has already seeded an ACTIVE member.
 4. Set `GUA_RESOLVER_GOVERNANCE_REQUIRED=true` and restart. Verify that a direct admission now lands
    `PENDING` and is absent from `/roster` altogether, that a suspend records intent without changing what is
    served and appends a `STATUS_INTENT` leaf to `/roster/log`, and that only an epoch moves a status.
@@ -121,6 +132,23 @@ Do not reorder these. Steps 3 and 4 below are the ones that take an environment 
 **Rollback** of the cutover is `GUA_RESOLVER_GOVERNANCE_REQUIRED=false` and a restart: the direct admission
 path returns, no code rollout and no schema change. The published genesis and any client pin stay and are
 harmless, because nothing enforces them on the client side yet.
+
+**A wiped database is the one case that rollback does not cover.** Volumes in these environments are
+reclaimed on delete, so a recreated volume is an empty database. If the environment already carries the flag,
+its first boot seeds the member `PENDING`, the mounted bundle then names a member the roster does not serve,
+and the process will not start. Flipping the flag back is **not** enough to recover, because the seed only
+happens on an empty database: the `PENDING` row survives the flip and stays out of the roster, so the next
+boot fails the same way. Recover in this order:
+
+1. Start with policy off and the flag off: `GUA_RESOLVER_POLICY_ENABLED=false` and
+   `GUA_RESOLVER_GOVERNANCE_REQUIRED=false`. There is no policy source to refuse a bundle, so the process
+   comes up.
+2. Promote the seeded member: `POST /authority/roster/<id>/status?status=ACTIVE`. With the flag off a status
+   change takes effect immediately rather than recording intent.
+3. Restore `GUA_RESOLVER_POLICY_ENABLED=true` and the flag, and restart.
+
+Wiping the database again and running this section from step 1 is the alternative, and it costs the roster
+and the transparency log, so it is only reasonable in an environment that can afford to lose both.
 
 The flag is the rollback for step 3 as well. The routing-policy and routing-claims trust roots are gated on
 `GUA_RESOLVER_GOVERNANCE_REQUIRED` together with the membership path, so deploying the code changes nothing on
@@ -221,6 +249,12 @@ the answer is a new genesis and a client re-pin.
   sign it again.
 - `gua.resolver.governance.required is on but no gua.resolver.genesis.file is configured`: the flag promises
   governance the resolver cannot perform. Mount the genesis first.
+- `delegation zone <zone> references unknown or inactive homeserver <id>`, also seen as `no valid routing
+  policy loaded from ...` and a pod that will not start: the bundle names a member the signed roster does not
+  carry. Validation runs before the signature check, so this fires whatever key signed the bundle. Under the
+  flag a `PENDING` member is not served, so on a database whose first boot already had the flag on, usually a
+  recreated volume, the seeded member is exactly that. Follow the wiped-database recovery in section 4. With
+  the flag off the same message means the member is suspended, revoked or absent.
 - `routing policy <id> v<n> has 0 valid signatures, need 1`, usually seen as `no valid routing policy loaded
   from ...` and a pod that will not start: the mounted bundle is not signed by a key the resolver's current
   policy trust root holds. After step 4 that root is the governance key set alone, so this is step 3 having

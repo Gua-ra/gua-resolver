@@ -20,7 +20,6 @@ These are proposals. They are not normative until a decision freezes them, and t
 
 Which ADM-001 decisions the code on `main` has reached. Everything not listed is still target.
 
-- Phase 2 (federation genesis and governance keys): reverted after it prevented startup in an environment whose policy bundle is signed by the operational key; returning with the fail-closed change gated behind the governance flag.
 - Phase 3 (account genesis, bootstrap ids, attach proof): server half on `main` in identity-service, every flag off; framework 0x01 production issuance stays refused until ADM-002 fixes the 0x01 delay bounds and answers its independence question. Clients pending.
 - S6 (no localpart derived from the user id): implemented in identity-service, with a guard test.
 - L1b: implemented (`POST /directory/entries` removed), 2026-09-11. Existing directory rows stay until placement records replace them.

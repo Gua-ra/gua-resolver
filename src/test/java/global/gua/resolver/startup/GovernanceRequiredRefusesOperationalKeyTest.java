@@ -2,8 +2,6 @@ package global.gua.resolver.startup;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.WebApplicationType;
@@ -89,20 +87,6 @@ class GovernanceRequiredRefusesOperationalKeyTest {
                 .run(arguments);
     }
 
-    /** Every message down the cause chain, which is where a startup failure puts its reason. */
-    private static List<String> causeMessages(Throwable thrown) {
-        List<String> messages = new ArrayList<>();
-        for (Throwable t = thrown; t != null; t = t.getCause()) {
-            if (t.getMessage() != null) {
-                messages.add(t.getMessage());
-            }
-            if (t.getCause() == t) {
-                break;
-            }
-        }
-        return messages;
-    }
-
     @Test
     void aBundleSignedByTheOperationalKeyStopsStartupWhenGovernanceIsRequired() throws Exception {
         String[] arguments = arguments(genesisFile(), operationalKeySignedBundle(),
@@ -116,7 +100,7 @@ class GovernanceRequiredRefusesOperationalKeyTest {
 
         assertThat(thrown).isNotNull();
         // Both halves of the real crash-loop message, so this pins the behaviour rather than just "it threw".
-        assertThat(causeMessages(thrown))
+        assertThat(StartupPolicyFixtures.causeMessages(thrown))
                 .anySatisfy(m -> assertThat(m).contains("no valid routing policy loaded"))
                 .anySatisfy(m -> assertThat(m).contains("has 0 valid signatures, need 1"));
     }

@@ -24,6 +24,13 @@ import org.springframework.security.web.SecurityFilterChain;
  * L10). The {@code /authority/**} admin surface (admission, status changes, member attestation, epoch
  * submission) requires the {@code ADMIN} role via HTTP Basic, and fails closed: with no admin password hash
  * configured there are no admin users, so those endpoints stay denied. Everything else is denied.
+ *
+ * <p>{@code /error} is permitted because Spring Security filters the ERROR dispatch too, not only the
+ * original request. Without it, the container's error render is itself denied, so a public endpoint that
+ * answers 404 reaches the caller as a 401 with an empty body: "no genesis yet" and "no such epoch" both read
+ * as "authenticate first", which is a misleading answer on endpoints that are public by design. Permitting
+ * it does not open anything, because the status being rendered was already decided by the rules above: a
+ * denied request still renders as its own 401 or 403.
  */
 @Configuration
 public class SecurityConfig {
@@ -37,7 +44,7 @@ public class SecurityConfig {
                                 "/policy/routing", "/policy/routing/status", "/policy/log",
                                 "/directory/lookup", "/directory/checkpoint",
                                 "/.well-known/gua-federation", "/registry/**",
-                                "/actuator/**",
+                                "/actuator/**", "/error",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/authority/**").hasRole("ADMIN")
                         .anyRequest().denyAll())
