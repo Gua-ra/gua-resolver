@@ -1,5 +1,8 @@
 package global.gua.resolver.config;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -21,7 +24,13 @@ import org.springframework.security.web.SecurityFilterChain;
  * read; the directory has no write endpoint (ADM-001 L1b). {@code /.well-known/gua-federation} publishes the
  * pinned federation genesis and {@code /registry/**} the governance-signed registry epochs; both are public
  * by design, because a trust root nobody can fetch and compare out of band is not a trust root (ADM-001
- * L10). The {@code /authority/**} admin surface (admission, status changes, member attestation, epoch
+ * L10). {@code /placement/records} is the public, rate-limited placement-record surface: the ingest is
+ * self-authenticating, because a record is accepted only when it verifies under the roster signing key of
+ * the ACTIVE homeserver it names, so a caller identity would add nothing (ADM-008 decision 7). It exists
+ * only while {@code gua.resolver.placement.enabled} is on, and the allowlist entry below is added under
+ * exactly that same condition, so with the shipped defaults these two paths are not permitted here at all
+ * and answer what they answered before this phase: the deny-by-default 401. The {@code /authority/**} admin
+ * surface (admission, status changes, member attestation, epoch
  * submission) requires the {@code ADMIN} role via HTTP Basic, and fails closed: with no admin password hash
  * configured there are no admin users, so those endpoints stay denied. Everything else is denied.
  *
@@ -36,16 +45,24 @@ import org.springframework.security.web.SecurityFilterChain;
 public class SecurityConfig {
 
     @Bean
-    SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain filterChain(HttpSecurity http, ResolverProperties props) throws Exception {
+        List<String> publicPaths = new ArrayList<>(List.of(
+                "/resolve", "/roster", "/roster/log", "/roster/log/consistency",
+                "/policy/routing", "/policy/routing/status", "/policy/log",
+                "/directory/lookup", "/directory/checkpoint",
+                "/.well-known/gua-federation", "/registry/**",
+                "/actuator/**", "/error",
+                "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html"));
+        // Permitted under exactly the condition that maps the controller, so the placement flags being off
+        // leaves this chain byte for byte the chain that shipped before this phase.
+        if (props.getMode() == ResolverProperties.Mode.AUTHORITY && props.getPlacement().isEnabled()) {
+            publicPaths.add("/placement/records");
+            publicPaths.add("/placement/records/**");
+        }
         http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/resolve", "/roster", "/roster/log", "/roster/log/consistency",
-                                "/policy/routing", "/policy/routing/status", "/policy/log",
-                                "/directory/lookup", "/directory/checkpoint",
-                                "/.well-known/gua-federation", "/registry/**",
-                                "/actuator/**", "/error",
-                                "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                        .requestMatchers(publicPaths.toArray(String[]::new)).permitAll()
                         .requestMatchers("/authority/**").hasRole("ADMIN")
                         .anyRequest().denyAll())
                 .httpBasic(Customizer.withDefaults());
