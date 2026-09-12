@@ -38,6 +38,7 @@ public class ResolverProperties {
     private final Roster roster = new Roster();
     private final Genesis genesis = new Genesis();
     private final Governance governance = new Governance();
+    private final Placement placement = new Placement();
     private final DevHomeserver devHomeserver = new DevHomeserver();
 
     public Mode getMode() { return mode; }
@@ -52,6 +53,7 @@ public class ResolverProperties {
     public Roster getRoster() { return roster; }
     public Genesis getGenesis() { return genesis; }
     public Governance getGovernance() { return governance; }
+    public Placement getPlacement() { return placement; }
     public DevHomeserver getDevHomeserver() { return devHomeserver; }
 
     /** The published authority key set (verify) + this node's signing key (authority mode). This configured
@@ -339,6 +341,53 @@ public class ResolverProperties {
 
         public boolean isRequired() { return required; }
         public void setRequired(boolean required) { this.required = required; }
+    }
+
+    /**
+     * Generation-1 placement records (migration plan Phase 4, ADM-008). Two flags, both off by default, so
+     * the custody path and the ingest path roll out separately and either rolls back without a code change:
+     * with {@code enabled} off no placement bean exists, no path is mapped, no scheduled job runs and the
+     * table is never read or written; with {@code enabled} on and {@code ingest-enabled} off the reads serve
+     * what is already held and a presented record is refused.
+     *
+     * <p>There is deliberately no flag here that would serve routing from these records. Shadow mode is the
+     * whole of this phase, and the exit criteria that would precede any such proposal are in ADM-008.
+     */
+    public static class Placement {
+        /** Placement-record custody: the store, the reads, the checkpoint and the auditor. */
+        private boolean enabled = false;
+        /** Whether {@code POST /placement/records} accepts records. Independent of the reads. */
+        private boolean ingestEnabled = false;
+        /** How often the authority signs and (only on a changed root) logs a placement checkpoint. Each
+         * logged leaf moves new-account fallback placement, so this is deliberately long (ADM-001 L6). */
+        private Duration checkpointInterval = Duration.ofHours(1);
+        /** How often the auditor checks whether the roster moved and, if it did, re-verifies every record. */
+        private Duration auditInterval = Duration.ofMinutes(5);
+        /** How often the per-homeserver record gauge is recomputed. */
+        private Duration metricsInterval = Duration.ofMinutes(1);
+        /** Longest validity window a record may claim between notBefore and notAfter (ADM-008: 400 days). */
+        private Duration maxValidity = Duration.ofDays(400);
+        /** Page size for the reconciliation listing when the caller names none. */
+        private int defaultPageSize = 100;
+        /** Upper bound on a caller-requested page size. */
+        private int maxPageSize = 500;
+
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        public boolean isIngestEnabled() { return ingestEnabled; }
+        public void setIngestEnabled(boolean ingestEnabled) { this.ingestEnabled = ingestEnabled; }
+        public Duration getCheckpointInterval() { return checkpointInterval; }
+        public void setCheckpointInterval(Duration v) { this.checkpointInterval = v; }
+        public Duration getAuditInterval() { return auditInterval; }
+        public void setAuditInterval(Duration v) { this.auditInterval = v; }
+        public Duration getMetricsInterval() { return metricsInterval; }
+        public void setMetricsInterval(Duration v) { this.metricsInterval = v; }
+        public Duration getMaxValidity() { return maxValidity; }
+        public void setMaxValidity(Duration v) { this.maxValidity = v; }
+        public int getDefaultPageSize() { return defaultPageSize; }
+        public void setDefaultPageSize(int v) { this.defaultPageSize = v; }
+        public int getMaxPageSize() { return maxPageSize; }
+        public void setMaxPageSize(int v) { this.maxPageSize = v; }
     }
 
     /** The single homeserver the authority seeds its roster with on first boot (Phase 1 / fresh DB). */

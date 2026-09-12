@@ -49,6 +49,12 @@ resilience4j:
         limit-for-period: 50
         limit-refresh-period: 1s
         timeout-duration: 0s
+      # Placement records: a public, self-authenticating ingest plus its reconciliation reads. The limit is
+      # what bounds the work an unauthenticated caller can make this node do before a signature is checked.
+      placementRecords:
+        limit-for-period: 20
+        limit-refresh-period: 1s
+        timeout-duration: 0s
 
 gua:
   resolver:
@@ -171,6 +177,26 @@ gua:
     # not start. Setting it back to false is the rollback for all three (docs/runbooks/governance-keys.md).
     governance:
       required: ${GUA_RESOLVER_GOVERNANCE_REQUIRED:false}
+
+    # Generation-1 placement records (migration plan Phase 4, ADM-008): which homeserver holds which account,
+    # signed by that homeserver's roster membership key. Shadow mode, so nothing is served from them: no
+    # routing answer reads this table and there is deliberately no flag that would make one. Both switches
+    # are off in every environment until an operator turns them on, and turning them back off is the
+    # rollback, with the table left in place.
+    placement:
+      # Custody: the store, the read endpoints, the checkpoint and the auditor. Off means no bean, no path.
+      enabled: ${GUA_RESOLVER_PLACEMENT_ENABLED:false}
+      # Whether POST /placement/records accepts records. Separate, so reads can go live first.
+      ingest-enabled: ${GUA_RESOLVER_PLACEMENT_INGEST_ENABLED:false}
+      # One checkpoint leaf per interval, and only when the Merkle root over the records actually changed.
+      # Never one leaf per record: the roster version is the log size and new-account fallback placement
+      # seeds on it, so every leaf moves placement decisions (ADM-001 L6).
+      checkpoint-interval: ${GUA_RESOLVER_PLACEMENT_CHECKPOINT_INTERVAL:PT1H}
+      audit-interval: ${GUA_RESOLVER_PLACEMENT_AUDIT_INTERVAL:PT5M}
+      metrics-interval: ${GUA_RESOLVER_PLACEMENT_METRICS_INTERVAL:PT1M}
+      max-validity: ${GUA_RESOLVER_PLACEMENT_MAX_VALIDITY:P400D}
+      default-page-size: ${GUA_RESOLVER_PLACEMENT_DEFAULT_PAGE_SIZE:100}
+      max-page-size: ${GUA_RESOLVER_PLACEMENT_MAX_PAGE_SIZE:500}
 
     dev-homeserver:
       id: ${GUA_RESOLVER_DEVHOMESERVER_ID:dev}

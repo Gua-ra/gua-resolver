@@ -21,7 +21,12 @@ import org.springframework.security.web.SecurityFilterChain;
  * read; the directory has no write endpoint (ADM-001 L1b). {@code /.well-known/gua-federation} publishes the
  * pinned federation genesis and {@code /registry/**} the governance-signed registry epochs; both are public
  * by design, because a trust root nobody can fetch and compare out of band is not a trust root (ADM-001
- * L10). The {@code /authority/**} admin surface (admission, status changes, member attestation, epoch
+ * L10). {@code /placement/records} is the public, rate-limited placement-record surface: the ingest is
+ * self-authenticating, because a record is accepted only when it verifies under the roster signing key of
+ * the ACTIVE homeserver it names, so a caller identity would add nothing (ADM-008 decision 7). It exists
+ * only while {@code gua.resolver.placement.enabled} is on; with the shipped default the path is permitted
+ * here and mapped by nothing, which is a 404 rather than a misleading 401. The {@code /authority/**} admin
+ * surface (admission, status changes, member attestation, epoch
  * submission) requires the {@code ADMIN} role via HTTP Basic, and fails closed: with no admin password hash
  * configured there are no admin users, so those endpoints stay denied. Everything else is denied.
  *
@@ -43,6 +48,7 @@ public class SecurityConfig {
                         .requestMatchers("/resolve", "/roster", "/roster/log", "/roster/log/consistency",
                                 "/policy/routing", "/policy/routing/status", "/policy/log",
                                 "/directory/lookup", "/directory/checkpoint",
+                                "/placement/records", "/placement/records/**",
                                 "/.well-known/gua-federation", "/registry/**",
                                 "/actuator/**", "/error",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
