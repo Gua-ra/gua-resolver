@@ -1,3 +1,6 @@
+/*
+ * Copyright 2026 Gua
+ */
 package global.gua.resolver.placement.record;
 
 /**
@@ -19,7 +22,7 @@ public enum PlacementRecordRejection {
     /** The transport envelope is missing a field or is not the expected JSON object. */
     MALFORMED_ENVELOPE("malformed_envelope"),
 
-    /** The record field is not unpadded base64url. */
+    /** The record field is not the one unpadded base64url spelling of the bytes it decodes to. */
     BAD_BASE64("bad_base64"),
 
     /** The byte string is outside the possible length range for any version-1 record. */

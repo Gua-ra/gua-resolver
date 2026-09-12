@@ -1,3 +1,6 @@
+/*
+ * Copyright 2026 Gua
+ */
 package global.gua.resolver.placement.record;
 
 import java.time.Instant;
@@ -23,7 +26,8 @@ import io.micrometer.core.instrument.MeterRegistry;
  * <ul>
  *   <li>no row for this accountId: insert;</li>
  *   <li>the same homeserver re-issues with a newer issuedAt: replace;</li>
- *   <li>the same homeserver re-presents the same bytes: unchanged, so a retry is idempotent;</li>
+ *   <li>the same homeserver re-presents the same bytes: unchanged, so a retry is idempotent, and the
+ *       comparison is on the decoded bytes rather than on their transport spelling;</li>
  *   <li>the same homeserver presents an older issuedAt: refused, the stored record stands;</li>
  *   <li>a different homeserver claims an accountId that already has a home: refused with a conflict, logged
  *       with both homeserver ids and counted. One accountId has one home, and a conflicting record is
@@ -132,9 +136,10 @@ public class PlacementRecordService {
             conflicts.increment();
             throw new PlacementRecordException(PlacementRecordRejection.PLACEMENT_CONFLICT);
         }
-        if (held.recordB64().equals(incoming.recordB64())
-                && held.signatureB64().equals(incoming.signatureB64())) {
-            return Outcome.UNCHANGED;   // the same bytes again: a retry, not a re-issue
+        if (held.sameSignedBytesAs(incoming)) {
+            // The same bytes again: a retry, not a re-issue. Compared as bytes, because two spellings of one
+            // signature are one object and refusing the second as stale would punish a correct publisher.
+            return Outcome.UNCHANGED;
         }
         if (!incoming.issuedAt().isAfter(held.issuedAt())) {
             throw new PlacementRecordException(PlacementRecordRejection.STALE_REISSUE);

@@ -1,3 +1,6 @@
+/*
+ * Copyright 2026 Gua
+ */
 package global.gua.resolver.placement.record;
 
 import java.util.regex.Pattern;

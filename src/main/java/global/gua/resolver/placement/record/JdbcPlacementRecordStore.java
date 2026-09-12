@@ -1,3 +1,6 @@
+/*
+ * Copyright 2026 Gua
+ */
 package global.gua.resolver.placement.record;
 
 import java.nio.charset.StandardCharsets;
@@ -123,6 +126,13 @@ public class JdbcPlacementRecordStore {
      * {@code A|<accountId>|<homeserverId>|<origin>}. The accountId is fixed length and the origin is a fixed
      * token, and the codec refuses the delimiter inside a homeserver id, so one leaf string has one reading.
      * The root depends only on the records, never on the time.
+     *
+     * <p>What the leaf commits to is the placement mapping, not the bytes that asserted it. Two consequences
+     * are worth knowing before anyone reads a {@code PLACEMENT_CHECKPOINT} leaf as evidence of custody: a
+     * re-issue that keeps the same accountId, homeserver and origin moves no leaf, so the root does not move
+     * and nothing new is anchored; and two different signed envelopes for the same placement are
+     * indistinguishable in the log. This is the leaf format the phase specifies, and anchoring the envelopes
+     * themselves would be a different commitment, not a stricter spelling of this one.
      */
     public PlacementCheckpoint checkpoint() {
         List<String> leaves = new ArrayList<>(jdbc.query(

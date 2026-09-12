@@ -1,3 +1,6 @@
+/*
+ * Copyright 2026 Gua
+ */
 package global.gua.resolver.api;
 
 import java.time.Instant;

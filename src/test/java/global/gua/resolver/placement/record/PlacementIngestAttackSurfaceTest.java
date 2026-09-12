@@ -1,8 +1,12 @@
+/*
+ * Copyright 2026 Gua
+ */
 package global.gua.resolver.placement.record;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Base64;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,6 +51,17 @@ class PlacementIngestAttackSurfaceTest {
     private static final Ed25519.KeyPairB64 MEMBER = Ed25519.generate();
     private static final Ed25519.KeyPairB64 FORMER = Ed25519.generate();
     private static final Ed25519.KeyPairB64 STRANGER = Ed25519.generate();
+    private static final Ed25519.KeyPairB64 SPELLING = Ed25519.generate();
+
+    /** The base64url alphabet, in index order, for building a second spelling of one record. */
+    private static final String BASE64URL =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+    /**
+     * Seven characters, so a record naming it is 73 bytes: not a multiple of three, which is the only way
+     * padding and trailing bits differ between spellings at all.
+     */
+    private static final String SPELLING_HS = "hs-sp07";
 
     @DynamicPropertySource
     static void ownDatabase(DynamicPropertyRegistry registry) {
@@ -67,6 +82,45 @@ class PlacementIngestAttackSurfaceTest {
         if (entries.findById("hs-old").isEmpty()) {
             PlacementFixtures.admit(admission, "hs-old", "old.gua.test", FORMER);
         }
+        if (entries.findById(SPELLING_HS).isEmpty()) {
+            PlacementFixtures.admit(admission, SPELLING_HS, "spelling.gua.test", SPELLING);
+        }
+    }
+
+    @Test
+    void aPaddedRecordFieldIsRefusedBecauseItIsNotTheCanonicalSpelling() throws Exception {
+        byte[] canonical = PlacementFixtures.canonical(
+                PlacementFixtures.genesisAccountId("attack-padded"), SPELLING_HS, now());
+        String padded = Base64.getUrlEncoder().encodeToString(canonical);
+        assertThat(padded).endsWith("=");
+
+        // The bytes are fine and the signature over them verifies. Only the spelling is wrong, and the
+        // field is documented as unpadded base64url, so this is where that contract is asserted.
+        present(PlacementFixtures.envelope(padded, PlacementFixtures.sign(canonical, SPELLING)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("bad_base64"));
+    }
+
+    @Test
+    void aSecondSpellingOfTheSameRecordBytesIsRefused() throws Exception {
+        byte[] canonical = PlacementFixtures.canonical(
+                PlacementFixtures.genesisAccountId("attack-trailing-bits"), SPELLING_HS, now());
+        String signature = PlacementFixtures.sign(canonical, SPELLING);
+        String canonicalSpelling = PlacementFixtures.recordB64(canonical);
+
+        // The last character carries four unused bits, so fifteen other characters decode to these same
+        // bytes. A decoder that ignores them accepts sixteen spellings of one record, which is the defect
+        // ADM-008 decision 2 refuses for the accountId and which the transport should not reintroduce.
+        char last = canonicalSpelling.charAt(canonicalSpelling.length() - 1);
+        assertThat(BASE64URL.indexOf(last) % 16).isZero();
+        String otherSpelling = canonicalSpelling.substring(0, canonicalSpelling.length() - 1)
+                + BASE64URL.charAt(BASE64URL.indexOf(last) + 1);
+        assertThat(otherSpelling).isNotEqualTo(canonicalSpelling);
+        assertThat(Base64.getUrlDecoder().decode(otherSpelling)).containsExactly(canonical);
+
+        present(PlacementFixtures.envelope(otherSpelling, signature))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("bad_base64"));
     }
 
     @Test

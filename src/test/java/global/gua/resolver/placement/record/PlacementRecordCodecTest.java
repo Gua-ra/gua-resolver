@@ -1,3 +1,6 @@
+/*
+ * Copyright 2026 Gua
+ */
 package global.gua.resolver.placement.record;
 
 import java.time.Instant;
@@ -7,6 +10,8 @@ import java.util.List;
 import java.util.function.Consumer;
 
 import org.junit.jupiter.api.Test;
+
+import global.gua.resolver.api.PlacementRecordController;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -65,6 +70,24 @@ class PlacementRecordCodecTest {
                 .extracting(java.lang.reflect.RecordComponent::getName)
                 .containsExactly("version", "generation", "accountId", "origin", "homeserverId",
                         "issuedAt", "notBefore", "notAfter");
+    }
+
+    @Test
+    void neitherTheStoredRowNorTheApiResponseCarriesAnIdentifier() {
+        // The decoded record is pinned above. These are the shapes it turns into afterwards, pinned for the
+        // same reason and against the same rule: no identifier of any kind in per-account federation state,
+        // held or served (ADM-001 L4, L15). The database columns are pinned in PlacementRecordIngestTest,
+        // where there is a schema to read.
+        assertThat(StoredPlacementRecord.class.getRecordComponents())
+                .extracting(java.lang.reflect.RecordComponent::getName)
+                .containsExactly("accountId", "homeserverId", "generation", "origin", "issuedAt",
+                        "notBefore", "notAfter", "recordB64", "signatureB64", "receivedAt");
+        assertThat(PlacementRecordController.PageItem.class.getRecordComponents())
+                .extracting(java.lang.reflect.RecordComponent::getName)
+                .containsExactly("accountId", "homeserverId", "origin", "record", "signature");
+        assertThat(PlacementRecordEnvelope.class.getRecordComponents())
+                .extracting(java.lang.reflect.RecordComponent::getName)
+                .containsExactly("record", "signature");
     }
 
     @Test

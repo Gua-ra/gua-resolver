@@ -1,3 +1,4 @@
+-- Copyright 2026 Gua
 -- Migration plan Phase 4 (ADM-001 L6, ADM-008 decision 7): generation-1 placement records, in shadow mode.
 -- One accountId, one homeserver, signed by that homeserver's roster membership key. Additive: nothing reads
 -- this table on the resolution path, and the whole feature is off unless gua.resolver.placement.enabled is

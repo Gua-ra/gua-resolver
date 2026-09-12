@@ -1,3 +1,6 @@
+/*
+ * Copyright 2026 Gua
+ */
 package global.gua.resolver.placement.record;
 
 import java.security.PublicKey;
@@ -58,12 +61,7 @@ public class PlacementRecordVerifier {
             throw new PlacementRecordException(PlacementRecordRejection.MALFORMED_ENVELOPE);
         }
 
-        byte[] canonical;
-        try {
-            canonical = Base64.getUrlDecoder().decode(envelope.record());
-        } catch (IllegalArgumentException e) {
-            throw new PlacementRecordException(PlacementRecordRejection.BAD_BASE64);
-        }
+        byte[] canonical = decodeCanonicalBase64Url(envelope.record());
 
         PlacementRecord record = PlacementRecordCodec.decode(canonical);
 
@@ -89,6 +87,36 @@ public class PlacementRecordVerifier {
 
         checkWindow(record, now);
         return new Verified(record, envelope);
+    }
+
+    /**
+     * The one accepted spelling of the record field: unpadded base64url that re-encodes to exactly what
+     * arrived.
+     *
+     * <p>A plain decoder accepts padding and ignores the trailing bits of the last character, so one byte
+     * string has several spellings. That matters here for two reasons. The signature covers the bytes, not
+     * the spelling, so every spelling of a signed record verifies, and a publisher retrying after a timeout
+     * with a differently spelled but byte-identical record would otherwise be read as a re-issue and refused
+     * as stale. And the accountId already has exactly one canonical spelling (ADM-008 decision 2); the
+     * transport that carries it should not quietly admit eight of its own.
+     *
+     * <p>The check is the same shape as the accountId's: decode, re-encode, and require the result to equal
+     * the input.
+     */
+    private static byte[] decodeCanonicalBase64Url(String value) {
+        if (value.indexOf('=') >= 0) {
+            throw new PlacementRecordException(PlacementRecordRejection.BAD_BASE64);
+        }
+        byte[] decoded;
+        try {
+            decoded = Base64.getUrlDecoder().decode(value);
+        } catch (IllegalArgumentException e) {
+            throw new PlacementRecordException(PlacementRecordRejection.BAD_BASE64);
+        }
+        if (!Base64.getUrlEncoder().withoutPadding().encodeToString(decoded).equals(value)) {
+            throw new PlacementRecordException(PlacementRecordRejection.BAD_BASE64);
+        }
+        return decoded;
     }
 
     /**

@@ -1,9 +1,13 @@
+/*
+ * Copyright 2026 Gua
+ */
 package global.gua.resolver.placement.record;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Locale;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -59,6 +64,7 @@ class PlacementRecordIngestTest {
     @Autowired RosterEntryRepository entries;
     @Autowired JdbcPlacementRecordStore store;
     @Autowired JdbcTransparencyLog transparencyLog;
+    @Autowired JdbcTemplate jdbc;
 
     @BeforeEach
     void admitTwoHomeservers() {
@@ -146,6 +152,42 @@ class PlacementRecordIngestTest {
         present(envelope)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result").value("unchanged"));
+    }
+
+    @Test
+    void aRetryThatSpellsTheSignatureDifferentlyIsStillTheSameRecord() throws Exception {
+        String accountId = PlacementFixtures.genesisAccountId("ingest-retry-spelling");
+        byte[] canonical = PlacementFixtures.canonical(accountId, "hs-one", now());
+        String recordB64 = PlacementFixtures.recordB64(canonical);
+        String signature = PlacementFixtures.sign(canonical, ONE);
+        // An Ed25519 signature is 64 bytes, so its base64 ends in padding that a decoder treats as optional.
+        // Both spellings are one signature over one set of bytes.
+        String unpadded = signature.replace("=", "");
+        assertThat(unpadded).isNotEqualTo(signature);
+
+        present(PlacementFixtures.envelope(recordB64, signature)).andExpect(status().isCreated());
+
+        // A publisher retrying after a timeout must not be told its own record conflicts with itself. The
+        // idempotence rule is about the object, so the comparison is on bytes, not on transport spelling.
+        present(PlacementFixtures.envelope(recordB64, unpadded))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result").value("unchanged"));
+
+        // And the held copy is still the one that arrived first, byte for byte.
+        assertThat(store.find(accountId).orElseThrow().signatureB64()).isEqualTo(signature);
+    }
+
+    @Test
+    void theStoredRowCarriesNoIdentifierColumn() {
+        List<String> columns = jdbc.queryForList(
+                        "SELECT column_name FROM information_schema.columns "
+                                + "WHERE UPPER(table_name) = 'PLACEMENT_RECORD'", String.class)
+                .stream().map(c -> c.toLowerCase(Locale.ROOT)).sorted().toList();
+
+        // The row is pinned, not only the decoded object: a phone, a phone hash or a Matrix user id added as
+        // a column later would otherwise reach a deployment without failing anything (ADM-001 L4, L15).
+        assertThat(columns).containsExactly("account_id", "generation", "homeserver_id", "issued_at",
+                "not_after", "not_before", "origin", "received_at", "record_b64", "signature_b64");
     }
 
     @Test
