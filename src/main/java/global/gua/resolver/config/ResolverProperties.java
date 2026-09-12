@@ -36,8 +36,6 @@ public class ResolverProperties {
     private final Admin admin = new Admin();
     private final Abuse abuse = new Abuse();
     private final Roster roster = new Roster();
-    private final Genesis genesis = new Genesis();
-    private final Governance governance = new Governance();
     private final DevHomeserver devHomeserver = new DevHomeserver();
 
     public Mode getMode() { return mode; }
@@ -50,8 +48,6 @@ public class ResolverProperties {
     public Admin getAdmin() { return admin; }
     public Abuse getAbuse() { return abuse; }
     public Roster getRoster() { return roster; }
-    public Genesis getGenesis() { return genesis; }
-    public Governance getGovernance() { return governance; }
     public DevHomeserver getDevHomeserver() { return devHomeserver; }
 
     /** The published authority key set (verify) + this node's signing key (authority mode). This configured
@@ -292,53 +288,6 @@ public class ResolverProperties {
         public void setRequireMemberSignature(boolean v) { this.requireMemberSignature = v; }
         public Duration getMemberMaxLifetime() { return memberMaxLifetime; }
         public void setMemberMaxLifetime(Duration v) { this.memberMaxLifetime = v; }
-    }
-
-    /**
-     * The pinned federation genesis (ADM-001 L10). The file is public and committed; the pin is
-     * {@code expected-id}, which is what makes swapping the file for another validly signed genesis fail at
-     * startup instead of silently changing the federation's trust root. {@code expected-chain-head} pins
-     * how far the key transition chain has run, so a truncated transitions file fails at startup too rather
-     * than downgrading the key set. Leave {@code file} unset to run
-     * without governance, which is the default and the pre-Phase-2 behaviour.
-     */
-    public static class Genesis {
-        /** Path to the genesis JSON, mounted from the committed public ConfigMap. */
-        private String file;
-        /** Path to the governance transitions JSON array, in chain order. Unset when there are none. */
-        private String transitionsFile;
-        /** The genesis id this resolver is pinned to; a mismatch is a startup failure. */
-        private String expectedId;
-        /**
-         * The governance key chain head this resolver is pinned to: the genesis id while no transition has
-         * been applied, the hash of the last applied transition after that. It is what a truncated or
-         * missing transitions file runs into, since the chain checks alone accept a shortened chain and
-         * would put a rotated-out key back in force.
-         */
-        private String expectedChainHead;
-
-        public String getFile() { return file; }
-        public void setFile(String file) { this.file = file; }
-        public String getTransitionsFile() { return transitionsFile; }
-        public void setTransitionsFile(String transitionsFile) { this.transitionsFile = transitionsFile; }
-        public String getExpectedId() { return expectedId; }
-        public void setExpectedId(String expectedId) { this.expectedId = expectedId; }
-        public String getExpectedChainHead() { return expectedChainHead; }
-        public void setExpectedChainHead(String head) { this.expectedChainHead = head; }
-    }
-
-    /**
-     * Whether governance signatures are required for membership changes (ADM-001 L10). This is a cutover,
-     * not a feature switch. With it off the operational key admits and changes status directly, exactly as
-     * before Phase 2. With it on, an admission lands PENDING and a suspend or revoke records intent only:
-     * nothing changes an entry's served status except a governance-signed membership epoch. Turning it back
-     * off restores the direct path without a code rollout.
-     */
-    public static class Governance {
-        private boolean required = false;
-
-        public boolean isRequired() { return required; }
-        public void setRequired(boolean required) { this.required = required; }
     }
 
     /** The single homeserver the authority seeds its roster with on first boot (Phase 1 / fresh DB). */

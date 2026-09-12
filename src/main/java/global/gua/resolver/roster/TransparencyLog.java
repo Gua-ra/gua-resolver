@@ -18,22 +18,6 @@ public interface TransparencyLog {
      */
     String MEMBER_ATTEST = "MEMBER_ATTEST";
 
-    /**
-     * Leaf type for an accepted governance-signed registry epoch (ADM-001 L10). Its payload is the epoch
-     * hash, the SHA-256 of the {@code gua-registry-epoch.v1} canonical bytes, so the log commits to the
-     * exact epoch that changed membership and an auditor can tie every status change to a governance act.
-     */
-    String MEMBERSHIP_EPOCH = "MEMBERSHIP_EPOCH";
-
-    /**
-     * Leaf type for a status change requested while governance is required (ADM-001 L10). It records that
-     * the operational key asked for a suspend or a revoke, not that one happened: nothing served changes
-     * until a {@link #MEMBERSHIP_EPOCH} carries it. Without this leaf, a request governance never ratifies
-     * would be auditable nowhere, which would leave the intent path the one part of the membership history
-     * the log does not cover.
-     */
-    String STATUS_INTENT = "STATUS_INTENT";
-
     /** A single membership event (the leaf that gets hashed into the tree). */
     record Event(long index, String type, String homeserverId, String payloadHash, String recordedAt) {}
 

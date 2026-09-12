@@ -45,23 +45,31 @@ public class RoutingClaimsVerifier {
         this.clock = clock;
         this.replayStore = replayStore;
 
-        // Trust root for routing-claims signatures: keys scoped to the claims issuer, and nothing else.
-        // This used to fall back to the policy keys and then to the authority keys when the list was unset,
-        // which widened WHO could mint institutional and OIDC claims all the way to the roster-signing key.
-        // ADM-001 L8 names that fallback explicitly and requires it to fail closed: "Any independence rule
-        // must fail closed. No fallback, ever." An empty list is therefore no keys, and no keys rejects
-        // every envelope.
+        // Trust root for routing-claims signatures. Prefer keys scoped to the claims issuer; when the list is
+        // unset the code falls back to policy keys, then authority keys. The fallback widens WHO can mint
+        // institutional/OIDC claims to the authority key itself and is the key-role sharing ADM-001 L8
+        // requires to fail closed; until that change lands, production must set an explicit
+        // gua.resolver.claims.trusted-keys list scoped to the claims issuer.
+        String keySource = "claims";
         List<ResolverProperties.TrustedKey> keys = props.getClaims().getTrustedKeys();
+        if (keys.isEmpty()) {
+            keys = props.getPolicy().getTrustedKeys();
+            keySource = "policy";
+        }
+        if (keys.isEmpty()) {
+            keys = props.getAuthority().getTrustedKeys();
+            keySource = "authority";
+        }
         for (ResolverProperties.TrustedKey k : keys) {
             if (k.getId() != null && k.getPublicKey() != null && !k.getPublicKey().isBlank()) {
                 trustedKeys.put(k.getId(), Ed25519.publicKey(k.getPublicKey()));
             }
         }
-        if (trustedKeys.isEmpty()) {
-            log.warn("No gua.resolver.claims.trusted-keys configured: every signed routing-claims envelope "
-                    + "will be rejected, so no institution or OIDC placement rule can match. That is the "
-                    + "intended fail-closed state (ADM-001 L8) while nothing issues envelopes. A claims "
-                    + "issuer must ship its public key into this list before it can issue any.");
+        if (!"claims".equals(keySource) && !trustedKeys.isEmpty()) {
+            log.warn("Routing-claims signatures are verified against the {} trusted keys (no "
+                    + "gua.resolver.claims.trusted-keys configured). In production, set an explicit claims "
+                    + "trusted-keys list scoped to the identity-service issuer so the claims-issuer trust "
+                    + "domain is not conflated with the {} trust domain.", keySource, keySource);
         }
     }
 

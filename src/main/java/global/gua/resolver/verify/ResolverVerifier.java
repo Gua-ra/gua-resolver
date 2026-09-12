@@ -43,13 +43,12 @@ public final class ResolverVerifier {
     private final RoutingPolicyVerifier policyVerifier;
 
     /**
-     * @param authorityKeys      published authority public keys (n) the client trusts, for the roster
-     * @param authorityThreshold k of n required for a roster authority signature
-     * @param policyKeys         the keys a policy bundle must verify under: the federation's governance keys
-     *                           once a genesis is pinned. There is no fallback to the authority keys any
-     *                           more, so an empty list verifies nothing rather than silently accepting
-     *                           bundles signed by the operational roster key (ADM-001 L8)
-     * @param policyThreshold    k required for a policy signature
+     * @param authorityKeys      published authority public keys (n) the client trusts
+     * @param authorityThreshold k of n required for a roster / policy authority signature
+     * @param policyKeys         policy-signing keys. Empty falls back to the authority keys, a fallback that
+     *                           collapses the two trust roots to one key set and is scheduled for removal
+     *                           (ADM-001 L8)
+     * @param policyThreshold    k required for a policy authority signature
      */
     public ResolverVerifier(List<ResolverProperties.TrustedKey> authorityKeys, int authorityThreshold,
                             List<ResolverProperties.TrustedKey> policyKeys, int policyThreshold) {

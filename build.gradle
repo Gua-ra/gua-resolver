@@ -70,22 +70,3 @@ tasks.register('memberEntryTool', JavaExec) {
     mainClass = 'global.gua.resolver.tools.MemberEntryTool'
     standardInput = System.in
 }
-
-// Regenerate the published governance golden vectors. Deliberate: a diff in that file changes a wire
-// contract the client ports verify themselves against (CanonicalGovernanceTest reproduces every value).
-tasks.register('governanceVectors', JavaExec) {
-    group = 'documentation'
-    description = 'Regenerate docs/specs/gua-governance-v1-vectors.json'
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'global.gua.resolver.governance.GovernanceVectorsGenerator'
-}
-
-// Offline governance signing, run OUTSIDE the cluster with a key that never enters a resolver namespace
-// (ADM-001 L10, S5); see docs/runbooks/governance-keys.md. Keys are piped in, never passed as arguments.
-tasks.register('govTool', JavaExec) {
-    group = 'application'
-    description = 'Create a federation genesis, or sign a membership epoch, policy bundle or key transition'
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'global.gua.resolver.tools.GovTool'
-    standardInput = System.in
-}
