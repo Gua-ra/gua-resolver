@@ -138,7 +138,7 @@ The fifth criterion needs production issuance under decision 4. ADM-002 D1 fixin
 
 Recorded after acceptance, to state what the code reached and why. This section adds status and direction only. It changes no decision above, and decision 6 stands as written.
 
-Native accounts are bootstrap-only today. Every native signup takes decision 6's bootstrap branch, so no native account holds an account authority key. The genesis scaffolding is present and disabled on both halves.
+Native accounts are bootstrap-only today. Every native signup takes decision 6's bootstrap branch, because the client flags are off. No native account holds an account authority key. The genesis scaffolding is present and disabled on both halves.
 
 **1. Decision 6's attach step is not implementable in the deployed flow.** The account authority private key is generated and held by the native app in the platform keystore. The profile step that would carry the attach proof executes inside the sign-in web page. On iOS that is an `ASWebAuthenticationSession`, and on Android a Chrome Custom Tab. The page has neither the genesis material nor any channel to the native signer. Redirecting out to the app's own scheme would end the OIDC session. Decision 6 assumed the party completing the profile step holds the key, and it does not.
 
@@ -152,7 +152,11 @@ A second, independent defect: the registration proof carries no freshness. A cap
 
 Under decision 6 as written the first attack is cryptographically impossible. Attaching requires a signature over server-chosen bytes that never leave the server-side login session. The amendment would have traded impossible for one intercepted SMS.
 
-**3. Native accounts remain bootstrap-only for now.** A bootstrap account is a valid, normal user account. It is not degraded, and it is not a holding state a user can perceive. The client and server genesis scaffolding stays present and disabled, with every flag defaulting off. On the server those are `identity.genesis.enabled`, `identity.genesis.production-issuance` and `identity.genesis.require-for-native`. Each client carries its own off-by-default flag. Shadow-mode exit criterion 5, the clients shipping genesis with `require-for-native` on, is therefore not reachable yet.
+**3. Native accounts remain bootstrap-only for now.** A bootstrap account is a valid, normal user account. It is not degraded, and it is not a holding state a user can perceive. The client and server genesis scaffolding stays present and disabled, with every flag defaulting off. On the server those are `identity.genesis.enabled`, `identity.genesis.production-issuance`, `identity.genesis.require-for-native` and `identity.genesis.bootstrap-backfill.enabled`, the last gated separately from the master switch. Each client carries its own off-by-default flag, and neither client's scaffolding is on its `main` branch yet.
+
+The flags are inert only as a set. Turn the server flag and a client flag on together, and a native signup that presents a handle fails outright. It does not fall back, because decision 6 allows no silent downgrade and the web page cannot produce the proof. So all of them stay off together, not merely off one by one.
+
+Shadow-mode exit criterion 5, the clients shipping genesis with `require-for-native` on, is therefore not reachable yet.
 
 **4. A secure `ADOPT_ROOT` is deferred** to a dedicated account-authority lifecycle iteration. It is not being designed here. ADM-001 O9 stays open, and nothing in this section narrows it.
 
