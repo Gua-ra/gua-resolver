@@ -24,9 +24,19 @@ trusting the resolver. The Java reference implementation is
 A verifier is configured out of band with:
 
 - the published **authority public keys** (n) and the **authority threshold** `k`;
-- optionally distinct **policy-signing keys** + threshold. The Java reference implementation falls back to
-  the authority keys when these are unset; that fallback is the key-role sharing ADM-001 L8 requires to fail
-  closed, so do not copy it into a port.
+- the **policy-signing keys** + threshold. These are the federation's governance keys once a genesis is
+  pinned. A verifier has no fallback to the authority keys: an unset list verifies nothing rather than
+  silently accepting a bundle signed by the operational roster key (ADM-001 L8). This is unconditional in
+  the reference verifier and in every port. Do not copy the server here: the resolver keeps that fallback
+  until `gua.resolver.governance.required` is turned on, because it has a deployed bundle signed with the
+  operational key to keep serving, and a client has no such thing to preserve.
+- optionally the pinned **federation genesis**, published at `GET /.well-known/gua-federation` on the
+  resolver origin as `{genesisId, fingerprint, chainHead, genesis, transitions[]}`, where `chainHead` says
+  how far the governance key chain has run: the genesis id with no transition applied, the hash of the last
+  applied transition after that. It is signed by the keys it enumerates (ADM-001 L10 locks that), so
+  fetching it proves nothing on its own: it is a trust root only once its fingerprint has been compared
+  against an independent channel and pinned. Clients pin it per environment as data; **no client enforces
+  the chain yet**, which is Phase 6.
 
 These are the only inputs the verifier trusts. Everything else is fetched and verified against them.
 
@@ -116,7 +126,7 @@ environments that have not finished attesting.
    homeserver in its zone's `allowedHomeserverIds` and match within the zone scope (phone prefix / subdomain /
    OIDC issuer). Reject the bundle otherwise. **Not performed by the Java reference verifier today:**
    `ResolverVerifier` does not run `RoutingPolicyValidator`; scope and allowed-homeserver checks run only when
-   a bundle is loaded from file and at `/authority/policy/sign`.
+   a bundle is loaded from file and at `/authority/policy/validate`.
 4. **Transparency.** The policy version's content hash (SHA-256 of the canonical bytes) must appear as a
    `POLICY_PUBLISH` leaf in the transparency log, so the served policy is the publicly logged one.
 

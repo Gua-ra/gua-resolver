@@ -112,8 +112,11 @@ gua:
       file: ${GUA_RESOLVER_POLICY_FILE:}
       require-signatures: ${GUA_RESOLVER_POLICY_REQUIRE_SIGNATURES:true}
       signature-threshold: ${GUA_RESOLVER_POLICY_SIGNATURE_THRESHOLD:1}
-      signing-key-id: ${GUA_RESOLVER_POLICY_KEY_ID:${GUA_RESOLVER_AUTHORITY_KEY_ID:}}
-      signing-private-key: ${GUA_RESOLVER_POLICY_PRIVATE_KEY:${GUA_RESOLVER_AUTHORITY_PRIVATE_KEY:}}
+      # Policy signing left this process in Phase 2: a bundle is signed offline by the governance key
+      # (ADM-001 L8), so a resolver normally configures no policy signing key at all and signs nothing.
+      # Which keys a bundle is VERIFIED under is chosen by gua.resolver.governance.required below, not here.
+      signing-key-id: ${GUA_RESOLVER_POLICY_KEY_ID:}
+      signing-private-key: ${GUA_RESOLVER_POLICY_PRIVATE_KEY:}
       refresh-interval: ${GUA_RESOLVER_POLICY_REFRESH_INTERVAL:PT1M}
       trusted-keys: []
     authority:
@@ -142,6 +145,32 @@ gua:
     roster:
       require-member-signature: ${GUA_RESOLVER_ROSTER_REQUIRE_MEMBER_SIGNATURE:false}
       member-max-lifetime: ${GUA_RESOLVER_ROSTER_MEMBER_MAX_LIFETIME:P400D}
+
+    # The pinned federation genesis and the governance keys under it (ADM-001 L10). The genesis file is
+    # public and committed; expected-id is the pin, so a swapped file fails startup rather than quietly
+    # changing the trust root. With no file configured, governance is off and nothing below applies.
+    genesis:
+      file: ${GUA_RESOLVER_GENESIS_FILE:}
+      transitions-file: ${GUA_RESOLVER_GENESIS_TRANSITIONS_FILE:}
+      expected-id: ${GUA_RESOLVER_GENESIS_EXPECTED_ID:}
+      # How far the governance key chain has run: the genesis id until a key is rotated, then the hash of
+      # the last transition. Pinning it is what makes a truncated or removed transitions file a startup
+      # failure instead of a silent downgrade to a rotated-out key (ADM-001 O8). Update it at each rotation.
+      expected-chain-head: ${GUA_RESOLVER_GENESIS_EXPECTED_CHAIN_HEAD:}
+
+    # governance.required is the whole cutover, and it moves three things at once so that none of them can
+    # move on a deploy instead of on an operator decision:
+    #   1. membership: an admission lands PENDING, a suspend or revoke records intent only, and only a
+    #      governance-signed membership epoch changes a served status;
+    #   2. the routing-policy trust root: the genesis governance key set alone, with no fallback to
+    #      policy.trusted-keys or authority.trusted-keys;
+    #   3. the routing-claims trust root: claims.trusted-keys alone, with no fallback to policy or authority.
+    # With it off, all three keep their pre-cutover behaviour exactly, including the fallback to the
+    # operational key set that a deployed policy bundle is signed with. Re-sign that bundle with the
+    # governance key BEFORE turning this on, or the policy source will refuse to load it and the service will
+    # not start. Setting it back to false is the rollback for all three (docs/runbooks/governance-keys.md).
+    governance:
+      required: ${GUA_RESOLVER_GOVERNANCE_REQUIRED:false}
 
     dev-homeserver:
       id: ${GUA_RESOLVER_DEVHOMESERVER_ID:dev}

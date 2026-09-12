@@ -21,9 +21,18 @@ import global.gua.resolver.roster.SignedRoster;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * The admin policy surface validates and no longer signs (Phase 2, ADM-001 L8): bundles are signed offline
+ * with the governance key. What is checked here is that an operator can still learn, before publishing,
+ * everything the resolver will make of a bundle, including whether its signatures verify under the keys this
+ * resolver trusts. That last answer is the one that keeps a bundle still signed by the retired operational
+ * key from being discovered at startup, when the policy source refuses to load and the service will not come
+ * up.
+ */
 class PolicyAdminControllerTest {
 
-    private static final Ed25519.KeyPairB64 AUTHORITY = Ed25519.generate();
+    private static final Ed25519.KeyPairB64 GOVERNANCE = Ed25519.generate();
+    private static final Ed25519.KeyPairB64 RETIRED_OPERATIONAL = Ed25519.generate();
     private static final Ed25519.KeyPairB64 DELEGATE = Ed25519.generate();
 
     private static final Homeserver DEV = new Homeserver(
@@ -39,17 +48,25 @@ class PolicyAdminControllerTest {
                 new SignedRoster.LogCheckpoint("root", entries.length), List.of());
     }
 
+    /** The resolver's policy trust root: the governance key, and nothing else. */
     private static ResolverProperties props() {
         ResolverProperties props = new ResolverProperties();
         props.getPolicy().setRequireSignatures(true);
         props.getPolicy().setSignatureThreshold(1);
-        props.getPolicy().setSigningKeyId("authority-a");
-        props.getPolicy().setSigningPrivateKey(AUTHORITY.privateKeyB64());
         ResolverProperties.TrustedKey trusted = new ResolverProperties.TrustedKey();
-        trusted.setId("authority-a");
-        trusted.setPublicKey(AUTHORITY.publicKeyB64());
+        trusted.setId("governance-a");
+        trusted.setPublicKey(GOVERNANCE.publicKeyB64());
         props.getPolicy().setTrustedKeys(List.of(trusted));
         return props;
+    }
+
+    /** Stand-in for the offline governance tool: sign a bundle with a given key under a given id. */
+    private static RoutingPolicyBundle signedBy(RoutingPolicyBundle bundle, String keyId,
+                                                Ed25519.KeyPairB64 key) {
+        ResolverProperties signing = new ResolverProperties();
+        signing.getPolicy().setSigningKeyId(keyId);
+        signing.getPolicy().setSigningPrivateKey(key.privateKeyB64());
+        return new RoutingPolicySigner(signing).sign(bundle);
     }
 
     private static PolicyAdminController controller(SignedRoster roster, ResolverProperties props) {
@@ -60,7 +77,7 @@ class PolicyAdminControllerTest {
             @Override
             public SignedRoster refresh() { return roster; }
         };
-        return new PolicyAdminController(new RoutingPolicyValidator(), new RoutingPolicySigner(props),
+        return new PolicyAdminController(new RoutingPolicyValidator(),
                 new RoutingPolicyVerifier(props), store);
     }
 
@@ -79,35 +96,83 @@ class PolicyAdminControllerTest {
     }
 
     @Test
-    void signsAValidDelegateSignedBundleAndReportsTheZoneAsDelegateVerified() {
-        ResolverProperties props = props();
+    void validatesAGovernanceSignedBundleAndReportsTheZoneAsDelegateVerified() {
         RoutingPolicyBundle delegateSigned = RoutingPolicySigner.signZone(
                 unsignedBundle("dev2"), "zone-test", "delegate-dev2", DELEGATE.privateKeyB64());
+        RoutingPolicyBundle governanceSigned = signedBy(delegateSigned, "governance-a", GOVERNANCE);
 
-        PolicyAdminController.SignedPolicyResponse response =
-                controller(roster(DEV, DEV2), props()).sign(delegateSigned);
+        PolicyAdminController.ValidatedPolicyResponse response =
+                controller(roster(DEV, DEV2), props()).validate(governanceSigned);
 
-        assertThat(response.policy().signatures()).hasSize(1);
-        assertThat(response.policy().signatures().get(0).authorityKeyId()).isEqualTo("authority-a");
-        assertThat(new RoutingPolicyVerifier(props).isVerified(response.policy())).isTrue();
+        assertThat(response.structureValid()).isTrue();
+        assertThat(response.signaturesVerified()).isTrue();
         assertThat(response.delegateVerifiedZones()).containsExactly("zone-test");
     }
 
     @Test
-    void aZoneWithoutItsDelegateSignatureSignsButIsReportedUnverified() {
-        PolicyAdminController.SignedPolicyResponse response =
-                controller(roster(DEV, DEV2), props()).sign(unsignedBundle("dev2"));
+    void aBundleStillSignedByTheRetiredOperationalKeyIsReportedUnverified() {
+        // This is the Phase 2 deploy hazard caught early: the bundle is structurally fine and its zone is
+        // delegate-signed, but its signature is worthless to this resolver, and a restart would fail.
+        RoutingPolicyBundle delegateSigned = RoutingPolicySigner.signZone(
+                unsignedBundle("dev2"), "zone-test", "delegate-dev2", DELEGATE.privateKeyB64());
+        RoutingPolicyBundle staleSigned = signedBy(delegateSigned, "authority-a", RETIRED_OPERATIONAL);
 
-        // The authority signature is applied, but the operator can see the zone will not route.
-        assertThat(response.policy().signatures()).hasSize(1);
+        PolicyAdminController.ValidatedPolicyResponse response =
+                controller(roster(DEV, DEV2), props()).validate(staleSigned);
+
+        assertThat(response.structureValid()).isTrue();
+        assertThat(response.signaturesVerified()).isFalse();
+        assertThat(response.delegateVerifiedZones()).containsExactly("zone-test");
+    }
+
+    @Test
+    void aZoneWithoutItsDelegateSignatureValidatesButIsReportedUnverified() {
+        PolicyAdminController.ValidatedPolicyResponse response = controller(roster(DEV, DEV2), props())
+                .validate(signedBy(unsignedBundle("dev2"), "governance-a", GOVERNANCE));
+
+        assertThat(response.signaturesVerified()).isTrue();
         assertThat(response.delegateVerifiedZones()).isEmpty();
     }
 
     @Test
-    void refusesToSignABundleTargetingAHomeserverOutsideTheRoster() {
-        // dev2 is NOT in the roster: validation must reject before any signature is produced.
-        assertThatThrownBy(() -> controller(roster(DEV), props()).sign(unsignedBundle("dev2")))
+    void refusesToValidateABundleTargetingAHomeserverOutsideTheRoster() {
+        // dev2 is NOT in the roster: validation rejects it regardless of who signed it.
+        assertThatThrownBy(() -> controller(roster(DEV), props())
+                .validate(signedBy(unsignedBundle("dev2"), "governance-a", GOVERNANCE)))
                 .isInstanceOf(RoutingPolicyValidator.RoutingPolicyValidationException.class)
                 .hasMessageContaining("unknown or inactive homeserver");
+    }
+
+    @Test
+    void withNoPolicyTrustRootConfiguredEveryBundleIsUnverified() {
+        // No genesis, no policy.trusted-keys and no authority.trusted-keys: there is no key to verify under,
+        // so nothing verifies whatever the flag says.
+        ResolverProperties noKeys = new ResolverProperties();
+        noKeys.getPolicy().setRequireSignatures(true);
+        noKeys.getPolicy().setSignatureThreshold(1);
+        RoutingPolicyBundle signed = signedBy(unsignedBundle("dev2"), "governance-a", GOVERNANCE);
+
+        assertThat(controller(roster(DEV, DEV2), noKeys).validate(signed).signaturesVerified()).isFalse();
+    }
+
+    @Test
+    void beforeTheCutoverTheSameOperationalKeyBundleIsReportedVerified() {
+        // The honest answer for an environment that has not flipped gua.resolver.governance.required: with no
+        // policy.trusted-keys, the operational key set is still the policy trust root, so this bundle both
+        // verifies here and loads at startup. This is the state the deploy hazard above is measured against,
+        // and validate must describe the resolver the operator is actually running, not the one they are
+        // heading towards.
+        ResolverProperties preCutover = new ResolverProperties();
+        preCutover.getPolicy().setRequireSignatures(true);
+        preCutover.getPolicy().setSignatureThreshold(1);
+        ResolverProperties.TrustedKey operational = new ResolverProperties.TrustedKey();
+        operational.setId("authority-a");
+        operational.setPublicKey(RETIRED_OPERATIONAL.publicKeyB64());
+        preCutover.getAuthority().setTrustedKeys(List.of(operational));
+
+        RoutingPolicyBundle staleSigned = signedBy(unsignedBundle("dev2"), "authority-a", RETIRED_OPERATIONAL);
+
+        assertThat(controller(roster(DEV, DEV2), preCutover).validate(staleSigned).signaturesVerified())
+                .isTrue();
     }
 }

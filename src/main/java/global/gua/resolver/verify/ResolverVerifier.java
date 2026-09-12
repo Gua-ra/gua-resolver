@@ -43,23 +43,33 @@ public final class ResolverVerifier {
     private final RoutingPolicyVerifier policyVerifier;
 
     /**
-     * @param authorityKeys      published authority public keys (n) the client trusts
-     * @param authorityThreshold k of n required for a roster / policy authority signature
-     * @param policyKeys         policy-signing keys. Empty falls back to the authority keys, a fallback that
-     *                           collapses the two trust roots to one key set and is scheduled for removal
-     *                           (ADM-001 L8)
-     * @param policyThreshold    k required for a policy authority signature
+     * @param authorityKeys      published authority public keys (n) the client trusts, for the roster
+     * @param authorityThreshold k of n required for a roster authority signature
+     * @param policyKeys         the keys a policy bundle must verify under: the federation's governance keys
+     *                           once a genesis is pinned. There is no fallback to the authority keys any
+     *                           more, so an empty list verifies nothing rather than silently accepting
+     *                           bundles signed by the operational roster key (ADM-001 L8)
+     * @param policyThreshold    k required for a policy signature
      */
     public ResolverVerifier(List<ResolverProperties.TrustedKey> authorityKeys, int authorityThreshold,
                             List<ResolverProperties.TrustedKey> policyKeys, int policyThreshold) {
-        ResolverProperties props = new ResolverProperties();
-        props.getAuthority().setThreshold(authorityThreshold);
-        props.getAuthority().setTrustedKeys(authorityKeys == null ? List.of() : authorityKeys);
-        props.getPolicy().setRequireSignatures(true);
-        props.getPolicy().setSignatureThreshold(policyThreshold);
-        props.getPolicy().setTrustedKeys(policyKeys == null ? List.of() : policyKeys);
-        this.rosterVerifier = new RosterVerifier(props);
-        this.policyVerifier = new RoutingPolicyVerifier(props);
+        // Two property sets on purpose. The server keeps a fallback from the policy trust root to the
+        // operational authority keys until the governance cutover, because a deployed bundle is signed with
+        // that key and removing the fallback under it stops the service starting. A client verifier has no
+        // such bundle to keep serving, so it gets the fail-closed root unconditionally: the policy verifier
+        // below is handed the policy keys and NO authority keys, so an empty policy key list verifies
+        // nothing instead of quietly accepting a bundle signed by the roster key (ADM-001 L8).
+        ResolverProperties rosterProps = new ResolverProperties();
+        rosterProps.getAuthority().setThreshold(authorityThreshold);
+        rosterProps.getAuthority().setTrustedKeys(authorityKeys == null ? List.of() : authorityKeys);
+
+        ResolverProperties policyProps = new ResolverProperties();
+        policyProps.getPolicy().setRequireSignatures(true);
+        policyProps.getPolicy().setSignatureThreshold(policyThreshold);
+        policyProps.getPolicy().setTrustedKeys(policyKeys == null ? List.of() : policyKeys);
+
+        this.rosterVerifier = new RosterVerifier(rosterProps);
+        this.policyVerifier = new RoutingPolicyVerifier(policyProps);
     }
 
     /** Verify the roster carries a valid k-of-n authority signature over its canonical bytes; throws if not. */
