@@ -9,15 +9,7 @@ import org.springframework.stereotype.Component;
 import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.crypto.Ed25519;
 
-/**
- * Policy-bundle signing, for offline tooling and tests.
- *
- * <p>It used to fall back to the authority signing key when no policy key was configured, which is how the
- * resolver came to sign governance with its operational key. That fallback is gone (ADM-001 L8): a bundle is
- * signed by the governance key, outside this process, through the governance tool. A deployed resolver
- * normally configures no policy signing key at all, so {@link #canSign()} is false and this bean signs
- * nothing.
- */
+/** Optional helper for nodes that are allowed to produce policy signatures. */
 @Component
 public class RoutingPolicySigner {
 
@@ -27,6 +19,12 @@ public class RoutingPolicySigner {
     public RoutingPolicySigner(ResolverProperties props) {
         String configuredKeyId = props.getPolicy().getSigningKeyId();
         String configuredPrivateKey = props.getPolicy().getSigningPrivateKey();
+        if (configuredKeyId == null || configuredKeyId.isBlank()) {
+            configuredKeyId = props.getAuthority().getSigningKeyId();
+        }
+        if (configuredPrivateKey == null || configuredPrivateKey.isBlank()) {
+            configuredPrivateKey = props.getAuthority().getSigningPrivateKey();
+        }
         this.keyId = configuredKeyId;
         this.signingKey = (configuredPrivateKey == null || configuredPrivateKey.isBlank())
                 ? null

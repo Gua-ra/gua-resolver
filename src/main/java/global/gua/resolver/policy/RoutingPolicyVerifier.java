@@ -7,15 +7,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.crypto.Ed25519;
-import global.gua.resolver.governance.GenesisLoader;
-import global.gua.resolver.governance.GovernanceKeySet;
 
 /**
  * Verifies routing-policy bundles at two levels:
@@ -28,55 +23,24 @@ import global.gua.resolver.governance.GovernanceKeySet;
  *       delegate key by signing the bundle and no delegate key is pinned, so an authority can publish a
  *       zone whose delegate key it holds (ADM-001 L6 on unreviewed routing authority).</li>
  * </ol>
- *
- * <p><b>Trust root, and no fallback.</b> When a federation genesis is loaded, bundles verify under the
- * governance key set; otherwise under {@code policy.trusted-keys} alone. The former fallback to
- * {@code authority.trusted-keys} is gone: it let the operational roster-signing key mint governance, which
- * is the key-role sharing ADM-001 L8 requires to fail closed. With neither source configured this verifier
- * holds no keys and rejects every bundle, which is the intended failure and is logged loudly at startup
- * rather than discovered as a silent acceptance.
- *
- * <p>Signature counting here still dedupes by key id, which is the shipped envelope's shape. That is
- * tolerable only because policy is a single-operator key set today and no independence claim rests on it;
- * a threshold that has to mean independence uses {@code GovernanceVerifier}, which counts operators
- * (ADM-001 L8). Do not reuse this counter for one.
  */
 @Component
 public class RoutingPolicyVerifier {
-
-    private static final Logger log = LoggerFactory.getLogger(RoutingPolicyVerifier.class);
 
     private final int threshold;
     private final boolean requireSignatures;
     private final Map<String, PublicKey> trustedKeys = new HashMap<>();
 
-    @Autowired
-    public RoutingPolicyVerifier(ResolverProperties props, GenesisLoader genesis) {
-        this(props, genesis.keySet().orElse(null));
-    }
-
-    /** Without a genesis: policy keys only, as an offline verifier or a test configures them. */
     public RoutingPolicyVerifier(ResolverProperties props) {
-        this(props, (GovernanceKeySet) null);
-    }
-
-    private RoutingPolicyVerifier(ResolverProperties props, GovernanceKeySet governance) {
         this.threshold = Math.max(1, props.getPolicy().getSignatureThreshold());
         this.requireSignatures = props.getPolicy().isRequireSignatures();
-
-        List<ResolverProperties.TrustedKey> keys = governance != null
-                ? governance.asTrustedKeys()
+        List<ResolverProperties.TrustedKey> keys = props.getPolicy().getTrustedKeys().isEmpty()
+                ? props.getAuthority().getTrustedKeys()
                 : props.getPolicy().getTrustedKeys();
         for (ResolverProperties.TrustedKey k : keys) {
             if (k.getId() != null && k.getPublicKey() != null && !k.getPublicKey().isBlank()) {
                 trustedKeys.put(k.getId(), Ed25519.publicKey(k.getPublicKey()));
             }
-        }
-        if (requireSignatures && trustedKeys.isEmpty()) {
-            log.warn("No routing-policy trust root: neither a federation genesis nor "
-                    + "gua.resolver.policy.trusted-keys is configured, so every policy bundle will be "
-                    + "rejected. This is fail-closed by design (ADM-001 L8); configure the genesis the "
-                    + "bundle was signed under.");
         }
     }
 

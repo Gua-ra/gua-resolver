@@ -68,18 +68,6 @@ public class RosterEntryRepository {
                                    String entryJson, String entryHash, List<MemberSignature> signatures,
                                    Instant acceptedAt, Long logLeafIndex) {}
 
-    /**
-     * What a governance epoch needs to see about an entry: its current status, any status change recorded
-     * as intent but not yet ratified, the hash of the member's own signed entry, and the placement
-     * attributes the epoch takes over (ADM-001 L10).
-     *
-     * @param pendingStatus  a requested status awaiting a governance epoch, or null
-     * @param registryEpoch  the epoch that set the current status, or null when it predates governance
-     */
-    public record GovernanceRow(String homeserverId, RosterEntry.Status status,
-                                RosterEntry.Status pendingStatus, String memberEntryHash, int weight,
-                                boolean acceptsNew, List<ClaimPredicate> claims, Long registryEpoch) {}
-
     public List<RosterEntry> findAll() {
         return jdbc.query("SELECT * FROM roster_entry ORDER BY id", mapper);
     }
@@ -138,45 +126,6 @@ public class RosterEntryRepository {
 
     public void updateStatus(String id, RosterEntry.Status status) {
         jdbc.update("UPDATE roster_entry SET status = ? WHERE id = ?", status.name(), id);
-    }
-
-    /** Every entry as a governance epoch sees it, ordered so the built content is byte-stable. */
-    public List<GovernanceRow> governanceRows() {
-        return jdbc.query("SELECT * FROM roster_entry ORDER BY id", (rs, n) -> {
-            String pending = rs.getString("pending_status");
-            return new GovernanceRow(
-                    rs.getString("id"),
-                    RosterEntry.Status.valueOf(rs.getString("status")),
-                    pending == null ? null : RosterEntry.Status.valueOf(pending),
-                    rs.getString("member_entry_hash"),
-                    rs.getInt("weight"),
-                    rs.getBoolean("accepts_new"),
-                    readClaims(rs.getString("claims_json")),
-                    (Long) rs.getObject("registry_epoch"));
-        });
-    }
-
-    /**
-     * Record a requested status without changing the served one. This is what "intent only" means under
-     * governance: the operational key can ask, and only an epoch can act, so the operational key alone can
-     * no longer take a member out of service.
-     */
-    public void setPendingStatus(String id, RosterEntry.Status status) {
-        jdbc.update("UPDATE roster_entry SET pending_status = ? WHERE id = ?", status.name(), id);
-    }
-
-    /**
-     * Apply one member of an accepted governance epoch: the status and the placement attributes the epoch
-     * carries, the epoch that set them, and the intent cleared because it has now been ratified or refused.
-     */
-    public int applyGovernedStatus(String id, RosterEntry.Status status, int weight, boolean acceptsNew,
-                                   List<ClaimPredicate> claims, long epoch) {
-        return jdbc.update("""
-                UPDATE roster_entry SET
-                    status = ?, weight = ?, accepts_new = ?, claims_json = ?, registry_epoch = ?,
-                    pending_status = NULL
-                WHERE id = ?
-                """, status.name(), weight, acceptsNew, writeClaims(claims), epoch, id);
     }
 
     /**

@@ -86,13 +86,8 @@ public class AuthorityRosterStore implements RosterStore {
 
     private synchronized SignedRoster rebuild(SignedRoster.LogCheckpoint head) {
         Instant now = Instant.now();
-        // A PENDING entry is an admission the governance keys have not ratified, so it is not part of what
-        // this authority asserts: it stays out of the canonical bytes, out of the signature over them, and
-        // out of GET /roster. That is what makes "an admission under governance is never served" true of the
-        // published document and not only of placement, and it keeps PENDING off the wire, where an older
-        // mirror or client build would meet a status value it cannot parse.
-        List<RosterEntry> admitted = entries.findAll().stream().filter(e -> !e.isPending()).toList();
-        RosterVerifier.VerifiedView view = verifier.verifiedView(admitted, now, id -> null, Set.of());
+        List<RosterEntry> all = entries.findAll();
+        RosterVerifier.VerifiedView view = verifier.verifiedView(all, now, id -> null, Set.of());
         report(view);
 
         long version = head.size();
@@ -147,13 +142,7 @@ public class AuthorityRosterStore implements RosterStore {
         ResolverProperties.DevHomeserver d = props.getDevHomeserver();
         Homeserver hs = new Homeserver(d.getId(), d.getServerName(), d.getBaseUrl(), d.getMasIssuer(),
                 d.getRegion(), 1, true, d.getSigningKey() == null ? "" : d.getSigningKey());
-        // The seed is a bootstrap convenience, not a governance act: with governance required it waits in
-        // PENDING like any other admission, so a fresh database cannot put an ACTIVE member into the roster
-        // without a signed membership epoch.
-        RosterEntry.Status seeded = props.getGovernance().isRequired()
-                ? RosterEntry.Status.PENDING
-                : RosterEntry.Status.ACTIVE;
-        RosterEntry entry = new RosterEntry(hs, List.of(), Instant.now(), seeded);
+        RosterEntry entry = new RosterEntry(hs, List.of(), Instant.now(), RosterEntry.Status.ACTIVE);
         entries.insert(entry);
         transparencyLog.append("ADMIT", hs.id(),
                 global.gua.resolver.crypto.MerkleTree.sha256Hex(

@@ -23,15 +23,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * The reference client verifier verifies signed artifacts and independently reproduces the resolver's
  * new-account decision, so a client never has to trust the resolver's answer.
- *
- * <p>The two trust roots are deliberately different keys here. Before Phase 2 this test passed the authority
- * keys as the policy keys, which the fallback made indistinguishable from having no policy keys at all; with
- * the fallback gone, a port that conflates them fails.
  */
 class ResolverVerifierTest {
 
     private static final Ed25519.KeyPairB64 AUTH = Ed25519.generate();
-    private static final Ed25519.KeyPairB64 GOVERNANCE = Ed25519.generate();
     private static final Ed25519.KeyPairB64 DELEGATE = Ed25519.generate();
 
     private static final Homeserver CARRIER = new Homeserver(
@@ -39,21 +34,11 @@ class ResolverVerifierTest {
     private static final Homeserver DEFAULT = new Homeserver(
             "default", "gua.global", "https://default", "https://default/auth", null, 5, true, "");
 
-    private static List<ResolverProperties.TrustedKey> keys(String id, Ed25519.KeyPairB64 pair) {
-        ResolverProperties.TrustedKey k = new ResolverProperties.TrustedKey();
-        k.setId(id);
-        k.setPublicKey(pair.publicKeyB64());
-        return List.of(k);
-    }
-
-    /** The operational key set: what the roster snapshot is signed under. */
     private static List<ResolverProperties.TrustedKey> authorityKeys() {
-        return keys("auth-a", AUTH);
-    }
-
-    /** The governance key set: what a policy bundle is signed under after Phase 2. */
-    private static List<ResolverProperties.TrustedKey> governanceKeys() {
-        return keys("gov-a", GOVERNANCE);
+        ResolverProperties.TrustedKey k = new ResolverProperties.TrustedKey();
+        k.setId("auth-a");
+        k.setPublicKey(AUTH.publicKeyB64());
+        return List.of(k);
     }
 
     private static SignedRoster signedRoster() {
@@ -67,11 +52,10 @@ class ResolverVerifierTest {
                 new SignedRoster.LogCheckpoint("root", 2));
     }
 
-    private static RoutingPolicyBundle policySignedBy(String keyId, Ed25519.KeyPairB64 key,
-                                                      boolean delegateSign) {
+    private static RoutingPolicyBundle signedPolicy(boolean delegateSign) {
         ResolverProperties props = new ResolverProperties();
-        props.getPolicy().setSigningKeyId(keyId);
-        props.getPolicy().setSigningPrivateKey(key.privateKeyB64());
+        props.getPolicy().setSigningKeyId("auth-a");
+        props.getPolicy().setSigningPrivateKey(AUTH.privateKeyB64());
         RoutingPolicyBundle unsigned = new RoutingPolicyBundle(
                 RoutingPolicyBundle.SCHEMA_VERSION, "br-policy", 3, Instant.now(),
                 Instant.now().minusSeconds(60), Instant.now().plusSeconds(3600),
@@ -84,17 +68,12 @@ class ResolverVerifierTest {
                 new RoutingPolicyBundle.FallbackStrategy("legacy-weighted", true), List.of(), List.of());
         RoutingPolicyBundle authoritySigned = new RoutingPolicySigner(props).sign(unsigned);
         return delegateSign
-                ? RoutingPolicySigner.signZone(authoritySigned, "vivo-sp", "delegate-vivo",
-                        DELEGATE.privateKeyB64())
+                ? RoutingPolicySigner.signZone(authoritySigned, "vivo-sp", "delegate-vivo", DELEGATE.privateKeyB64())
                 : authoritySigned;
     }
 
-    private static RoutingPolicyBundle signedPolicy(boolean delegateSign) {
-        return policySignedBy("gov-a", GOVERNANCE, delegateSign);
-    }
-
     private static ResolverVerifier verifier() {
-        return new ResolverVerifier(authorityKeys(), 1, governanceKeys(), 1);
+        return new ResolverVerifier(authorityKeys(), 1, authorityKeys(), 1);
     }
 
     @Test
@@ -110,26 +89,6 @@ class ResolverVerifierTest {
         assertThat(verifier.reproduceNewAccountPlacement(ctx, roster, policy).id()).isEqualTo("carrier");
         assertThat(verifier.verifyRegisterDecision("carrier", ctx, roster, policy)).isTrue();
         assertThat(verifier.verifyRegisterDecision("default", ctx, roster, policy)).isFalse();
-    }
-
-    @Test
-    void rejectsAPolicySignedOnlyByTheOperationalAuthorityKey() {
-        // The roster key is not a governance key. Before Phase 2 an empty policy key list fell back to the
-        // authority keys and this bundle verified; now it does not, which is the point of the change.
-        RoutingPolicyBundle signedByAuthority = policySignedBy("auth-a", AUTH, true);
-
-        assertThatThrownBy(() -> verifier().verifyPolicy(signedByAuthority))
-                .isInstanceOf(global.gua.resolver.policy.RoutingPolicyVerifier
-                        .RoutingPolicyVerificationException.class);
-    }
-
-    @Test
-    void withNoPolicyKeysNothingVerifiesRatherThanFallingBack() {
-        ResolverVerifier noPolicyKeys = new ResolverVerifier(authorityKeys(), 1, List.of(), 1);
-
-        assertThatThrownBy(() -> noPolicyKeys.verifyPolicy(signedPolicy(true)))
-                .isInstanceOf(global.gua.resolver.policy.RoutingPolicyVerifier
-                        .RoutingPolicyVerificationException.class);
     }
 
     @Test
@@ -149,11 +108,20 @@ class ResolverVerifierTest {
     @Test
     void rejectsAPolicyNotSignedByATrustedAuthority() {
         Ed25519.KeyPairB64 stranger = Ed25519.generate();
-        // wrong key, right id
-        RoutingPolicyBundle badlySigned = policySignedBy("gov-a", stranger, false);
+        ResolverProperties props = new ResolverProperties();
+        props.getPolicy().setSigningKeyId("auth-a");
+        props.getPolicy().setSigningPrivateKey(stranger.privateKeyB64());   // wrong key, right id
+        RoutingPolicyBundle unsigned = new RoutingPolicyBundle(
+                RoutingPolicyBundle.SCHEMA_VERSION, "br-policy", 3, Instant.now(),
+                Instant.now().minusSeconds(60), Instant.now().plusSeconds(3600),
+                List.of(new DelegationZone("vivo-sp", DelegationZone.ScopeType.PHONE_PREFIX,
+                        "+55119", "carrier:vivo", "delegate-vivo", DELEGATE.publicKeyB64(),
+                        List.of("carrier"), null, null)),
+                List.of(), new RoutingPolicyBundle.FallbackStrategy("legacy-weighted", true),
+                List.of(), List.of());
+        RoutingPolicyBundle badlySigned = new RoutingPolicySigner(props).sign(unsigned);
 
         assertThatThrownBy(() -> verifier().verifyPolicy(badlySigned))
-                .isInstanceOf(global.gua.resolver.policy.RoutingPolicyVerifier
-                        .RoutingPolicyVerificationException.class);
+                .isInstanceOf(global.gua.resolver.policy.RoutingPolicyVerifier.RoutingPolicyVerificationException.class);
     }
 }
