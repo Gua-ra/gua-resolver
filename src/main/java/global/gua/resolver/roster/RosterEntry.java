@@ -34,7 +34,15 @@ public record RosterEntry(
         Status status,
         @JsonInclude(JsonInclude.Include.NON_NULL) MemberAttestation member) {
 
-    public enum Status { ACTIVE, SUSPENDED, REVOKED }
+    /**
+     * ACTIVE, SUSPENDED and REVOKED are governed statuses: with
+     * {@code gua.resolver.governance.required} on, only a governance-signed membership epoch sets one
+     * (ADM-001 L10). PENDING is not a governed status but an intent: an entry admitted while governance is
+     * required waits in PENDING, stays out of the signed roster entirely, and becomes ACTIVE only when an
+     * epoch says so. Keeping it out of the roster is also what keeps the name off the wire, so a mirror or
+     * a client built before this status existed never has to parse it.
+     */
+    public enum Status { ACTIVE, SUSPENDED, REVOKED, PENDING }
 
     /** An entry with no member attestation (seeded, legacy, or admitted before Phase 1). */
     public RosterEntry(Homeserver homeserver, List<ClaimPredicate> claims, Instant admittedAt, Status status) {
@@ -49,5 +57,11 @@ public record RosterEntry(
     @JsonIgnore
     public boolean isActive() {
         return status == Status.ACTIVE;
+    }
+
+    /** An admission waiting for a governance epoch: not part of the roster this authority signs. */
+    @JsonIgnore
+    public boolean isPending() {
+        return status == Status.PENDING;
     }
 }

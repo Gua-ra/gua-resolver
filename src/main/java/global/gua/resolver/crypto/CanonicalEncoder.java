@@ -109,6 +109,17 @@ public final class CanonicalEncoder {
         return this;
     }
 
+    /**
+     * The {@code u32} element count that opens a list whose elements are composite rather than plain
+     * strings. The caller then encodes each element's fields in order, so the framing is the same
+     * {@code list(T)} rule: a count, then the elements. Used by the governance objects, whose lists hold
+     * multi-field records (keys, registry members) instead of single values.
+     */
+    public CanonicalEncoder listCount(int count) {
+        writeU32(count);
+        return this;
+    }
+
     /** A set of strings: sorted by unsigned UTF-8 byte order; a duplicate is an encoding error. */
     public CanonicalEncoder stringSet(Collection<String> values) {
         if (values == null) {

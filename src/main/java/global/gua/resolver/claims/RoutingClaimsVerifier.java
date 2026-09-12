@@ -45,18 +45,24 @@ public class RoutingClaimsVerifier {
         this.clock = clock;
         this.replayStore = replayStore;
 
-        // Trust root for routing-claims signatures. Prefer keys scoped to the claims issuer; when the list is
-        // unset the code falls back to policy keys, then authority keys. The fallback widens WHO can mint
-        // institutional/OIDC claims to the authority key itself and is the key-role sharing ADM-001 L8
-        // requires to fail closed; until that change lands, production must set an explicit
-        // gua.resolver.claims.trusted-keys list scoped to the claims issuer.
+        // Trust root for routing-claims signatures, gated on gua.resolver.governance.required exactly like
+        // the policy trust root, so one flag moves both and neither moves on its own at deploy time.
+        //
+        // Flag on: keys scoped to the claims issuer, and nothing else. An empty list is no keys, and no keys
+        // rejects every envelope. ADM-001 L8 names this fallback explicitly and requires it to fail closed:
+        // "Any independence rule must fail closed. No fallback, ever."
+        //
+        // Flag off: the pre-cutover chain (claims, then policy, then authority). It widens WHO can mint
+        // institutional and OIDC claims all the way to the roster-signing key, which is the defect; it stays
+        // until the cutover because it is what an environment that has not run the key ceremony is serving on.
+        boolean governanceRequired = props.getGovernance().isRequired();
         String keySource = "claims";
         List<ResolverProperties.TrustedKey> keys = props.getClaims().getTrustedKeys();
-        if (keys.isEmpty()) {
+        if (!governanceRequired && keys.isEmpty()) {
             keys = props.getPolicy().getTrustedKeys();
             keySource = "policy";
         }
-        if (keys.isEmpty()) {
+        if (!governanceRequired && keys.isEmpty()) {
             keys = props.getAuthority().getTrustedKeys();
             keySource = "authority";
         }
@@ -65,11 +71,19 @@ public class RoutingClaimsVerifier {
                 trustedKeys.put(k.getId(), Ed25519.publicKey(k.getPublicKey()));
             }
         }
-        if (!"claims".equals(keySource) && !trustedKeys.isEmpty()) {
+        if (trustedKeys.isEmpty()) {
+            log.warn("No routing-claims trust root: every signed routing-claims envelope will be rejected, "
+                    + "so no institution or OIDC placement rule can match. With governance required ({}) "
+                    + "that is the intended fail-closed state (ADM-001 L8) while nothing issues envelopes; "
+                    + "a claims issuer ships its public key into gua.resolver.claims.trusted-keys first.",
+                    governanceRequired);
+        } else if (!"claims".equals(keySource)) {
             log.warn("Routing-claims signatures are verified against the {} trusted keys (no "
-                    + "gua.resolver.claims.trusted-keys configured). In production, set an explicit claims "
-                    + "trusted-keys list scoped to the identity-service issuer so the claims-issuer trust "
-                    + "domain is not conflated with the {} trust domain.", keySource, keySource);
+                    + "gua.resolver.claims.trusted-keys configured, and governance is not required yet). "
+                    + "That conflates the claims-issuer trust domain with the {} one: set an explicit claims "
+                    + "trusted-keys list scoped to the issuer before the governance cutover, because with "
+                    + "gua.resolver.governance.required on this fallback is gone and every envelope is "
+                    + "rejected (ADM-001 L8).", keySource, keySource);
         }
     }
 
