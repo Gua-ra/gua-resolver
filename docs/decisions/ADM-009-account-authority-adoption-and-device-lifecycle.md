@@ -1,6 +1,8 @@
 # ADM-009: Account authority adoption and the device lifecycle
 
 > **Status: Proposed, 2026-09-19.** A focused follow-up to ADM-008 under ADM-001 L13 and O9. It closes O9 and decides the device lifecycle ADM-008 listed as unaddressed. It reopens nothing in ADM-001.
+>
+> **Revision 2, 2026-09-19, after adversarial review.** Seven independent attacks were run against revision 1. The chain, the single head, the per-device keys and the browser rule survived every one. Sixteen holes were found and are closed here. Four were critical: account recovery laundered phone possession into the adoption step-up, the notification channel the windows depend on does not exist in the code, a borrowed unlocked phone could strip the owner's authority in two records with no delay, and the device named in a revocation could veto its own removal. The review's findings are named inline where they changed a decision.
 
 ## Context
 
@@ -26,7 +28,7 @@ An `accountId` is permanent (L3). Its class byte is inside the hashed prefix, so
 
 The class byte records **how the id was derived**, not whether the account holds authority today. `0x01` means the id commits the account's first authority key; `0x00` means it commits entropy alone. After adoption a `0x00` account holds authority that its id does not commit, and a verifier that needs to know reads the authority chain, never the class byte. This is the one reading ADM-008:19 and :149 leave ambiguous, and it is settled here rather than by implementation.
 
-The cost is real and is accepted: an adopted account's authority is not self-certifying from its id. A relying party must fetch the chain and verify it against the account's homeserver. A genesis-rooted account keeps its stronger property. This is why L5 still requires genesis for new accounts, and why adoption is a repair for the existing population rather than a second way to create accounts.
+The cost is real and is accepted: an adopted account's authority is not self-certifying from its id, and until the log leaf of decision 12 exists it is an assertion by the account's homeserver. A genesis-rooted account keeps its stronger property. This is why L5 still requires genesis for new accounts, and why adoption is a repair for the existing population rather than a second way to create accounts.
 
 ### 2. The authority chain
 
@@ -44,40 +46,51 @@ Every record shares one envelope, fixed-layout, big-endian, no delimiters, canon
 | 72 | 8 | `seq`, unsigned, `1` in the first record and exactly one more than the previous |
 | 80 | .. | body, fixed per type |
 
-The record's own hash is SHA-256 over its canonical bytes. Signatures are detached and are never part of the hashed bytes. A record is verified against a preimage of the magic followed by the canonical bytes, so no record can be replayed as another type, and none can be replayed into another account: the accountId is inside every signature.
+The record's own hash is SHA-256 over its canonical bytes. Signatures are detached and are never part of the hashed bytes.
 
-Record types and bodies:
+| magic | type | body | total |
+| --- | --- | --- | --- |
+| `GUAA` | `AdoptRoot` | deviceKey (32), recoveryFrameworkId (1), recoveryAuthorityKey (32), label (16), entropy (16) | 177 |
+| `GUAD` | `DeviceGrant` | deviceKey (32), flags (1), label (16), authorizingKey (32) | 161 |
+| `GUAX` | `DeviceRevoke` | deviceKey (32), reason (1), authorizingKey (32) | 145 |
+| `GUAR` | `AuthorityRecovery` | deviceKey (32), recoveryAuthorityKey (32), label (16), entropy (16), authorization (1), authorizingKey (32) | 209 |
 
-| magic | type | body |
-| --- | --- | --- |
-| `GUAA` | `AdoptRoot` | deviceKey (32), recoveryFrameworkId (1), recoveryAuthorityKey (32), entropy (16) |
-| `GUAD` | `DeviceGrant` | deviceKey (32), flags (1), label (16, UTF-8, zero-padded) |
-| `GUAX` | `DeviceRevoke` | deviceKey (32), reason (1) |
-| `GUAR` | `AuthorityRecovery` | deviceKey (32), recoveryAuthorityKey (32), entropy (16) |
+`authorizingKey` names the key whose signature authorizes the record, inside the bytes that are hashed, so a later log leaf commits **who** authorized each transition and not only that someone did (review finding 12). It must equal the verifying key, which the server checks rather than infers. `AuthorityRecovery.authorization` is `0x01` for the committed recovery authority key or `0x02` for the account-recovery path; under `0x02`, and only then, `authorizingKey` is all zero, and a decoder enforces that pairing in both directions.
 
-Decoders reject an unknown magic, version, suite, framework or reason, a wrong length, an all-zero key, a key that fails Ed25519 point decoding, a `recoveryAuthorityKey` equal to a `deviceKey` in the same record, and a label with a non-zero byte after the first zero. The server hashes the bytes it received and never re-encodes, as in ADM-008 decision 1.
+Labels are 16 bytes of UTF-8, zero-padded, and are what a notification is allowed to name. `AdoptRoot` carries one for the same reason a grant does (review finding 13).
+
+Decoders reject an unknown magic, version, suite, framework, reason or authorization, a wrong length, an all-zero key outside the one pairing above, a key that fails Ed25519 point decoding, a `recoveryAuthorityKey` equal to a `deviceKey` in the same record, and a label with a non-zero byte after the first zero. The server hashes the bytes it received and never re-encodes, as in ADM-008 decision 1.
 
 ### 3. One head, one order, no races
 
-The server stores exactly one `head` per account: the hash of the last accepted record, with its `seq`. A submitted record is accepted only if its `prevHash` equals the stored head and its `seq` is exactly one more. Acceptance is a compare-and-set inside one transaction.
+The server stores exactly one `head` per account: the hash of the last accepted record, with its `seq`. A submitted record is accepted only if every one of these holds, checked in one transaction:
 
-Two devices acting at once therefore produce one winner and one refusal carrying the current head, and the loser re-reads and decides again with the winner's record in view. There is no merge, no last-writer-wins and no state in which two chains exist. This is what makes "device-add and device-revoke races" a solved case rather than a policy argument.
+1. its `prevHash` equals the stored head and its `seq` is exactly one more;
+2. its `accountId` equals the account the server resolved from its own session state, never a value read from the request (review finding 2);
+3. its type is permitted at that position: `AdoptRoot` only on an empty chain of a class `0x00` account, and never otherwise (review finding 16);
+4. its signature verifies against the preimage decision 4 fixes for that type, under the key the type names.
+
+Acceptance is a compare-and-set. Two devices acting at once therefore produce one winner and one refusal carrying the current head, and the loser re-reads and decides again with the winner's record in view. There is no merge, no last-writer-wins and no state in which two chains exist.
+
+**A pending record holds the slot.** A record inside an opposition window has already taken its `seq`, and while one is pending the chain accepts no other record on that account at all, self-revocation included (review finding 7). Without that rule every delayed transition loses to an immediate one, and an attacker holding any active device starves every revocation and every recovery aimed at them, one cheap record per window. The cost is that a pending window blocks the account's other authority work for its duration, which is the correct trade for a chain whose whole security is its windows.
 
 ### 4. Adoption
 
 The sequence, and nothing may be skipped:
 
 1. The account completes a normal login or OAuth flow. Control returns to the **native app**. A session that is still inside the web view cannot start adoption, which is the ADM-008:143 problem stated as a rule.
-2. The app requires a **fresh strong step-up**: a user-verifying passkey assertion, or the PIN where policy allows it. Freshness is the existing step-up, not a remembered assurance. `POST /account/authority/adopt/start` refuses a session whose step-up is older than the adoption window.
+2. The app requires a **fresh strong step-up**, scoped to adoption and no older than the challenge in step 4, which is 15 minutes: a user-verifying passkey assertion, or the PIN where policy allows it. A step-up performed for a phone change or a PIN change does not carry over; O9 asks for a possession proof of *this* transition (review finding 10). The factor presented must itself be **past the fresh-factor hold** identity-service already enforces, measured on the credential's own creation time, and adoption is refused outright while the account's last completed account recovery is inside that hold (review finding 1). Without that clause the shipped recovery path mints an attacker-chosen PIN and adoption accepts it days later as proof of possession.
 3. The app generates the device authority key and the recovery authority key on device, non-synced, in the platform keychain or keystore, per ADM-008 decision 5.
 4. The server issues an **adoption challenge**: 32 CSPRNG bytes, minted once, held server-side against that account and that stepped-up session, single use, burned on acceptance and on refusal, expiring with the session and at or under 15 minutes.
-5. The app signs the preimage `"GUAA"` followed by the canonical `AdoptRoot` bytes, with the device key it just generated. The challenge is not in the body; it is bound by being the only thing the server accepts the record against, and the server reads it from its own session state, never from the request. This is the shape ADM-008 decision 6 already uses for the attach proof, for the same reason.
-6. The server records a **pending adoption** and notifies every channel the account has: every signed-in device, and the account's number through the existing notification path, never as an authorization. The notification names the device label and the time the adoption will complete.
+5. The app signs the preimage **`"GUAA"` || the 32 challenge bytes || the canonical `AdoptRoot` bytes** with the device key it just generated. The challenge is inside the signature, not merely checked beside it (review finding 5). Revision 1 cited ADM-008 decision 6 and then dropped both halves of what makes it work, which reproduced the freshness defect ADM-008:151 already records against the genesis registration proof: a record signed with no server input is a precomputable, transferable artifact that proves possession of a key and nothing about when or where its holder was. The server builds the accountId in those canonical bytes from its own session state and reads none from the request, exactly as `GenesisProofs.attachProofPreimage` and `verifyAttachProof` do today.
+6. The server records a **pending adoption** and notifies every channel the account has. At least one channel must be one that an account recovery cannot empty, and a log line is not a channel (review findings 1 and 2). The notification names the device label and the time the adoption will complete.
 7. After the **opposition window** the adoption completes and the record joins the chain at `seq = 1`.
 
-During the window the adoption is cancelled by any signed-in session of the account through `POST /account/authority/oppose`, which needs no factor beyond the session. Opposition is deliberately cheap: at `seq = 1` the account holds no authority to weigh, so the only honest veto is "someone who can already read this account's notifications says no".
+During the window the adoption is cancelled by any signed-in session of the account through `POST /account/authority/oppose`, which needs no factor beyond the session. Opposition is deliberately cheap the first time: at `seq = 1` the account holds no authority to weigh, so the honest veto is "someone who can already read this account's notifications says no".
 
-Abandonment is defined at every step. A challenge that is never spent expires with the session. A pending adoption that is opposed is cancelled and its challenge burned. A pending adoption whose window passes with no opposition completes, because the alternative is an adoption that silently does nothing. A client that crashes between generating keys and submitting has produced nothing the server has seen; its keys are garbage and it generates new ones next time. Nothing in the flow leaves the account half-rooted: the chain either has a `seq = 1` record or it does not.
+**Bounds, so neither side can starve the other** (review finding 6). One pending adoption per account. An opposition cancels every pending adoption on that account, not only the one it names. A cooldown of one window before another adoption may be opened. A second and later opposition requires the opposing session to pass the same step-up adoption does, so a stolen bearer session cannot veto the account out of ever gaining authority while remaining account-equivalent itself.
+
+Abandonment is defined at every step. A challenge that is never spent expires with the session. A pending adoption that is opposed is cancelled and its challenge burned. A pending adoption whose window passes with no opposition completes, because the alternative is an adoption that silently does nothing. A client that crashes between generating keys and submitting has produced nothing the server has seen; its keys are garbage and it generates new ones next time. Nothing leaves the account half-rooted: the chain either has a `seq = 1` record or it does not.
 
 **Opposition window.** 72 hours in production. The window is the whole security of the transition (O9), so it is not configurable below 24 hours outside a testing flag, and it runs on service time until witnesses exist (ADM-002 R8).
 
@@ -85,60 +98,62 @@ Abandonment is defined at every step. A challenge that is never spent expires wi
 
 After adoption the account's authority is the set of device keys the chain leaves active. `AdoptRoot` activates one. `DeviceGrant` activates another. `DeviceRevoke` deactivates one. `AuthorityRecovery` replaces the set with one.
 
-**Adding a device.** The new device generates its own key and never receives another device's key. An existing active device signs a `DeviceGrant` over it. A grant takes effect on acceptance, because it only adds, and its holder is **quarantined** until the opposition window passes: a device may not sign a `DeviceGrant`, a `DeviceRevoke` or an authority-sensitive approval while its own grant is inside its window. A stolen unlocked device can therefore add a device, and gains nothing by it for as long as the window the owner is being notified through.
+**Adding a device.** The new device generates its own key and never receives another device's key. An existing active device signs a `DeviceGrant` over it. A grant takes effect on acceptance, because it only adds, and its holder is **quarantined** until the opposition window passes: a device may not sign a `DeviceGrant`, a `DeviceRevoke` or an authority-sensitive approval while its own grant is inside its window. A quarantined device also **does not count** toward the active device a revocation must leave behind (review finding 3). Without that clause a borrowed unlocked phone grants a device and then self-revokes, which is two records, no delay and nothing to oppose, and the owner's own phone is left with no authority.
 
 Copying one key to every device is rejected. It makes revocation meaningless, since the revoked device still holds the key the account is defined by, and it turns any single device compromise into a permanent account compromise with no way back short of recovery. A per-device key costs one record and gives revocation an effect.
 
-**Removing a device.** `DeviceRevoke` signed by an active device. Revoking **another** device takes effect after the opposition window and is notified; any other active device may oppose it, and the account's stable identity never changes. Revoking **itself** takes effect immediately, because a device removing its own authority reduces what an attacker holding it could do, and delaying that helps nobody.
+**Removing a device.** `DeviceRevoke` signed by an active device. Revoking **another** device takes effect after the opposition window and is notified; any other active device may oppose it, **except the device the record names**, which may not veto its own removal (review finding 4). Without that exclusion an intruder who reached one grant keeps co-authority indefinitely against an owner who does everything right. Revoking **itself** takes effect immediately, because a device removing its own authority reduces what an attacker holding it could do, and delaying that helps nobody.
 
-The chain refuses a revocation that would leave no active device. An account with one device that wants to remove it revokes through `AuthorityRecovery` instead, which installs the replacement in the same record.
+The chain refuses a revocation that would leave no unquarantined active device. An account with one device that wants to replace it goes through `AuthorityRecovery`, which installs the replacement in the same record.
 
-**QR and device linking.** Today's QR flow (MSC4108, through the Matrix SDK) links a Matrix session. It authenticates nothing about account authority: the payload carries no signature, the trust root is a browser cookie and a two-digit human code, and MAS records which browser session approved, not which device. This record does not change that protocol and does not put authority material in it. Instead the grant runs **alongside** it: when the existing device is an active authority device, the app offers to sign a `DeviceGrant` for the device it has just linked, and binds the two by showing the same check code the QR flow already displays. The user sees one ceremony; the account gets a signature. Nothing about authority is trusted because the QR succeeded.
+**QR and device linking.** Today's QR flow (MSC4108, through the Matrix SDK) links a Matrix session. It authenticates nothing about account authority: the payload carries no signature, the trust root is a browser cookie and a two-digit human code, Android's local check-code validation is a stub that returns true, and MAS records which browser session approved, not which device. This record does not change that protocol and does not put authority material in it. The grant runs alongside it, in **one direction only**: the authority device offers to sign a `DeviceGrant` only when it generated the QR itself and its user typed the check code displayed on the new device, and never when it merely scanned a code and displayed one (review finding 9). In the other direction the code binds a channel rather than a peer, and the key the authority device would be signing is whatever came up that channel.
 
 ### 6. The browser holds no authority, ever
 
 A browser login grants account access. It never enters the device set, and no browser-held material may sign an authority record. This is a rule, not a default: there is no flag that lets a web session sign one.
 
-Authority-sensitive actions reachable from the web create a `PendingApproval` carrying the accountId, the action digest and a 32-byte server challenge. The browser displays a four-character action code. An active authority device fetches the pending approval, shows the same code and the action in the reader's own words, and signs the domain `gua-authority-approval.v1`, the accountId, the pending id, the action digest and the challenge. The browser never learns a key and never proxies one. An approval is single use, expires in 10 minutes, and its challenge is burned on refusal as well as acceptance.
+Authority-sensitive actions reachable from the web create a `PendingApproval` carrying the accountId, the action digest and a 32-byte server challenge. The browser displays a four-character code from an unambiguous alphabet with no look-alike characters. Codes are unique among an account's live approvals, an account holds at most three at once, and an authority device refuses to present one while another is live (review finding 14). An active authority device fetches the pending approval, shows the same code and the action in the reader's own words, and signs the domain `gua-authority-approval.v1`, the accountId, the pending id, the action digest and the challenge. The browser never learns a key and never proxies one. An approval is single use, expires in 10 minutes, and its challenge is burned on refusal as well as acceptance.
 
 A malicious page can therefore start an approval the user never wanted, which is exactly what the code and the device-side description defend: the approval names the action on a screen the page does not control.
 
 ### 7. Losing the device
 
-Two paths, and which one applies is decided by what the account still holds.
-
 **Another active device survives.** The surviving device signs a `DeviceGrant` for the replacement and a `DeviceRevoke` for the lost one. No wait beyond the revocation window, no recovery, no SMS.
 
-**No active device survives.** `AuthorityRecovery` installs a new device key and a new recovery authority key in one record. It is authorized in exactly one of two ways, and they are not equal:
+**Otherwise, `AuthorityRecovery`** installs a new device key and a new recovery authority key in one record. It is authorized in exactly one of two ways, and they are not equal:
 
-- **Signed by the committed recovery authority key.** This is the L13.1 genesis-committed threshold at `t = 1` under framework `0x01`. It is notified and takes effect after the opposition window. An active device cannot cancel it, because L13.3 forbids making the possibly stolen active key the veto. An active device's opposition extends the window once and raises the notification, and nothing more.
-- **Through account recovery**, the delayed path ADM-002 owns and identity-service ships, for an account that no longer holds its recovery authority key. This one **is** vetoable by any active device, immediately, because there the surviving device is the stronger evidence. It runs after recovery's own dormancy and wait, and then the authority opposition window on top.
+- **Signed by the committed recovery authority key** (`authorization = 0x01`). This is the L13.1 genesis-committed threshold at `t = 1` under framework `0x01`. It is notified and takes effect after ADM-002 D1's Δr for framework `0x01`, not the adoption window (review finding 15). An active device cannot cancel it, because L13.3 forbids making the possibly stolen active key the veto. An active device's opposition extends the window once and raises the notification, and nothing more.
+- **Through account recovery** (`authorization = 0x02`), the delayed path ADM-002 owns and identity-service ships. This one **is** vetoable by any active device, immediately, because there a surviving device is the stronger evidence. It runs after recovery's own dormancy and wait, and then the authority opposition window on top.
 
-**Deterministic priority (L13.2).** While an `AuthorityRecovery` signed by the recovery authority key is pending, the chain accepts no `DeviceGrant` and no other-device `DeviceRevoke`. Self-revocation stays accepted. That freezes the thief-rotate flood. The denial-of-service this creates is bounded rather than argued away: one pending recovery per account, a fixed window, and a cooldown of one window before another may be opened by the same key.
+Neither path is gated on the account having no active device. Revision 1 gated the second one that way, which left the ordinary lost-phone case with no path at all, because a lost phone stays active in the chain until something revokes it, and made a remote wipe terminal (review finding 8). The immediate active-device veto is what protects that path, and it does not need a precondition the chain cannot observe.
 
-**Unrecoverable is a permitted answer (L13.4).** An account that loses every device and its recovery authority key keeps its accountId, its login and its data, and never regains authority. It may not adopt again: a second adoption authorized by login factors alone is precisely the seizure O9 rejected, and an attacker who reaches the login factors of a rooted account must not be handed its authority. Because that end state is permanent, adoption **requires** the user to take the recovery artifact: the recovery authority key is shown once, the app confirms the user has stored it, and adoption is refused without that confirmation.
+**Deterministic priority (L13.2).** While an `AuthorityRecovery` is pending, decision 3's slot rule already freezes the chain. Between the two paths the order is fixed and not a race: a recovery signed by the committed recovery authority key **outranks and cancels** one authorized through account recovery, at any point before that one completes (review finding 11). The weaker path must never preempt the key the account committed for exactly this purpose. The denial-of-service a freeze creates is bounded rather than argued away: one pending recovery per account, a fixed window, and a cooldown of one window before the same key may open another.
+
+**Unrecoverable is a permitted answer (L13.4).** An account that loses every device and its recovery authority key keeps its accountId, its login and its data, and never regains authority. It may not adopt again: a second adoption authorized by login factors alone is precisely the seizure O9 rejected, and an attacker who reaches the login factors of a rooted account must not be handed its authority. Because that end state is permanent, adoption **requires** the user to take the recovery artifact: the recovery authority key is shown once, the app confirms the user has stored it, and adoption is refused without that confirmation. The copy that shows it says plainly that whoever holds it can take the account after a wait, because that is true.
 
 ### 8. What recovery may and may not do to authority
 
-Completing an account recovery resets login factors. It does **not** move authority on its own, it does not revoke devices, and it does not mint a device key. Its only reach into this chain is the second authorization path in decision 7, and only for an account with no active device.
+Completing an account recovery resets login factors. It does **not** move authority on its own, it does not revoke devices, and it does not mint a device key. Its only reach into this chain is the second authorization path in decision 7.
 
-A rooted account under recovery therefore has two independent clocks, and the design keeps them independent on purpose: an attacker who owns the phone number drives the recovery clock and reaches the login factors, and still holds nothing the chain accepts.
+The two clocks **compose rather than run independently**, and revision 1 was wrong to claim otherwise (review finding 1). Account recovery deletes every passkey, sets a caller-chosen PIN and revokes the account's sessions in one transaction. That is the same transaction that empties the signed-in-session channel the adoption window relies on and leaves the phone as the only surviving channel. Decision 4 step 2's fresh-factor hold and step 6's channel requirement exist because of that composition, and they are what keep the total cost of a SIM swap at recovery's own clocks plus the hold plus a window on a channel the attacker does not hold.
 
 ### 9. SMS possession authorizes nothing here
 
-No record in this chain is accepted on the strength of a phone code, in any combination, at any step, including adoption. The phone's only role is as one notification channel among several. Enforcement is a guard test in the source, in the shape identity-service already uses: no authority endpoint may reference the OTP services, and `AuthFactor.PHONE_OTP` may not appear in any accepted set for an authority operation.
+No record in this chain is accepted on the strength of a phone code, in any combination, at any step, including adoption. The phone's only role is as one notification channel among several.
+
+The guard has to be wider than the adoption endpoint, because the laundering path in decision 8 never presents an OTP to an authority endpoint at all. Enforcement is therefore three rules in the source: no authority endpoint may reference the OTP services; `AuthFactor.PHONE_OTP` may not appear in any accepted set for an authority operation; and a session whose completing factor is `SessionFactor.RECOVERY`, or whose step-up factor is inside the fresh-factor hold, may not start or complete an adoption.
 
 ### 10. State and transitions
 
 | state | meaning | leaves by |
 | --- | --- | --- |
 | `BOOTSTRAP` | class `0x00`, chain empty | adoption start |
-| `ADOPTION_PENDING` | `AdoptRoot` held, window running | completion, opposition, expiry |
-| `ROOTED` | chain non-empty, at least one active device | grant, revoke, recovery |
-| `RECOVERY_PENDING` | `AuthorityRecovery` held, window running | completion, veto where permitted, expiry |
+| `ADOPTION_PENDING` | `AdoptRoot` held, window running, slot reserved | completion, opposition, expiry |
+| `ROOTED` | chain non-empty, at least one unquarantined active device | grant, revoke, recovery |
+| `RECOVERY_PENDING` | `AuthorityRecovery` held, window running, slot reserved | completion, veto where permitted, supersession by the recovery-key path, expiry |
 | `AUTHORITY_LOST` | rooted, no active device, no recovery key | nothing. Terminal by decision 7 |
 
-Genesis-rooted accounts (class `0x01`) start at `ROOTED` with the genesis authority key as the first device key, and use the same chain from `seq = 1`.
+A class `0x01` account is `ROOTED` from creation with an empty chain: its genesis authority key is its first device key, committed by the accountId itself rather than by a record, and its chain starts at `seq = 1` with its first `DeviceGrant` or `AuthorityRecovery`. `AdoptRoot` is refused on such an account by decision 3, which is what stops a genesis-committed authority being replaced on login factors alone (review finding 16).
 
 ### 11. Compromise conditions
 
@@ -146,23 +161,24 @@ What an attacker must hold for each transition to succeed, stated so that a revi
 
 | transition | requires | and survives |
 | --- | --- | --- |
-| adopt | a live session, a fresh step-up factor, and the device that generates the key, held for the whole opposition window without the owner opposing | nothing else. The phone number alone fails at step 2, the web view fails at step 1, a captured challenge fails because it is bound to the session that was stepped up |
-| grant | an active, unquarantined device key | a stolen unlocked device wins this and gains a quarantined device, which can do nothing until the owner has been notified for a full window |
-| revoke other | an active device key, and the window without opposition from another active device | an account with one device cannot be locked out this way, because the chain refuses the last revocation |
-| revoke self | the device's own key | by design, no delay |
-| recovery by recovery key | the committed recovery authority key, and the window | a thief holding every device cannot cancel it. A thief holding the recovery artifact and nothing else wins the account after the window, which is why the artifact is treated as account-equivalent in the copy the user is shown |
-| recovery by account recovery | the login factors, recovery's own dormancy and wait, the authority window, and no active device to veto | a SIM swap plus a factor reset reaches this only for an account that has already lost every device |
+| adopt | a live native session, a step-up scoped to adoption, minted more than the fresh-factor hold ago, on an account whose last recovery is also outside that hold, the device that generates the key, the server's challenge inside the signature, and a full window with no opposition on a channel recovery cannot empty | a SIM swap now costs recovery's dormancy and wait, then the fresh-factor hold, then a window the owner is notified through on a channel the attacker does not hold. A captured request body is useless: the challenge is burned and bound to one stepped-up session. A record built for another account is refused by decision 3 rule 2 |
+| grant | an active, unquarantined device key | a stolen unlocked device wins this and gains a quarantined device, which can do nothing, counts for nothing, and cannot be used to strip the owner |
+| revoke other | an active device key, and the window without opposition from an active device other than the target | the target cannot veto its own removal, and an account cannot be left with no unquarantined device |
+| revoke self | the device's own key | by design, no delay, and it cannot be the last unquarantined device |
+| recovery by recovery key | the committed recovery authority key, and ADM-002 D1's Δr | a thief holding every device cannot cancel it, and it cancels a weaker recovery aimed at the same account |
+| recovery by account recovery | the login factors, recovery's own dormancy and wait, the authority window, and no active device choosing to veto | a SIM swap plus a factor reset reaches this only against an owner with no device left to say no |
 | approval from a browser | an active device's signature on that exact action digest | a malicious page reaches the pending approval and not the signature |
 
 ### 12. Reserved, and deliberately not decided here
 
-A `ACCOUNT_AUTHORITY` log leaf type is reserved for the chain head, so a later phase can commit it without a format change. Nothing writes it yet, and no verifier reads it. Witness-sequenced time for these windows is ADM-005's to deliver; until then the waits are service time and the record says so.
+An `ACCOUNT_AUTHORITY` log leaf type is reserved for the chain head. Until it is written and a verifier reads it, **a class `0x00` account's chain is an assertion by that account's homeserver** (review finding 12). A dishonest homeserver can serve a chain it made up, and revocation has no durable effect against the party that stores it. That is not closed here and must not be claimed as closed: the preimage fix in decision 4 and the `authorizingKey` field in decision 2 are what make each record self-evidencing once the leaf exists, so the gap is a missing publication rather than a missing signature.
 
 The hardware-resident P-256 suite that ADM-008 reserved is not defined here. Framework `0x02` is ADM-002's. Multi-party thresholds above `t = 1` are not decided: every rule here is written so that a threshold larger than one narrows it rather than reshaping it.
 
 ## Implementation gates
 
 1. No endpoint in this record ships enabled. Server and both clients gate on their own off-by-default flags, as Phase 3 does.
-2. Production adoption stays refused while ADM-002 D1 leaves framework `0x01` delay bounds open, for the same reason ADM-008 decision 4 refuses production issuance. Dev may adopt behind the testing flag and treats those accounts as disposable.
-3. The guard tests named in decision 9 exist before the first endpoint does.
-4. This record closes O9 only when its adoption path is implemented and reviewed. Until then O9 stays open and this is its proposed answer.
+2. **No endpoint ships at all until pending authority transitions have an out-of-band notification channel.** `DeviceNotificationService` has one implementation today and it writes a log line, which is not a channel (review finding 2). Every window in this record is security theatre without one, because the owner is never told.
+3. Production adoption stays refused while ADM-002 D1 leaves framework `0x01` delay bounds open, for the same reason ADM-008 decision 4 refuses production issuance. Dev may adopt behind the testing flag and treats those accounts as disposable.
+4. The three guard rules named in decision 9 exist before the first endpoint does.
+5. This record closes O9 only when its adoption path is implemented and reviewed. Until then O9 stays open and this is its proposed answer.
