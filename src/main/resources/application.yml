@@ -55,6 +55,12 @@ resilience4j:
         limit-for-period: 20
         limit-refresh-period: 1s
         timeout-duration: 0s
+      # Account authority heads: a public, self-authenticating publication plus the reads a verifier needs.
+      # Same bound and the same reason as the placement ingest above.
+      accountAuthorityHeads:
+        limit-for-period: 20
+        limit-refresh-period: 1s
+        timeout-duration: 0s
 
 gua:
   resolver:
@@ -197,6 +203,28 @@ gua:
       max-validity: ${GUA_RESOLVER_PLACEMENT_MAX_VALIDITY:P400D}
       default-page-size: ${GUA_RESOLVER_PLACEMENT_DEFAULT_PAGE_SIZE:100}
       max-page-size: ${GUA_RESOLVER_PLACEMENT_MAX_PAGE_SIZE:500}
+
+    # Published account authority chain heads (ADM-009 decision 12): the head of an account's authority chain,
+    # signed by the roster membership key of the homeserver that stores that chain, anchored as one
+    # ACCOUNT_AUTHORITY transparency-log leaf per accepted publication. Until this runs, an adopted account's
+    # chain is an assertion by that homeserver alone, which is the gap decision 12 reserved this leaf for.
+    # Both switches are off in every environment until an operator turns them on, and turning them back off is
+    # the rollback, with the table left in place. Nothing is served from these rows on the resolution path and
+    # there is deliberately no flag that would make one.
+    #
+    # Know the cost before turning ingest on: the roster version IS the transparency-log size and new-account
+    # fallback placement seeds on it (ADM-001 L6), so every accepted publication moves where new accounts are
+    # placed. One leaf per settled transition is what decision 12's leaf means, so this is not batched the way
+    # the placement checkpoint is; a publisher that republishes a head only to refresh its window pays the same
+    # leaf, which is why windows here are long and refreshes should be rare.
+    account-authority:
+      # Head custody: the store, the reads and the publication path. Off means no bean, no path, no table read.
+      enabled: ${GUA_RESOLVER_ACCOUNT_AUTHORITY_ENABLED:false}
+      # Whether POST /account/authority/heads accepts heads. Separate, so reads can go live first.
+      ingest-enabled: ${GUA_RESOLVER_ACCOUNT_AUTHORITY_INGEST_ENABLED:false}
+      # Longest window a head object may claim. Long, because a refresh costs a log leaf; short enough that a
+      # homeserver that stops publishing becomes visibly stale to a verifier rather than silently trusted.
+      max-validity: ${GUA_RESOLVER_ACCOUNT_AUTHORITY_MAX_VALIDITY:P400D}
 
     dev-homeserver:
       id: ${GUA_RESOLVER_DEVHOMESERVER_ID:dev}

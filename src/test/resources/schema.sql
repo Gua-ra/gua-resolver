@@ -1,4 +1,4 @@
--- Test schema (H2/PostgreSQL mode), mirrors db/migration/V1 to V6 by hand. Flyway is disabled
+-- Test schema (H2/PostgreSQL mode), mirrors db/migration/V1 to V7 by hand. Flyway is disabled
 -- in tests; Spring SQL init runs this. DROP-first so each test context starts clean.
 -- SchemaParityTest applies the real migrations to one database and this script to another and compares the
 -- resulting columns, so a drift between the two fails the build rather than a deployment.
@@ -10,6 +10,7 @@ DROP TABLE IF EXISTS directory_entry;
 DROP TABLE IF EXISTS username_index;
 DROP TABLE IF EXISTS routing_claim_nonce;
 DROP TABLE IF EXISTS placement_record;
+DROP TABLE IF EXISTS account_authority_head;
 
 CREATE TABLE roster_entry (
     id             VARCHAR(64)  PRIMARY KEY,
@@ -109,3 +110,19 @@ CREATE TABLE placement_record (
     received_at    TIMESTAMP    NOT NULL
 );
 CREATE INDEX ix_placement_record_hs ON placement_record (homeserver_id);
+
+CREATE TABLE account_authority_head (
+    account_id      VARCHAR(64)  PRIMARY KEY,
+    homeserver_id   VARCHAR(64)  NOT NULL,
+    head_hash       VARCHAR(64)  NOT NULL,
+    head_seq        BIGINT       NOT NULL,
+    issued_at       TIMESTAMP    NOT NULL,
+    not_before      TIMESTAMP    NOT NULL,
+    not_after       TIMESTAMP    NOT NULL,
+    record_b64      TEXT         NOT NULL,
+    signature_b64   TEXT         NOT NULL,
+    payload_hash    VARCHAR(128) NOT NULL,
+    log_leaf_index  BIGINT,
+    received_at     TIMESTAMP    NOT NULL
+);
+CREATE INDEX ix_account_authority_head_hs ON account_authority_head (homeserver_id);

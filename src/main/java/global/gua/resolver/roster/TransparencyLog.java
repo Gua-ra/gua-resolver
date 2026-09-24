@@ -34,6 +34,22 @@ public interface TransparencyLog {
      */
     String STATUS_INTENT = "STATUS_INTENT";
 
+    /**
+     * Leaf type for a published account authority chain head (ADM-009 decision 12). Its payload is the
+     * SHA-256 of the {@code gua-account-authority-head.v1} canonical bytes, so the log commits to the exact
+     * head object a homeserver published, including the accountId and the head hash inside it.
+     *
+     * <p>This is the leaf ADM-009 decision 12 reserved and named as the thing whose absence leaves a class
+     * {@code 0x00} account's chain an assertion by the homeserver that stores it. The leaf carries the hash
+     * of the signed bytes and nothing else, so it commits to which head was published without putting an
+     * accountId in the log's own columns, and the accountId is reachable only by someone who already holds
+     * the published bytes.
+     *
+     * <p>The leaf is <b>not</b> evidence that the head is the account's latest: the log proves history, and
+     * an authenticated state root that commits current state at one size is ADM-005's (requirement 3).
+     */
+    String ACCOUNT_AUTHORITY = "ACCOUNT_AUTHORITY";
+
     /** A single membership event (the leaf that gets hashed into the tree). */
     record Event(long index, String type, String homeserverId, String payloadHash, String recordedAt) {}
 
