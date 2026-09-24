@@ -29,7 +29,11 @@ import org.springframework.security.web.SecurityFilterChain;
  * the ACTIVE homeserver it names, so a caller identity would add nothing (ADM-008 decision 7). It exists
  * only while {@code gua.resolver.placement.enabled} is on, and the allowlist entry below is added under
  * exactly that same condition, so with the shipped defaults these two paths are not permitted here at all
- * and answer what they answered before this phase: the deny-by-default 401. The {@code /authority/**} admin
+ * and answer what they answered before this phase: the deny-by-default 401.
+ * {@code /account/authority/heads} is the same shape for published account authority chain heads (ADM-009
+ * decision 12): the head object names the homeserver that signed it, so the publication authenticates itself
+ * and the reads carry a proof a caller checks rather than a claim it has to believe. It is gated on
+ * {@code gua.resolver.account-authority.enabled} the same way. The {@code /authority/**} admin
  * surface (admission, status changes, member attestation, epoch
  * submission) requires the {@code ADMIN} role via HTTP Basic, and fails closed: with no admin password hash
  * configured there are no admin users, so those endpoints stay denied. Everything else is denied.
@@ -58,6 +62,14 @@ public class SecurityConfig {
         if (props.getMode() == ResolverProperties.Mode.AUTHORITY && props.getPlacement().isEnabled()) {
             publicPaths.add("/placement/records");
             publicPaths.add("/placement/records/**");
+        }
+        // Same rule for the published authority heads: permitted under exactly the condition that maps the
+        // controller, so with the account-authority flag off these paths answer the deny-by-default 401 they
+        // answered before this phase rather than a 404 only this phase could produce.
+        if (props.getMode() == ResolverProperties.Mode.AUTHORITY
+                && props.getAccountAuthority().isEnabled()) {
+            publicPaths.add("/account/authority/heads");
+            publicPaths.add("/account/authority/heads/**");
         }
         http
                 .csrf(csrf -> csrf.disable())

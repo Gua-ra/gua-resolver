@@ -39,6 +39,7 @@ public class ResolverProperties {
     private final Genesis genesis = new Genesis();
     private final Governance governance = new Governance();
     private final Placement placement = new Placement();
+    private final AccountAuthority accountAuthority = new AccountAuthority();
     private final DevHomeserver devHomeserver = new DevHomeserver();
 
     public Mode getMode() { return mode; }
@@ -54,6 +55,7 @@ public class ResolverProperties {
     public Genesis getGenesis() { return genesis; }
     public Governance getGovernance() { return governance; }
     public Placement getPlacement() { return placement; }
+    public AccountAuthority getAccountAuthority() { return accountAuthority; }
     public DevHomeserver getDevHomeserver() { return devHomeserver; }
 
     /** The published authority key set (verify) + this node's signing key (authority mode). This configured
@@ -388,6 +390,28 @@ public class ResolverProperties {
         public void setDefaultPageSize(int v) { this.defaultPageSize = v; }
         public int getMaxPageSize() { return maxPageSize; }
         public void setMaxPageSize(int v) { this.maxPageSize = v; }
+    }
+
+    /**
+     * Published account authority chain heads (ADM-009 decision 12). Two flags, both off by default, so a
+     * deployment that applies the migration and deploys this build behaves exactly as it did before: with
+     * {@code enabled} off no bean exists, no path is mapped and the table is never read or written, which also
+     * means no ACCOUNT_AUTHORITY leaf can be appended and no new-account placement decision can move.
+     */
+    public static class AccountAuthority {
+        /** Head custody: the store, the reads and the publication path. Off means no bean, no path. */
+        private boolean enabled = false;
+        /** Whether {@code POST /account/authority/heads} accepts heads. Independent of the reads. */
+        private boolean ingestEnabled = false;
+        /** Longest validity window a head object may claim between notBefore and notAfter. */
+        private Duration maxValidity = Duration.ofDays(400);
+
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        public boolean isIngestEnabled() { return ingestEnabled; }
+        public void setIngestEnabled(boolean ingestEnabled) { this.ingestEnabled = ingestEnabled; }
+        public Duration getMaxValidity() { return maxValidity; }
+        public void setMaxValidity(Duration v) { this.maxValidity = v; }
     }
 
     /** The single homeserver the authority seeds its roster with on first boot (Phase 1 / fresh DB). */
