@@ -113,8 +113,8 @@ curl -s "$RESOLVER/roster" > roster.json
 Every ACTIVE entry must report `ok`. Then check the three other surfaces:
 
 - **Tamper check.** Edit `baseUrl` in a copy of `roster.json` and run `verify` against the copy. It must
-  report `invalid` and exit non-zero. That is the property being bought: an authority that rewrites a
-  member's address cannot produce a signature for it.
+  report `invalid` and exit non-zero. That is the guarantee: an authority that rewrites a member's
+  address cannot produce a signature for it.
 - **Log.** `curl -s "$RESOLVER/roster/log"` carries a `MEMBER_ATTEST` event per attestation whose
   `payloadHash` equals the entry hash the tool printed.
 - **Metric.** `gua_resolver_roster_homeservers{status="unattested"}` is 0. The resolver also names unattested
@@ -165,4 +165,4 @@ The response body carries the reason.
 - `validity window exceeds the maximum lifetime of 400 days`.
 - `a member self-signature is required`: the flag is already on and a legacy admission was attempted.
 - `malformed_request`: the body did not parse strictly (an unknown field, a duplicate key, invalid UTF-8).
-  The signed sub-object is parsed strictly on purpose, so nothing rides along outside the signature.
+  The signed sub-object is parsed strictly so that nothing rides along outside the signature.

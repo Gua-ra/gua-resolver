@@ -6,7 +6,7 @@
 
 # Federation e2e validation (dev, 2026-08)
 
-End-to-end validation of this PR's decentralized routing on a live two-homeserver dev
+End-to-end validation of the decentralized routing from PR #4 (`codex/decentralized-resolver-policy`) on a live two-homeserver dev
 federation testbed: the primary dev homeserver (hs1) plus a temporary second full
 Synapse + MAS stack (hs2), both admitted to the signed roster.
 
@@ -51,7 +51,7 @@ delivered back (also confirmed on hs1 via the client API).
 |---|---|---|---|
 | ![home](federation-e2e-1-home-hs2.png) | ![invite](federation-e2e-2-invite.png) | ![inbound](federation-e2e-3-inbound.png) | ![both ways](federation-e2e-4-both-ways.png) |
 
-## Known follow-ups (out of scope for this PR)
+## Known follow-ups at the time (out of scope for PR #4)
 
 - The OIDC onboarding path does not yet publish phone-to-homeserver mappings to the
   resolver directory (identity-service change, tracked separately), so `/resolve`

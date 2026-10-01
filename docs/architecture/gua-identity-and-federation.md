@@ -98,30 +98,9 @@ Full reasoning: [ADM-001](../decisions/ADM-001-identifier-binding-placement-trus
 
 ## What exists today
 
-Everything above is target. On `main` today:
+Everything above is target. The resolver README, ["How this relates to the target architecture"](../../README.md#how-this-relates-to-the-target-architecture), states per surface what `main` serves today, and the [decision index](../decisions/README.md#implementation-status) carries the dated status per ADM-001 decision. In short: the signed roster, transparency log, routing policy bundles and short-lived routing claims are built and carried forward; member self-signed roster entries and the governance key chain are built behind flags that are still off; the global identity-service, the peppered directory and per-request routing are built and being replaced; `AccountGenesis` and the `accountId` are present and disabled; binding records, client-side chain verification, per-homeserver authentication and a second operator do not exist yet. Until a second operator exists, the design's independence guarantees are not in effect.
 
-**Built and carried forward:**
-
-- A roster of federation members in a tamper-evident log, with k-of-n signing (one key today).
-- Signed routing policy bundles, separate from membership.
-- Signed, short-lived routing claims that cannot be replayed: an organisation's sign-on vouching for a person during onboarding.
-- Clients that ask the resolver by phone number and connect where it points.
-
-**Built, being replaced:**
-
-- One global identity-service holding credentials and login for every homeserver. The target moves authentication to each homeserver; the decision record and a follow-up cover its future role.
-- A directory of phone-number fingerprints that members used to write to. The write endpoint has been removed (ADM-001 L1b); the existing rows stay, and are still read, until placement records replace them. The target replaces the directory with verifier-signed bindings.
-- Routing computed per request from policy, with no committed placement record. The target makes placement a signed record.
-
-**Not built yet:**
-
-- `AccountGenesis` and the `accountId`.
-- Binding and placement records, and the three-party registration.
-- Homeserver self-signed roster entries and the app-side verification chain.
-- Per-homeserver authentication, including passkeys checked by the homeserver, not centrally.
-- A second operator. Until one exists, the design's independence guarantees are not in effect.
-
-See also: [verification protocol](../verification/gua-resolver-verification-protocol.md) (current implementation), [migration plan](../migrations/gua-resolver-migration-plan.md), [August 2026 federation validation](../validation/federation-e2e-2026-08.md) (historical, not normative), [July 2026 resolver design](history/gua-resolver-target-architecture-2026-07.md) (superseded, kept for provenance).
+See also: [decision record identifiers](../decisions/IDENTIFIERS.md) (what each label means), [verification protocol](../verification/gua-resolver-verification-protocol.md) (current implementation), [migration plan](../migrations/gua-resolver-migration-plan.md), [August 2026 federation validation](../validation/federation-e2e-2026-08.md) (historical, not normative), [July 2026 resolver design](history/gua-resolver-target-architecture-2026-07.md) (superseded, kept for provenance).
 
 ## What is target architecture
 
