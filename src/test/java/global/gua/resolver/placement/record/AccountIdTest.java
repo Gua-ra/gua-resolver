@@ -10,10 +10,6 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * An accountId has one canonical spelling (ADM-008 decision 2). These are the rules a decoder that accepted
- * eight spellings of one account would break, which ADM-001 L4 forbids.
- */
 class AccountIdTest {
 
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -50,8 +46,7 @@ class AccountIdTest {
     void aSpellingWithNonZeroPaddingBitsIsRefused() {
         String id = PlacementFixtures.genesisAccountId("padding");
         char last = id.charAt(id.length() - 1);
-        // The next letter carries the same data bits with the padding set, so it is a second spelling of the
-        // same 34 bytes: exactly the alias an accountId must not have.
+        // The next letter sets a padding bit: a second spelling of the same 34 bytes.
         char aliased = (char) (last + 1);
         String alias = id.substring(0, id.length() - 1) + aliased;
 
@@ -66,11 +61,11 @@ class AccountIdTest {
         assertThat(AccountId.isCanonical(null)).isFalse();
         assertThat(AccountId.isCanonical("")).isFalse();
         assertThat(AccountId.isCanonical(id.toUpperCase(java.util.Locale.ROOT))).isFalse();
-        assertThat(AccountId.isCanonical(id.substring(1))).isFalse();                    // no prefix
-        assertThat(AccountId.isCanonical(id + "a")).isFalse();                           // too long
-        assertThat(AccountId.isCanonical(id.substring(0, id.length() - 1))).isFalse();   // too short
-        assertThat(AccountId.isCanonical("ga0" + id.substring(3))).isFalse();            // wrong prefix
-        assertThat(AccountId.isCanonical(id.substring(0, 3) + "1" + id.substring(4))).isFalse();  // not base32
+        assertThat(AccountId.isCanonical(id.substring(1))).isFalse();
+        assertThat(AccountId.isCanonical(id + "a")).isFalse();
+        assertThat(AccountId.isCanonical(id.substring(0, id.length() - 1))).isFalse();
+        assertThat(AccountId.isCanonical("ga0" + id.substring(3))).isFalse();
+        assertThat(AccountId.isCanonical(id.substring(0, 3) + "1" + id.substring(4))).isFalse();
     }
 
     @Test

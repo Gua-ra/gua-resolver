@@ -31,15 +31,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * What a caller who can reach the public ingest can actually do, and what they cannot.
- *
- * <p>The bound is: they can present records, and every one either verifies under the signing key of an
- * ACTIVE roster entry or is refused. A non-member's signature, a former member's signature and a single
- * flipped byte all land in the same place. Nothing about stored state is reachable without a member key, so
- * the endpoint is not an enumeration oracle either: the last test presents the same unsigned nonsense for an
- * accountId this node holds and one it has never seen, and the two answers are identical.
- */
 @SpringBootTest(properties = {
         "gua.resolver.placement.enabled=true",
         "gua.resolver.placement.ingest-enabled=true"
@@ -53,14 +44,10 @@ class PlacementIngestAttackSurfaceTest {
     private static final Ed25519.KeyPairB64 STRANGER = Ed25519.generate();
     private static final Ed25519.KeyPairB64 SPELLING = Ed25519.generate();
 
-    /** The base64url alphabet, in index order, for building a second spelling of one record. */
     private static final String BASE64URL =
             "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
-    /**
-     * Seven characters, so a record naming it is 73 bytes: not a multiple of three, which is the only way
-     * padding and trailing bits differ between spellings at all.
-     */
+    /** Seven characters make the record 73 bytes, not a multiple of three, so base64 spellings can differ. */
     private static final String SPELLING_HS = "hs-sp07";
 
     @DynamicPropertySource
@@ -94,8 +81,6 @@ class PlacementIngestAttackSurfaceTest {
         String padded = Base64.getUrlEncoder().encodeToString(canonical);
         assertThat(padded).endsWith("=");
 
-        // The bytes are fine and the signature over them verifies. Only the spelling is wrong, and the
-        // field is documented as unpadded base64url, so this is where that contract is asserted.
         present(PlacementFixtures.envelope(padded, PlacementFixtures.sign(canonical, SPELLING)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("bad_base64"));
@@ -108,9 +93,7 @@ class PlacementIngestAttackSurfaceTest {
         String signature = PlacementFixtures.sign(canonical, SPELLING);
         String canonicalSpelling = PlacementFixtures.recordB64(canonical);
 
-        // The last character carries four unused bits, so fifteen other characters decode to these same
-        // bytes. A decoder that ignores them accepts sixteen spellings of one record, which is the defect
-        // ADM-008 decision 2 refuses for the accountId and which the transport should not reintroduce.
+        // The last character carries four unused bits, so fifteen other characters decode to the same bytes.
         char last = canonicalSpelling.charAt(canonicalSpelling.length() - 1);
         assertThat(BASE64URL.indexOf(last) % 16).isZero();
         String otherSpelling = canonicalSpelling.substring(0, canonicalSpelling.length() - 1)
@@ -125,7 +108,6 @@ class PlacementIngestAttackSurfaceTest {
 
     @Test
     void aRecordSignedByANonMemberIsRefused() throws Exception {
-        // The stranger's key is a perfectly good Ed25519 key. It is simply in no roster entry.
         present(PlacementFixtures.envelope(PlacementFixtures.canonical(
                 PlacementFixtures.genesisAccountId("attack-stranger"), "hs-one", now()), STRANGER))
                 .andExpect(status().isBadRequest())
@@ -142,14 +124,12 @@ class PlacementIngestAttackSurfaceTest {
 
     @Test
     void aRecordFromAFormerlyActiveMemberIsRefused() throws Exception {
-        // While it is ACTIVE, its records are accepted.
         present(PlacementFixtures.envelope(PlacementFixtures.canonical(
                 PlacementFixtures.genesisAccountId("attack-while-active"), "hs-old", now()), FORMER))
                 .andExpect(status().isCreated());
 
         admission.setStatus("hs-old", RosterEntry.Status.SUSPENDED);
 
-        // The roster is read at acceptance time, so the same signer is now refused.
         present(PlacementFixtures.envelope(PlacementFixtures.canonical(
                 PlacementFixtures.genesisAccountId("attack-after-suspend"), "hs-old", now()), FORMER))
                 .andExpect(status().isBadRequest())
@@ -203,8 +183,6 @@ class PlacementIngestAttackSurfaceTest {
 
     @Test
     void aRecordIssuedInTheFutureIsRefused() throws Exception {
-        // Otherwise one record could freeze an account's slot against every later re-issue, since the
-        // re-issue rule orders on issuedAt.
         Instant now = now();
 
         present(signedBy(MEMBER, "attack-future", now.plus(Duration.ofDays(1)),
@@ -232,7 +210,6 @@ class PlacementIngestAttackSurfaceTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("malformed_envelope"));
 
-        // Strict transport parsing: an unknown field is refused rather than dropped.
         present("{\"record\":\"AAAA\",\"signature\":\"AAAA\",\"homeserverId\":\"hs-one\"}")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("malformed_envelope"));
@@ -248,8 +225,6 @@ class PlacementIngestAttackSurfaceTest {
         assertThat(store.find(stored)).isPresent();
         assertThat(store.find(neverSeen)).isEmpty();
 
-        // A caller without a member key gets the same answer for an account this node holds and one it has
-        // never seen: the storage rules are only reached after the signature check.
         MvcResult held = present(PlacementFixtures.envelope(
                 PlacementFixtures.canonical(stored, "hs-one", now()), STRANGER)).andReturn();
         MvcResult unheld = present(PlacementFixtures.envelope(

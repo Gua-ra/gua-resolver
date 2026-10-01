@@ -11,10 +11,6 @@ import global.gua.resolver.domain.Homeserver;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Authority-signature trust gate (§5): a roster signed by a trusted key verifies; tampering with an entry
- * invalidates it; and a k-of-n threshold is enforced (one signature does not satisfy a 2-of-n policy).
- */
 class RosterSignatureTest {
 
     private static RosterEntry entry(String id) {
@@ -52,7 +48,6 @@ class RosterSignatureTest {
                 new SignedRoster.LogCheckpoint("root", 1));
         assertThat(verifier.isVerified(signed)).isTrue();
 
-        // Swap in a different entry under the same signatures -> canonical bytes change -> verification fails.
         SignedRoster tampered = new SignedRoster(signed.version(), signed.issuedAt(),
                 List.of(entry("evil")), signed.logCheckpoint(), signed.authoritySignatures());
         assertThat(verifier.isVerified(tampered)).isFalse();
@@ -62,7 +57,6 @@ class RosterSignatureTest {
     void thresholdRequiresKOfN() {
         Ed25519.KeyPairB64 a = Ed25519.generate();
         Ed25519.KeyPairB64 b = Ed25519.generate();
-        // Policy: 2-of-2. Only authority A signs.
         ResolverProperties props = props(2, "auth-a", a.privateKeyB64(),
                 List.of(trusted("auth-a", a.publicKeyB64()), trusted("auth-b", b.publicKeyB64())));
         RosterSigner signerA = new RosterSigner(props);
@@ -73,7 +67,6 @@ class RosterSignatureTest {
         assertThat(oneSig.authoritySignatures()).hasSize(1);
         assertThat(verifier.isVerified(oneSig)).as("1 of 2 is below threshold").isFalse();
 
-        // Authority B co-signs -> now 2 of 2.
         ResolverProperties propsB = props(2, "auth-b", b.privateKeyB64(),
                 List.of(trusted("auth-a", a.publicKeyB64()), trusted("auth-b", b.publicKeyB64())));
         SignedRoster twoSig = new RosterSigner(propsB).attach(oneSig);

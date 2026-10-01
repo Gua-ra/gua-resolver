@@ -16,12 +16,6 @@ import global.gua.resolver.crypto.Rfc8032Keys;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * The published governance vectors (docs/specs/gua-governance-v1-vectors.json) are the contract the iOS and
- * Android ports check themselves against, so they are recomputed here byte for byte: canonical bytes, object
- * hashes and deterministic Ed25519 signatures for the genesis, the key transition, the registry epoch and the
- * homeserver registry content.
- */
 class CanonicalGovernanceTest {
 
     private static final Path VECTORS = Path.of("docs/specs/gua-governance-v1-vectors.json");
@@ -36,7 +30,6 @@ class CanonicalGovernanceTest {
         return Rfc8032Keys.pair(k.get("seedHex").asText(), k.get("publicKeyHex").asText());
     }
 
-    /** Recompute the bytes, the hash and every published signature for one vector. */
     private static void check(JsonNode root, JsonNode vector, byte[] canonical) {
         String name = vector.get("name").asText();
         assertThat(CanonicalEncoder.hex(canonical)).as(name).isEqualTo(vector.get("canonicalHex").asText());
@@ -45,7 +38,7 @@ class CanonicalGovernanceTest {
 
         for (JsonNode signature : vector.path("signatures")) {
             Ed25519.KeyPairB64 pair = key(root, signature.get("keyRef").asText());
-            // Ed25519 is deterministic: re-signing the same bytes reproduces the published signature.
+            // Ed25519 is deterministic: re-signing reproduces the published signature.
             assertThat(Ed25519.sign(Ed25519.privateKey(pair.privateKeyB64()), canonical))
                     .as("%s / %s", name, signature.get("keyId").asText())
                     .isEqualTo(signature.get("signatureB64").asText());

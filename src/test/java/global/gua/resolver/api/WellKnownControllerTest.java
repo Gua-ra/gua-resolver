@@ -22,10 +22,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The genesis has to be fetchable by anyone, cacheable, and identified by its own hash, because the whole
- * point of publishing it is that someone can compare it against a channel the resolver does not control.
- */
 @SpringBootTest
 @AutoConfigureMockMvc
 @DirtiesContext
@@ -76,7 +72,6 @@ class WellKnownControllerTest {
 
     @Test
     void theRegistryEndpointIsPublicAndSaysSoWhenNoEpochExists() throws Exception {
-        // Public, not denied: a 404 here means "no epoch yet", not "authenticate first".
         mockMvc.perform(get("/registry/homeservers/epoch/current"))
                 .andExpect(status().isNotFound());
     }
@@ -89,8 +84,6 @@ class WellKnownControllerTest {
 
     @Test
     void theDocumentSaysHowFarTheGovernanceKeyChainHasRun() throws Exception {
-        // With no transition applied the head is the genesis id. It is published so an operator can pin it
-        // and a reader can tell a full chain from a shortened one.
         mockMvc.perform(get("/.well-known/gua-federation"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.chainHead").value(GENESIS_ID))

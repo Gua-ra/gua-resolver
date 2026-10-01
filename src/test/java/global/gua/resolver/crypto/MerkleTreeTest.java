@@ -8,11 +8,6 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * RFC 6962 Merkle behaviour: a stable root, and consistency proofs that accept genuine append-only
- * extensions while rejecting a rewritten/forked history: the tamper-evidence the transparency log relies
- * on (§5).
- */
 class MerkleTreeTest {
 
     private static List<String> leaves(int n) {
@@ -52,7 +47,6 @@ class MerkleTreeTest {
         String oldRoot = MerkleTree.root(original.subList(0, 3));
         List<String> proof = MerkleTree.consistencyProof(original, 3, 6);
 
-        // Tamper with leaf 1 (within the "old" prefix) then re-extend: the old root no longer matches.
         List<String> tampered = new ArrayList<>(original);
         tampered.set(1, MerkleTree.leafHash("forged".getBytes(StandardCharsets.UTF_8)));
         String forgedNewRoot = MerkleTree.root(tampered);

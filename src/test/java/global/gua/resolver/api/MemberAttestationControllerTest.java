@@ -30,10 +30,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The attest route over HTTP: it lives under {@code /authority/**}, so it needs the ADMIN role, and its body
- * is parsed strictly, so nothing outside the member's signature can ride along into the served roster.
- */
+/** The attest route is under {@code /authority/**}, so it needs the ADMIN role. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @DirtiesContext
@@ -83,7 +80,6 @@ class MemberAttestationControllerTest {
 
     @Test
     void anAcceptedAttestationAppearsInTheServedRoster() throws Exception {
-        // Before: the seeded entry carries no member block at all, so the JSON is what clients see today.
         mockMvc.perform(get("/roster"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.entries[0].member").doesNotExist());

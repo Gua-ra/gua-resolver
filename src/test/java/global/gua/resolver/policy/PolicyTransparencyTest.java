@@ -12,10 +12,6 @@ import global.gua.resolver.roster.SignedRoster;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The authority appends every adopted policy version to the transparency log, idempotently, and the
- * published checkpoint + consistency proofs cover those policy leaves (so policy cannot be equivocated).
- */
 @SpringBootTest
 class PolicyTransparencyTest {
 
@@ -38,14 +34,13 @@ class PolicyTransparencyTest {
 
         RoutingPolicyBundle v1 = bundle("prod-policy", 1);
         listener.onPolicyAdopted(v1);
-        listener.onPolicyAdopted(v1);   // same content -> must NOT append again (idempotent)
+        listener.onPolicyAdopted(v1);
         SignedRoster.LogCheckpoint afterV1 = log.head();
-        listener.onPolicyAdopted(bundle("prod-policy", 2));   // new version -> appends
+        listener.onPolicyAdopted(bundle("prod-policy", 2));
         SignedRoster.LogCheckpoint afterV2 = log.head();
 
         assertThat(log.eventsOfType(PolicyTransparencyListener.EVENT_TYPE).size())
                 .isEqualTo(policyEventsBefore + 2);
-        // the log grew by exactly two leaves (v1 once, v2 once) and each head extends the previous
         assertThat(afterV2.size()).isEqualTo(before.size() + 2);
         assertThat(log.verifyConsistency(before, afterV1)).isTrue();
         assertThat(log.verifyConsistency(afterV1, afterV2)).isTrue();

@@ -19,14 +19,6 @@ import global.gua.resolver.roster.JdbcTransparencyLog;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The placement state is anchored by a periodic checkpoint, never by a leaf per record.
- *
- * <p>The roster version is the transparency-log size and new-account fallback placement seeds on it
- * (ADM-001 L6 [CODE]), so one leaf per ingest would move placement decisions on every record. The checkpoint
- * appends at most one leaf per interval, and only when the Merkle root over the records changed,
- * which is the same idempotent-per-root rule the directory checkpoint follows.
- */
 @SpringBootTest(properties = "gua.resolver.placement.enabled=true")
 @DirtiesContext
 class PlacementCheckpointTest {
@@ -48,8 +40,6 @@ class PlacementCheckpointTest {
     void signsAndLogsOneLeafPerChangedRootAndNoneForAnEmptyState() {
         int loggedBefore = transparencyLog.eventsOfType(PlacementCheckpointService.EVENT_TYPE).size();
 
-        // An empty placement state commits to nothing, so anchoring it would move fallback placement for
-        // nothing.
         PlacementCheckpoint.Signed empty = service.publish();
         assertThat(empty.checkpoint().size()).isZero();
         assertThat(transparencyLog.eventsOfType(PlacementCheckpointService.EVENT_TYPE))
@@ -68,13 +58,11 @@ class PlacementCheckpointTest {
         int afterFirst = transparencyLog.eventsOfType(PlacementCheckpointService.EVENT_TYPE).size();
         assertThat(afterFirst).isEqualTo(loggedBefore + 1);
 
-        // Re-publishing an unchanged state appends nothing: idempotent per root.
         service.publish();
         service.publish();
         assertThat(transparencyLog.eventsOfType(PlacementCheckpointService.EVENT_TYPE))
                 .hasSize(afterFirst);
 
-        // A new record changes the root, so exactly one more leaf is appended.
         String rootBefore = signed.checkpoint().merkleRoot();
         store.insert(record("checkpoint-b"));
         PlacementCheckpoint.Signed next = service.publish();

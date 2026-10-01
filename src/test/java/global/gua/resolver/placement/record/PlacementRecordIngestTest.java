@@ -33,15 +33,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The ingest and custody rules end to end (migration plan Phase 4, ADM-008 decision 7): insert when the
- * accountId has no home, replace on a newer re-issue by the holder, refuse a claim from anyone else, and
- * serve the stored envelope back exactly as it arrived.
- *
- * <p>The last test is the one that keeps the design honest about the transparency log: accepting records
- * appends no leaf. The roster version is the log size and new-account fallback placement seeds on it, so a
- * leaf per record would move placement decisions on every ingest (ADM-001 L6).
- */
 @SpringBootTest(properties = {
         "gua.resolver.placement.enabled=true",
         "gua.resolver.placement.ingest-enabled=true"
@@ -87,7 +78,6 @@ class PlacementRecordIngestTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.result").value("stored"));
 
-        // Verbatim: the bytes that were signed are the bytes that are served, not a re-encoding of them.
         mockMvc.perform(get("/placement/records/" + accountId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.record").value(recordB64))
@@ -160,20 +150,16 @@ class PlacementRecordIngestTest {
         byte[] canonical = PlacementFixtures.canonical(accountId, "hs-one", now());
         String recordB64 = PlacementFixtures.recordB64(canonical);
         String signature = PlacementFixtures.sign(canonical, ONE);
-        // An Ed25519 signature is 64 bytes, so its base64 ends in padding that a decoder treats as optional.
-        // Both spellings are one signature over one set of bytes.
+        // An Ed25519 signature's base64 ends in padding that a decoder treats as optional.
         String unpadded = signature.replace("=", "");
         assertThat(unpadded).isNotEqualTo(signature);
 
         present(PlacementFixtures.envelope(recordB64, signature)).andExpect(status().isCreated());
 
-        // A publisher retrying after a timeout must not be told its own record conflicts with itself. The
-        // idempotence rule is about the object, so the comparison is on bytes, not on transport spelling.
         present(PlacementFixtures.envelope(recordB64, unpadded))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result").value("unchanged"));
 
-        // And the held copy is still the one that arrived first, byte for byte.
         assertThat(store.find(accountId).orElseThrow().signatureB64()).isEqualTo(signature);
     }
 
@@ -184,8 +170,6 @@ class PlacementRecordIngestTest {
                                 + "WHERE UPPER(table_name) = 'PLACEMENT_RECORD'", String.class)
                 .stream().map(c -> c.toLowerCase(Locale.ROOT)).sorted().toList();
 
-        // The row is pinned, not only the decoded object: a phone, a phone hash or a Matrix user id added as
-        // a column later would otherwise reach a deployment without failing anything (ADM-001 L4, L15).
         assertThat(columns).containsExactly("account_id", "generation", "homeserver_id", "issued_at",
                 "not_after", "not_before", "origin", "received_at", "record_b64", "signature_b64");
     }
@@ -196,8 +180,6 @@ class PlacementRecordIngestTest {
         byte[] held = PlacementFixtures.canonical(accountId, "hs-one", now());
         present(PlacementFixtures.envelope(held, ONE)).andExpect(status().isCreated());
 
-        // A validly signed record from another ACTIVE member: one accountId has one home, so this is a
-        // conflict, never an overwrite and never a migration (ADM-001 L9).
         present(PlacementFixtures.envelope(
                 PlacementFixtures.canonical(accountId, "hs-two", now()), TWO))
                 .andExpect(status().isConflict())
@@ -235,7 +217,6 @@ class PlacementRecordIngestTest {
                 .andExpect(jsonPath("$.records[0].accountId").value(ids.get(2)))
                 .andExpect(jsonPath("$.nextCursor").doesNotExist());
 
-        // There is no listing of everything this node holds.
         mockMvc.perform(get("/placement/records"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("homeserver_id_required"));
@@ -263,7 +244,6 @@ class PlacementRecordIngestTest {
                     .andExpect(status().isCreated());
         }
 
-        // The log is not reseeded per record; anchoring is the checkpoint's job, once per changed root.
         assertThat(transparencyLog.head().size()).isEqualTo(before);
     }
 

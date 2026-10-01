@@ -15,11 +15,7 @@ import org.springframework.jdbc.datasource.init.ScriptUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The H2 test schema is mirrored by hand from the Flyway migrations, which is the likeliest source of a
- * test-versus-production divergence (brief risk 10). This applies the real migrations to one database, the
- * hand-written mirror to another, and compares the resulting columns.
- */
+/** The H2 test schema is mirrored by hand from the Flyway migrations; this compares the resulting columns. */
 class SchemaParityTest {
 
     @Test
@@ -41,7 +37,6 @@ class SchemaParityTest {
                 "sa", "");
     }
 
-    /** table.column to type and nullability, for every table except Flyway's own bookkeeping. */
     private static Map<String, String> columns(DataSource ds) {
         Map<String, String> columns = new LinkedHashMap<>();
         new JdbcTemplate(ds).query("""

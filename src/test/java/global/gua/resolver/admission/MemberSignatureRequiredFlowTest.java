@@ -31,13 +31,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The transition flag as a cutover (ADM-007). With
- * {@code gua.resolver.roster.require-member-signature=true} an ACTIVE entry that carries no valid member
- * self-signature leaves the signed roster, placement and existing-account resolution, and the legacy
- * admission path is refused. Attesting the entry puts it back, which is why the deploy order is attest first,
- * flip second.
- */
 @SpringBootTest
 @AutoConfigureMockMvc
 @DirtiesContext
@@ -75,11 +68,10 @@ class MemberSignatureRequiredFlowTest {
 
     @Test
     void anUnattestedActiveEntryIsExcludedUntilItIsAttested() throws Exception {
-        // Seeded, unattested: it is counted, excluded from the signed roster, and cannot be routed to.
         assertThat(rosterStore.unattestedActiveCount()).isEqualTo(1);
         assertThat(rosterStore.current().entries()).isEmpty();
         SignedRoster excludedView = rosterStore.current();
-        assertThat(verifier.isVerified(excludedView)).isTrue();   // signed over exactly what it serves
+        assertThat(verifier.isVerified(excludedView)).isTrue();
         mockMvc.perform(post("/resolve").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"phone\":\"+5511987654321\"}"))
                 .andExpect(status().isServiceUnavailable())

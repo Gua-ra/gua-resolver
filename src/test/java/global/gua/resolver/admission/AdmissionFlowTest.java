@@ -29,24 +29,15 @@ import global.gua.resolver.roster.store.RosterEntryRepository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * End-to-end admission against the real authority stack: admitting a homeserver vets its key-possession +
- * domain proof, appends an ADMIT event to the transparency log, and re-signs a roster that still verifies;
- * overlapping claims are rejected. It also covers the member self-signed path (ADM-007): admission that
- * proves possession by signing its own entry, the attest endpoint that lets an admitted member adopt, move
- * or re-key its entry, and the substitutions that must fail. Dirties the context so its writes don't leak
- * into other @SpringBootTests.
- */
 @SpringBootTest
 @DirtiesContext
 class AdmissionFlowTest {
 
-    /** The seeded dev homeserver's membership key, generated in memory for this context only. */
     private static final Ed25519.KeyPairB64 DEV_KEY = Ed25519.generate();
 
     @DynamicPropertySource
     static void seededDevHomeserver(DynamicPropertyRegistry registry) {
-        // Its own database: this context reseeds the roster, and the shared one is used by other tests.
+        // Its own database: this context reseeds the roster.
         registry.add("spring.datasource.url",
                 () -> "jdbc:h2:mem:admission-flow;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE");
         registry.add("gua.resolver.dev-homeserver.signing-key", DEV_KEY::publicKeyB64);
@@ -82,7 +73,6 @@ class AdmissionFlowTest {
         return MemberEntrySigner.sign(hs, unsigned, keyId, key.privateKeyB64());
     }
 
-    /** Admit {@code id} with a member self-signature over exactly the fields being registered. */
     private RosterEntry admitSelfSigned(String id, String serverName, Ed25519.KeyPairB64 key, String keyId) {
         Homeserver hs = homeserver(id, serverName, "https://" + serverName, key.publicKeyB64());
         MemberAttestation member = attestation(hs, keyId, 1, key);
@@ -152,7 +142,6 @@ class AdmissionFlowTest {
                 assertThat(e.homeserver().searchGroups()).containsExactly("edu-br");
             }
         });
-        // the visibility policy is inside the signed bytes: roster still verifies
         assertThat(verifier.isVerified(after)).isTrue();
     }
 
@@ -181,7 +170,6 @@ class AdmissionFlowTest {
         ClaimPredicate vivo = new ClaimPredicate(null, "72411", null, null, null, null, null, 100);
         admission.admit(request("vivo.gua.global", List.of(vivo)));
 
-        // A second homeserver claiming the same MCCMNC must be refused.
         assertThatThrownBy(() ->
                 admission.admit(request("vivo2.gua.global", List.of(
                         new ClaimPredicate(null, "72411", null, null, null, null, null, 100)))))
@@ -295,7 +283,6 @@ class AdmissionFlowTest {
                 .isInstanceOf(AdmissionService.AdmissionException.class)
                 .hasMessageContaining("sequence must be greater");
 
-        // The valid update goes through, and only then.
         assertThat(admission.attest("attestrules", attestRequest(signed, member))).isNotNull();
         assertThat(entries.findById("attestrules").orElseThrow().homeserver().baseUrl())
                 .isEqualTo("https://moved.attestrules.gua.global");

@@ -9,11 +9,6 @@ import global.gua.resolver.crypto.Ed25519;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * A governance threshold counts distinct operators, never key ids (ADM-001 L8). These tests
- * are the guard against someone "simplifying" this back into the per-key counting the roster verifier uses,
- * which would make a k-of-n satisfiable by one party holding k keys.
- */
 class GovernanceVerifierTest {
 
     private static final byte[] MESSAGE = "governance object".getBytes(java.nio.charset.StandardCharsets.UTF_8);
@@ -28,7 +23,6 @@ class GovernanceVerifierTest {
         GovernanceVerifier.Outcome outcome = GovernanceVerifier.count(keys, MESSAGE,
                 List.of(first.sign(MESSAGE), second.sign(MESSAGE)));
 
-        // Two valid signatures, two distinct key ids, one operator. The count is the operator count.
         assertThat(outcome.operators()).isEqualTo(1);
         assertThat(outcome.countedOperators()).containsExactly("operator-a");
         assertThat(outcome.valid()).isTrue();
@@ -39,8 +33,6 @@ class GovernanceVerifierTest {
         GovernanceFixtures.Holder first = GovernanceFixtures.Holder.of("gov-1", "operator-a");
         GovernanceFixtures.Holder second = GovernanceFixtures.Holder.of("gov-2", "operator-a");
 
-        // A threshold that no set of operators could ever meet is refused when the key set is built, rather
-        // than accepted and then quietly unsatisfiable.
         assertThatThrownBy(() -> GovernanceKeySet.of("genesis", 2, List.of(first.key(), second.key())))
                 .isInstanceOf(GovernanceException.class)
                 .hasMessageContaining("exceeds the 1 distinct operator");
@@ -69,7 +61,6 @@ class GovernanceVerifierTest {
         assertThat(GovernanceVerifier.count(keys, MESSAGE, List.of(stranger.sign(MESSAGE))).operators())
                 .isZero();
 
-        // A valid signature over different bytes, presented for the right key id, counts for nothing.
         GovernanceSignature wrongBytes = new GovernanceSignature("gov-1",
                 Ed25519.sign(Ed25519.privateKey(known.privateKeyB64()), "other".getBytes(
                         java.nio.charset.StandardCharsets.UTF_8)));

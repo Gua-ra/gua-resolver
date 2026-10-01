@@ -23,28 +23,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The shape a deployed environment actually runs, booted as a whole application: a routing policy bundle
- * signed with the OPERATIONAL key, no federation genesis, and governance not required. It must start and it
- * must serve.
- *
- * <p>This test exists because Phase 2 shipped once without it. The fail-closed trust root was applied
- * unconditionally, so this configuration stopped verifying its own policy bundle,
- * {@code FileRoutingPolicySource} threw inside its constructor, the context never started, and the pod
- * crash-looped on "no valid routing policy loaded". Every unit test passed, including one asserting that
- * governance was off by default, because none of them booted the application with the configuration the
- * environment runs. A verifier's trust root is a startup-time decision, so only a startup-time test can
- * hold it.
- *
- * <p>Nothing here is read from an environment: the operational key is minted in memory and the bundle it
- * signs is written to a temporary file.
- */
+/** The deployed shape: a policy bundle signed by the operational key, no genesis, governance not required. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @DirtiesContext
 class DeployedPolicyTrustRootStartupTest {
 
-    /** The operational key: it signs the roster, and in this shape it also signed the policy bundle. */
     private static final Ed25519.KeyPairB64 OPERATIONAL = Ed25519.generate();
     private static final Ed25519.KeyPairB64 DELEGATE = Ed25519.generate();
     private static final String OPERATIONAL_KEY_ID = "gua-authority-startup";
@@ -66,10 +50,7 @@ class DeployedPolicyTrustRootStartupTest {
         registry.add("gua.resolver.policy.file", file::toString);
         registry.add("gua.resolver.policy.require-signatures", () -> "true");
         registry.add("gua.resolver.policy.signature-threshold", () -> "1");
-        // Deliberately NOT set, because the deployed environment does not set them: no
-        // gua.resolver.policy.trusted-keys, no gua.resolver.genesis.file, no
-        // gua.resolver.governance.required. The bundle verifies through the fallback to the operational key
-        // set, which is what this configuration has always relied on.
+        // policy.trusted-keys, genesis.file and governance.required are deliberately unset.
     }
 
     @Autowired MockMvc mockMvc;
@@ -78,7 +59,6 @@ class DeployedPolicyTrustRootStartupTest {
 
     @Test
     void theConfigurationUnderTestIsTheUngovernedOneWithNoPolicyTrustRootOfItsOwn() {
-        // If either of these drifts, the rest of this class stops testing the deployed shape.
         assertThat(props.getGovernance().isRequired()).isFalse();
         assertThat(props.getPolicy().getTrustedKeys()).isEmpty();
         assertThat(props.getGenesis().getFile()).isNullOrEmpty();
@@ -97,7 +77,6 @@ class DeployedPolicyTrustRootStartupTest {
 
     @Test
     void aRequestInTheDelegatedZoneIsRoutedByTheSignedPolicy() throws Exception {
-        // Serving, not merely starting: the rule inside the delegate-signed zone is what answers.
         mockMvc.perform(post("/resolve").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"phone\":\"" + StartupPolicyFixtures.PHONE_IN_ZONE + "\",\"trace\":true}"))
                 .andExpect(status().isOk())

@@ -3,11 +3,7 @@ package global.gua.resolver.crypto;
 import java.util.Base64;
 import java.util.HexFormat;
 
-/**
- * The RFC 8032 section 7.1 TEST 1 and TEST 2 Ed25519 keys, rebuilt in memory as the base64 X.509 / PKCS#8
- * forms {@link Ed25519} uses. They are published test constants, which is why the golden vectors can carry
- * reproducible signatures; nothing real is ever signed with them.
- */
+/** RFC 8032 section 7.1 TEST 1 and TEST 2 keys: published constants, never used to sign anything real. */
 public final class Rfc8032Keys {
 
     public static final String TEST1_SEED_HEX = "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60";

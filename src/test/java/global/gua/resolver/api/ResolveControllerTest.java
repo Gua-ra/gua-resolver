@@ -13,10 +13,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * Contract test for the resolver front door, against the Phase-1 dev wiring (single homeserver from
- * config, empty directory). Locks the JSON shape the iOS/web ResolverClients decode.
- */
 @SpringBootTest
 @AutoConfigureMockMvc
 class ResolveControllerTest {
@@ -26,7 +22,6 @@ class ResolveControllerTest {
 
     @Test
     void resolveNewPhoneReturnsRegisterTarget() throws Exception {
-        // No account exists yet (empty directory) -> exists=false, register at the dev homeserver.
         mockMvc.perform(post("/resolve").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"phone\":\"+5511987654321\"}"))
                 .andExpect(status().isOk())
@@ -50,7 +45,6 @@ class ResolveControllerTest {
 
     @Test
     void resolveRejectsNonE164PhoneWith400() throws Exception {
-        // A partial / non-E.164 number is a client error: expect a clean 400, not a 500.
         for (String bad : new String[] { "+1", "notaphone", "12345" }) {
             mockMvc.perform(post("/resolve").contentType(MediaType.APPLICATION_JSON)
                             .content("{\"phone\":\"" + bad + "\"}"))
@@ -80,23 +74,18 @@ class ResolveControllerTest {
 
     @Test
     void unknownRoutesAreDeniedByDefault() throws Exception {
-        // deny-by-default + HTTP Basic entry point: an anonymous hit on a non-allowlisted route is challenged.
         mockMvc.perform(get("/not-a-real-endpoint"))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
     void authorityAdminEndpointsAreDeniedWithoutAdminCredentials() throws Exception {
-        // No admin password hash is configured in tests, so /authority/** must not be reachable anonymously.
         mockMvc.perform(post("/authority/admission").contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
     void selfAssertedVerifiedMarkerAndAffiliationsDoNotChangePlacement() throws Exception {
-        // Regression for the self-assertion bypass: a public caller cannot fake verified institution claims.
-        // With only the dev homeserver and no signed envelope, this must still be a plain fallback register,
-        // never an institutional placement, and never a 500.
         mockMvc.perform(post("/resolve").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"phone\":\"+5511987654321\",\"trace\":true,"
                                 + "\"affiliations\":[\"usp.br\"],"
@@ -109,7 +98,6 @@ class ResolveControllerTest {
 
     @Test
     void nullAttributeValuesAreHandledGracefully() throws Exception {
-        // A null attribute value must not blow up the request thread (previously a 500 via Map.copyOf).
         mockMvc.perform(post("/resolve").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"phone\":\"+5511987654321\",\"attributes\":{\"x\":null}}"))
                 .andExpect(status().isOk())

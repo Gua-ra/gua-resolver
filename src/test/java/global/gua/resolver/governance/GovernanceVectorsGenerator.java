@@ -16,17 +16,7 @@ import global.gua.resolver.crypto.Rfc8032Keys;
 import global.gua.resolver.placement.ClaimPredicate;
 import global.gua.resolver.roster.RosterEntry;
 
-/**
- * Regenerates the published governance golden vectors (docs/specs/gua-governance-v1-vectors.json), which are
- * the byte-for-byte contract an iOS or Android port checks itself against before it is trusted.
- *
- * <p>Run it with {@code ./gradlew governanceVectors}. It is a generator, not a test: the test that matters is
- * {@code CanonicalGovernanceTest}, which reproduces every value in the committed file. Regenerating it is
- * therefore a deliberate act, and a diff in that file is a change to a published wire contract.
- *
- * <p>The keys are the RFC 8032 section 7.1 test constants. They are published, so the signatures below are
- * reproducible by anyone, and nothing real may ever be signed with them.
- */
+/** Regenerates docs/specs/gua-governance-v1-vectors.json, a published wire contract. */
 public final class GovernanceVectorsGenerator {
 
     private static final ObjectMapper JSON = GovernanceFixtures.mapper();
@@ -78,7 +68,7 @@ public final class GovernanceVectorsGenerator {
         vectors.add(genesisVector("one operator, one key, threshold 1: what a deployment ships", single,
                 Map.of("gov-1", TEST1)));
 
-        // Two keys, ONE operator: two valid signatures, and the threshold still counts one.
+        // Two keys, one operator: the threshold still counts one.
         FederationGenesis shared = new FederationGenesis(FederationGenesis.SCHEMA, "gua-vectors-shared",
                 Instant.parse("2026-09-01T00:00:00Z"), FederationGenesis.HASH_SUITE, 1,
                 List.of(new GovernanceKey("gov-1", GovernanceKey.ALG, TEST1.publicKeyB64(), "operator-a"),
@@ -90,7 +80,7 @@ public final class GovernanceVectorsGenerator {
         sharedVector.put("distinctOperators", 1);
         vectors.add(sharedVector);
 
-        // Keys given out of order: the canonical bytes sort them, so the hash is order-independent.
+        // Keys given out of order: the canonical bytes sort them.
         FederationGenesis unordered = new FederationGenesis(FederationGenesis.SCHEMA, "gua-vectors-shared",
                 Instant.parse("2026-09-01T00:00:00Z"), FederationGenesis.HASH_SUITE, 1,
                 List.of(new GovernanceKey("gov-2", GovernanceKey.ALG, TEST2.publicKeyB64(), "operator-a"),
@@ -138,7 +128,6 @@ public final class GovernanceVectorsGenerator {
         vector.set("object", JSON.valueToTree(transition));
         vector.put("canonicalHex", CanonicalEncoder.hex(canonical));
         vector.put("sha256Hex", CanonicalEncoder.sha256Hex(canonical));
-        // Both the outgoing key and the incoming key sign: the old set authorises, the new set proves it is held.
         signatures(vector, canonical, Map.of("gov-1", TEST1, "gov-2", TEST2));
         vectors.add(vector);
         return vectors;
@@ -156,8 +145,8 @@ public final class GovernanceVectorsGenerator {
                         "3b1f1a1cf1f0b9f0a8e5f0d7c6b5a49382716059483726150493827160594837",
                         1, true, List.of())))));
 
-        // Members listed out of order, an unattested member (absent hash, which is not an empty one), a
-        // suspended member, and a claim exercising optionals, a prefix set and sorted attribute pairs.
+        // Out-of-order members, an unattested and a suspended member, and a claim exercising every field
+        // kind.
         vectors.add(contentVector(
                 "members out of order, an unattested member, and a claim with every field shape",
                 HomeserverRegistryContent.of(List.of(

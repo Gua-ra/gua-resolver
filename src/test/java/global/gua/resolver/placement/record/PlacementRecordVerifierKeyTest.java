@@ -17,15 +17,6 @@ import global.gua.resolver.roster.SignedRoster;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
-/**
- * The one refusal reason admission normally keeps out of reach, asserted anyway.
- *
- * <p>A roster entry reaches the verifier only after admission validated its key, so an entry whose signing
- * key will not decode should not exist. "Should not exist" is the reason to pin it rather than to skip it:
- * the rejection enum promises one reason per defect, and this reason is the one that catches a roster row
- * written by some future path that does not go through admission. The verifier is pure enough to test
- * directly, with a roster that holds exactly the broken entry.
- */
 class PlacementRecordVerifierKeyTest {
 
     @Test
@@ -40,8 +31,6 @@ class PlacementRecordVerifierKeyTest {
         PlacementRecordException refused = catchThrowableOfType(
                 () -> verifier.verify(envelope, Instant.now()), PlacementRecordException.class);
 
-        // Its own reason, not a bad_signature: an unusable key is this node's defect to fix, not the
-        // caller's, and the two are answered differently on purpose.
         assertThat(refused).isNotNull();
         assertThat(refused.rejection()).isEqualTo(PlacementRecordRejection.SIGNER_KEY_UNUSABLE);
         assertThat(refused.reason()).isEqualTo("signer_key_unusable");

@@ -27,18 +27,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The ingest flag is a flag: with custody on and ingest off, a record that would otherwise be accepted is
- * refused, and the reads still answer.
- *
- * <p>This is the flag combination no other test runs. Every other placement test that turns custody on turns
- * ingest on with it, which leaves the gate itself unasserted: deleting the check in the controller would be
- * invisible. The record presented below is valid in every other respect, signed by the key of an ACTIVE
- * roster member and inside its window, so a 503 can only be the flag and a 201 can only be its removal.
- *
- * <p>The two flags are documented as independent precisely so the reads can go live before the writes, and
- * that half is asserted here too.
- */
 @SpringBootTest(properties = {
         "gua.resolver.placement.enabled=true",
         "gua.resolver.placement.ingest-enabled=false"
@@ -77,14 +65,12 @@ class PlacementIngestFlagTest {
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("ingest_disabled"));
 
-        // Refused before anything was parsed, so nothing was written either.
         assertThat(store.find(accountId)).isEmpty();
         assertThat(store.count()).isZero();
     }
 
     @Test
     void theReadsStillAnswerWhileTheIngestFlagIsOff() throws Exception {
-        // Reads are unaffected by the ingest flag: the custody flag is what mounts them.
         mockMvc.perform(get("/placement/records/"
                         + PlacementFixtures.genesisAccountId("flag-off-absent")))
                 .andExpect(status().isNotFound())

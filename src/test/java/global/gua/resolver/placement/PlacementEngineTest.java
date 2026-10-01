@@ -24,12 +24,6 @@ import global.gua.resolver.roster.SignedRoster;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Unit tests for the placement pipeline: a carrier claiming its MCCMNC wins, a verified affiliation claim
- * wins, an unverified one does not, and otherwise the weighted fallback always yields an enabled homeserver.
- * Pure (no Spring). Signed-policy tests use a permissive verifier so they exercise placement logic; the
- * delegation cryptography itself is covered in RoutingPolicyTest.
- */
 class PlacementEngineTest {
 
     private static final Homeserver CARRIER = new Homeserver(
@@ -57,7 +51,6 @@ class PlacementEngineTest {
         return new PlacementEngine(List.of(new WeightedFallbackRule(store), new ClaimRule(store)));
     }
 
-    /** Verifier that treats every zone as delegate-verified (requireSignatures=false), for placement-logic tests. */
     private static RoutingPolicyVerifier permissiveVerifier() {
         ResolverProperties props = new ResolverProperties();
         props.getPolicy().setRequireSignatures(false);
@@ -86,7 +79,6 @@ class PlacementEngineTest {
         var uniClaim = new ClaimPredicate(null, null, null, null, "usp.br", null, null, 100);
         var engine = engineFor(rosterOf(entry(UNI, uniClaim), entry(DEFAULT)));
 
-        // claimsVerified=true means the affiliation came from a signature-verified envelope.
         var ctx = new PlacementContext("+5511000000000", "BR", null, null, null, List.of("usp.br"), Map.of(), true);
 
         assertThat(engine.decide(ctx).id()).isEqualTo("uni");
@@ -97,7 +89,6 @@ class PlacementEngineTest {
         var uniClaim = new ClaimPredicate(null, null, null, null, "usp.br", null, null, 100);
         var engine = engineFor(rosterOf(entry(UNI, uniClaim), entry(DEFAULT)));
 
-        // A self-asserted (unverified) affiliation must NOT grant institutional placement; it falls back.
         var ctx = new PlacementContext("+5511000000000", "BR", null, null, null, List.of("usp.br"), Map.of(), false);
 
         assertThat(engine.decideWithTrace(ctx).rule()).isEqualTo("WeightedFallbackRule");
@@ -108,7 +99,6 @@ class PlacementEngineTest {
         var carrierClaim = new ClaimPredicate(null, "72411", null, null, null, null, null, 100);
         var engine = engineFor(rosterOf(entry(CARRIER, carrierClaim), entry(DEFAULT)));
 
-        // A phone whose carrier nobody claims must still be placed (on an acceptsNew homeserver).
         var ctx = new PlacementContext("+15555550100", "US", "31000", "Verizon", null, List.of(), Map.of(), false);
 
         var chosen = engine.decide(ctx);
@@ -190,7 +180,7 @@ class PlacementEngineTest {
     @Test
     void expiredDelegationZoneIsNotAppliedEvenForVerifiedClaims() {
         RoutingPolicyBundle policy = institutionPolicy(
-                Instant.now().minusSeconds(7200), Instant.now().minusSeconds(3600));   // expired zone window
+                Instant.now().minusSeconds(7200), Instant.now().minusSeconds(3600));
         RosterStore store = rosterOf(entry(UNI), entry(DEFAULT));
         var engine = new PlacementEngine(List.of(new WeightedFallbackRule(store),
                 new PolicyRoutingRule(provider(policy), store, permissiveVerifier())));
@@ -198,7 +188,6 @@ class PlacementEngineTest {
         var ctx = new PlacementContext("+5511000000000", "BR", null, null, null,
                 List.of("students.usp.br"), Map.of(), true);
 
-        // Even with verified claims, a rule inside an expired delegation zone must not route.
         assertThat(engine.decideWithTrace(ctx).rule()).isEqualTo("WeightedFallbackRule");
     }
 
@@ -210,7 +199,6 @@ class PlacementEngineTest {
 
         var ctx = new PlacementContext("+5511987654321", "BR", "72411", "Vivo", null, List.of(), Map.of(), false);
 
-        // The claiming homeserver isn't accepting new accounts, so placement falls through to the default.
         assertThat(engine.decide(ctx).id()).isEqualTo("default");
     }
 

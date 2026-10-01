@@ -15,11 +15,6 @@ import global.gua.resolver.config.ResolverProperties;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * Loading the pinned genesis. The failures here are deliberately startup failures rather than degraded
- * running: an unverifiable or unpinned trust root is worse than none, because everything downstream would
- * still look signed.
- */
 class GenesisLoaderTest {
 
     private static final ObjectMapper JSON = GovernanceFixtures.mapper();
@@ -80,7 +75,6 @@ class GenesisLoaderTest {
         Path file = GovernanceFixtures.write(dir, "genesis.json",
                 GovernanceFixtures.singleOperator("gua-test", holder));
 
-        // The file verifies perfectly against its own keys. The pin is what catches the swap.
         assertThatThrownBy(() -> load(file, "0".repeat(64)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("refusing to start on an unpinned genesis");
@@ -159,12 +153,10 @@ class GenesisLoaderTest {
         props.getGenesis().setTransitionsFile(transitions.toString());
         GenesisLoader loader = new GenesisLoader(props, JSON);
 
-        // The key set in force is the transition's, and the genesis id is unchanged: the chain moved, the root did not.
         assertThat(loader.requireKeySet().keys()).extracting(GovernanceKey::keyId).containsExactly("gov-2");
         assertThat(loader.genesisId()).isEqualTo(genesisId);
         assertThat(loader.transitions()).hasSize(1);
 
-        // Index 2 with nothing at index 1 is a gap, not a chain.
         GovernanceTransition gap = new GovernanceTransition(GovernanceTransition.SCHEMA, genesisId, 2,
                 genesisId, Instant.parse("2026-10-02T00:00:00Z"), 1, List.of(incoming.key()), List.of());
         byte[] gapBytes = CanonicalGovernanceTransition.bytes(gap);
@@ -214,15 +206,12 @@ class GenesisLoaderTest {
         assertThat(loaded.chainHead()).isEqualTo(head);
         assertThat(loaded.requireKeySet().keys()).extracting(GovernanceKey::keyId).containsExactly("gov-2");
 
-        // A truncated chain is not a broken chain: the empty one is well formed, and it leaves in force the
-        // very key set gov-2 replaced. Only the head pin catches it.
         Files.writeString(transitions, "[]");
 
         assertThatThrownBy(() -> new GenesisLoader(props, JSON))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("refusing to start on a chain that is not the pinned one");
 
-        // Unpinned, the downgrade goes through and the rotated-out key is back in force. That is the hole.
         props.getGenesis().setExpectedChainHead(null);
         assertThat(new GenesisLoader(props, JSON).requireKeySet().keys())
                 .extracting(GovernanceKey::keyId).containsExactly("gov-1");
@@ -241,8 +230,6 @@ class GenesisLoaderTest {
                         List.of(holder.key()), sorted, List.of()), List.of(holder));
         String genesisId = CanonicalGenesis.id(declared);
 
-        // The canonical bytes encode the registries as a set, so these two files are the same object and a
-        // client that emits them sorted is not serving a different genesis.
         assertThat(CanonicalGenesis.id(reordered)).isEqualTo(genesisId);
         assertThat(load(GovernanceFixtures.write(dir, "reordered.json", reordered), genesisId).configured())
                 .isTrue();
@@ -273,7 +260,6 @@ class GenesisLoaderTest {
 
         GovernanceTransition unsigned = new GovernanceTransition(GovernanceTransition.SCHEMA, genesisId, 1,
                 genesisId, Instant.parse("2026-10-01T00:00:00Z"), 1, List.of(incoming.key()), List.of());
-        // Only the outgoing set signs: the change is authorised, but nothing proves the new key is held.
         GovernanceTransition halfSigned = unsigned.withSignatures(
                 List.of(outgoing.sign(CanonicalGovernanceTransition.bytes(unsigned))));
 

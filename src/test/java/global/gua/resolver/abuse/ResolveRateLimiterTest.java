@@ -40,14 +40,12 @@ class ResolveRateLimiterTest {
         assertThat(refused.scope()).isEqualTo(ResolveRateLimiter.Scope.CLIENT);
         assertThat(refused.retryAfterSeconds()).isEqualTo(3);          // 20 per minute = one every 3s
         assertThat(refused.firstHitInWindow()).isTrue();
-        assertThat(limiter.check("a").firstHitInWindow()).isFalse();   // one WARN per key per window
+        assertThat(limiter.check("a").firstHitInWindow()).isFalse();
         assertThat(limited("client")).isEqualTo(2);
         assertThat(limited("global")).isZero();
 
-        // another client is unaffected
         assertThat(limiter.check("b").allowed()).isTrue();
 
-        // the refill lets the limited client through again
         ticker.advance(Duration.ofSeconds(3));
         assertThat(limiter.check("a").allowed()).isTrue();
         assertThat(limiter.check("a").allowed()).isFalse();

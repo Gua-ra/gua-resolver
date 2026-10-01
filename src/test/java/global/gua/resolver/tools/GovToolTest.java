@@ -31,11 +31,6 @@ import global.gua.resolver.roster.RosterEntry;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * What the governance tool produces has to be what the resolver accepts, so its output is checked with the
- * resolver's own verifier. Keys are generated in memory or by the tool itself and never appear on standard
- * output, which is also what the runbook promises an operator.
- */
 class GovToolTest {
 
     private static final ObjectMapper JSON = GovernanceFixtures.mapper();
@@ -71,8 +66,6 @@ class GovToolTest {
         assertThat(key.get("alg").asText()).isEqualTo("Ed25519");
 
         String privateKey = Files.readString(keyFile).trim();
-        // The public half published is the public half of the key that was written, and the private half
-        // appears nowhere the operator might copy from.
         assertThat(Ed25519.sign(Ed25519.privateKey(privateKey), "x".getBytes(StandardCharsets.UTF_8)))
                 .isNotBlank();
         assertThat(run.out()).doesNotContain(privateKey);
@@ -165,8 +158,6 @@ class GovToolTest {
                 .valid()).isTrue();
         assertThat(run.out()).doesNotContain(holder.privateKeyB64());
 
-        // A pending document whose contentHash does not match its own content is refused, so an operator
-        // cannot be talked into signing a hash they did not derive.
         Path tampered = write(dir, "tampered.json", Files.readString(pending)
                 .replace(contentHash, "c".repeat(64)));
         Run refused = run(holder.privateKeyB64() + "\n", "epoch", "sign", "--pending", tampered.toString(),
