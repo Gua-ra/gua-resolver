@@ -16,6 +16,7 @@ These are proposals. They are not normative until a decision freezes them, and t
 - [ADM-005](ADM-005-federation-state-replication-witnesses-ordering.md): Replication, witnesses, checkpoints and what a second operator changes. Status: Proposed.
 - [ADM-006](ADM-006-matrix-portability.md): What moving an account can and cannot mean, given what Matrix supports today. Status: Proposed.
 - [ADM-008](ADM-008-account-genesis-and-placement-records.md): Account genesis, bootstrap identity and placement record formats. Status: Accepted for implementation.
+- [ADM-009](ADM-009-account-authority-adoption-and-device-lifecycle.md): How a bootstrap account adopts authority, and the device lifecycle that authority lives in: adding, removing, replacing and approving devices, and what the browser may never do. Proposed answer to ADM-001 O9. Status: Proposed.
 
 ## Implementation status
 
