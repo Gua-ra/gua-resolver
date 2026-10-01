@@ -9,29 +9,7 @@ import java.util.Locale;
 
 import jakarta.servlet.http.HttpServletRequest;
 
-/**
- * Derives the per-client rate-limit key for {@code POST /resolve} from the request's remote address, and
- * from nothing else.
- *
- * <p>The forwarded chain the pod receives has two trusted hops. The public edge appends the client address
- * to {@code X-Forwarded-For}; the in-cluster ingress keeps that chain and appends the internal address it
- * saw the connection come from. At the pod the header reads "{@code <caller-supplied entries>, <client>,
- * <internal hop>}": the last entry is never the client, and every entry in front of the client is
- * caller-controlled.
- *
- * <p>The service pins {@code server.forward-headers-strategy=native}, which installs Tomcat's
- * {@code RemoteIpValve} ahead of every filter. The valve walks the chain from the right, skips each address
- * in the internal-proxies set (Spring Boot's default covers RFC 1918, 100.64/10, loopback, link-local and
- * IPv6 unique-local), sets the remote address to the first other address, the one the edge appended, and
- * leaves only the caller-supplied leftovers in the header. This class reads
- * {@link HttpServletRequest#getRemoteAddr()} and never the header, because after the valve the header is
- * exactly the part an attacker chose. A request with no chain (a port-forward, an in-cluster caller) is
- * keyed by its socket peer.
- *
- * <p>IPv6 clients are keyed by their /64: a subscriber is routinely handed a whole /64, and keying on the
- * full address would hand an attacker 2^64 free buckets. IPv4-mapped IPv6 literals key by the embedded IPv4
- * address so a dual-stack listener does not fold every IPv4 client into one key.
- */
+/** Keys on getRemoteAddr() only: after RemoteIpValve, X-Forwarded-For holds only caller-supplied entries. */
 public final class ClientKey {
 
     static final String UNKNOWN = "unknown";
@@ -51,10 +29,7 @@ public final class ClientKey {
         return normalize(candidate);
     }
 
-    /**
-     * Truncated SHA-256 of the key: a correlation handle for logs and alerts, so raw client addresses stay out
-     * of them. It is a handle, not anonymisation: the input space is small enough to brute-force.
-     */
+    /** Log correlation handle. Brute-forceable, so not anonymisation. */
     public static String logHandle(String key) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
@@ -64,13 +39,12 @@ public final class ClientKey {
         }
     }
 
-    /** Strip a port suffix, then key IPv6 by /64 (or embedded IPv4); anything else is used verbatim. */
     static String normalize(String address) {
         String a = address;
-        if (a.startsWith("[")) {                                             // "[v6]" or "[v6]:port"
+        if (a.startsWith("[")) {
             int end = a.indexOf(']');
             a = end > 0 ? a.substring(1, end) : a.substring(1);
-        } else if (a.indexOf(':') >= 0 && a.indexOf(':') == a.lastIndexOf(':')) {   // "v4:port"
+        } else if (a.indexOf(':') >= 0 && a.indexOf(':') == a.lastIndexOf(':')) {
             a = a.substring(0, a.indexOf(':'));
         }
         if (a.indexOf(':') >= 0) {
@@ -82,7 +56,6 @@ public final class ClientKey {
         return a.toLowerCase(Locale.ROOT);
     }
 
-    /** The /64 prefix of an IPv6 literal, the embedded IPv4 of a mapped address, or null when unparseable. */
     static String ipv6Key(String literal) {
         String s = literal;
         int zone = s.indexOf('%');
@@ -102,7 +75,7 @@ public final class ClientKey {
     private static int[] parseIpv6(String s) {
         int gap = s.indexOf("::");
         if (gap >= 0 && s.indexOf("::", gap + 1) >= 0) {
-            return null;                                                   // more than one "::"
+            return null;
         }
         int[] head = parseGroups(gap >= 0 ? s.substring(0, gap) : s);
         int[] tail = parseGroups(gap >= 0 ? s.substring(gap + 2) : "");
@@ -119,7 +92,6 @@ public final class ClientKey {
         return out;
     }
 
-    /** Colon-separated 16-bit hex groups; a trailing dotted quad (mapped forms) expands to two groups. */
     private static int[] parseGroups(String s) {
         if (s.isEmpty()) {
             return new int[0];

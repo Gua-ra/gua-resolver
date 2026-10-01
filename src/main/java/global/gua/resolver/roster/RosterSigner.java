@@ -10,12 +10,6 @@ import org.springframework.stereotype.Component;
 import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.crypto.Ed25519;
 
-/**
- * Authority-mode roster signer (§5). Assembles a {@link SignedRoster} from the current entries + log
- * checkpoint and attaches this authority's detached Ed25519 signature over the canonical bytes. With a
- * threshold &gt; 1, additional authorities sign the same canonical bytes and their signatures are merged
- * (see {@link #attach}); the roster is trusted once k distinct valid signatures are present.
- */
 @Component
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)
 public class RosterSigner {
@@ -31,7 +25,6 @@ public class RosterSigner {
                 : Ed25519.privateKey(auth.getSigningPrivateKey());
     }
 
-    /** Build a roster snapshot and sign it with this authority's key. */
     public SignedRoster sign(long version, Instant issuedAt, List<RosterEntry> entries,
                              SignedRoster.LogCheckpoint checkpoint) {
         byte[] canonical = CanonicalRoster.bytes(version, issuedAt.toEpochMilli(), checkpoint, entries);
@@ -39,7 +32,6 @@ public class RosterSigner {
         return new SignedRoster(version, issuedAt, entries, checkpoint, sigs);
     }
 
-    /** Co-sign an existing roster (k-of-n): re-sign its canonical bytes and merge this authority's sig. */
     public SignedRoster attach(SignedRoster roster) {
         byte[] canonical = CanonicalRoster.bytes(roster);
         List<SignedRoster.AuthoritySignature> merged = new java.util.ArrayList<>(roster.authoritySignatures());
@@ -57,8 +49,7 @@ public class RosterSigner {
 
     private List<SignedRoster.AuthoritySignature> signatureFor(byte[] canonical) {
         if (!canSign()) {
-            // Unsigned roster (no authority key configured yet). RosterVerifier will reject it unless the
-            // threshold is met by other means: surfaced loudly rather than silently trusted.
+            // No signing key configured: the roster is unsigned and RosterVerifier rejects it.
             return List.of();
         }
         return List.of(new SignedRoster.AuthoritySignature(keyId, Ed25519.sign(signingKey, canonical)));

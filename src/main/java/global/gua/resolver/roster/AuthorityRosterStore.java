@@ -13,22 +13,7 @@ import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.roster.store.RosterEntryRepository;
 
-/**
- * Authority-mode {@link RosterStore}: the node that builds the published roster from the persisted admitted
- * entries, anchors it to the current transparency-log checkpoint, and threshold-signs it. It is the writer
- * of the roster, not its trust root: integrity comes from transitions that others can replay, which the log
- * does not yet support (ADM-001 L11, O12). Every rebuild re-signs with a fresh {@code issuedAt}, so the
- * served bytes are not stable across rebuilds, and if its own signature threshold is not met it logs an
- * error and still serves the under-signed roster. On a fresh database it seeds the single configured dev
- * homeserver (migration plan phase 1) and logs an ADMIT event, so the audit trail exists from the first entry; that
- * seeded entry proves nothing and stays unattested until its operator attests it (ADM-007).
- *
- * <p>The roster {@code version} tracks the transparency-log size: every membership change appends a log
- * event, so a stable log size means a stable roster, and the signed snapshot is cached + only rebuilt when
- * the log advances (or {@link #refresh()} is called). Member attestations add one more trigger: they carry a
- * validity window, so the cache is also rebuilt when the next window opens or expires, which under
- * {@code gua.resolver.roster.require-member-signature} changes the entry set without a new leaf.
- */
+/** The roster version is the transparency-log size. An under-signed roster is logged and still served. */
 @Component
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)
 public class AuthorityRosterStore implements RosterStore {
@@ -55,7 +40,7 @@ public class AuthorityRosterStore implements RosterStore {
         this.verifier = verifier;
         this.props = props;
         seedIfEmpty();
-        refresh();   // so an unattested ACTIVE entry is named at startup, not at the first request
+        refresh();
     }
 
     @Override
@@ -86,11 +71,7 @@ public class AuthorityRosterStore implements RosterStore {
 
     private synchronized SignedRoster rebuild(SignedRoster.LogCheckpoint head) {
         Instant now = Instant.now();
-        // A PENDING entry is an admission the governance keys have not ratified, so it is not part of what
-        // this authority asserts: it stays out of the canonical bytes, out of the signature over them, and
-        // out of GET /roster. That is what makes "an admission under governance is never served" true of the
-        // published document and not only of placement, and it keeps PENDING off the wire, where an older
-        // mirror or client build would meet a status value it cannot parse.
+        // PENDING entries stay out of the signed bytes: older mirrors and clients cannot parse the status.
         List<RosterEntry> admitted = entries.findAll().stream().filter(e -> !e.isPending()).toList();
         RosterVerifier.VerifiedView view = verifier.verifiedView(admitted, now, id -> null, Set.of());
         report(view);
@@ -98,8 +79,6 @@ public class AuthorityRosterStore implements RosterStore {
         long version = head.size();
         SignedRoster signed = signer.sign(version, now, view.entries(), head);
         if (!verifier.isVerified(signed)) {
-            // Authority is misconfigured (no/short of signing keys for the threshold). Don't serve an
-            // unverifiable roster silently; clients/mirrors would reject it anyway.
             log.error("Authority produced a roster below the {}-of-n signature threshold; "
                     + "check gua.resolver.authority.signing-private-key / trusted-keys / threshold",
                     verifier.threshold());
@@ -111,11 +90,6 @@ public class AuthorityRosterStore implements RosterStore {
         return signed;
     }
 
-    /**
-     * Name the entries that carry no valid member self-signature, once per change of that set: an ERROR per
-     * entry the transition flag drops (it has just left {@code /roster}, placement and existing-account
-     * resolution), a WARN naming them while the flag is off.
-     */
     private void report(RosterVerifier.VerifiedView view) {
         Set<String> unattested = view.unattestedActiveIds();
         if (unattested.equals(reportedUnattested)) {
@@ -139,7 +113,6 @@ public class AuthorityRosterStore implements RosterStore {
                 unattested.size(), String.join(", ", unattested));
     }
 
-    /** Seed the configured dev homeserver into a fresh roster (migration plan phase 1) and record the ADMIT event. */
     private void seedIfEmpty() {
         if (entries.count() > 0) {
             return;
@@ -147,9 +120,6 @@ public class AuthorityRosterStore implements RosterStore {
         ResolverProperties.DevHomeserver d = props.getDevHomeserver();
         Homeserver hs = new Homeserver(d.getId(), d.getServerName(), d.getBaseUrl(), d.getMasIssuer(),
                 d.getRegion(), 1, true, d.getSigningKey() == null ? "" : d.getSigningKey());
-        // The seed is a bootstrap convenience, not a governance act: with governance required it waits in
-        // PENDING like any other admission, so a fresh database cannot put an ACTIVE member into the roster
-        // without a signed membership epoch.
         RosterEntry.Status seeded = props.getGovernance().isRequired()
                 ? RosterEntry.Status.PENDING
                 : RosterEntry.Status.ACTIVE;

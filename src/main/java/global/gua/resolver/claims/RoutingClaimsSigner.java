@@ -6,7 +6,6 @@ import java.util.List;
 
 import global.gua.resolver.crypto.Ed25519;
 
-/** Small signing helper used by tests and offline bootstrap tooling. */
 public final class RoutingClaimsSigner {
 
     private RoutingClaimsSigner() {}

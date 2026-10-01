@@ -10,18 +10,11 @@ import java.util.TreeMap;
 import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.placement.ClaimPredicate;
 
-/**
- * Deterministic, canonical byte serialization of a roster snapshot: the exact bytes the directory
- * authorities sign and that every verifier (including third-party mirrors) reconstructs to check the
- * signatures. Covers everything EXCEPT the signatures themselves. Entries are sorted by id and all
- * collections are emitted in a fixed order, so the same logical roster always yields identical bytes on
- * any machine/JVM.
- */
+/** The exact bytes the authority signs: everything except the signatures, with entries sorted by id. */
 public final class CanonicalRoster {
 
     private CanonicalRoster() {}
 
-    /** Canonical bytes over (version, issuedAt, logCheckpoint, sorted entries). Excludes signatures. */
     public static byte[] bytes(long version, long issuedAtEpochMs, SignedRoster.LogCheckpoint checkpoint,
                                List<RosterEntry> entries) {
         StringBuilder sb = new StringBuilder();

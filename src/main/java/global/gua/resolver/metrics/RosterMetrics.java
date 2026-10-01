@@ -5,17 +5,6 @@ import org.springframework.stereotype.Component;
 import global.gua.resolver.roster.RosterStore;
 import io.micrometer.core.instrument.MeterRegistry;
 
-/**
- * Federation-state gauges, so the dashboard can show the live roster + transparency-log at a glance:
- * <ul>
- *   <li>{@code gua_resolver_roster_version}: current signed-roster version,</li>
- *   <li>{@code gua_resolver_roster_homeservers{status="active"}}: admitted, active homeservers,</li>
- *   <li>{@code gua_resolver_roster_homeservers{status="unattested"}}: ACTIVE homeservers with no valid
- *       member self-signature, whether still served or excluded by the transition flag (ADM-007),</li>
- *   <li>{@code gua_resolver_transparency_log_size}: append-only membership-event count.</li>
- * </ul>
- * Gauges read the current roster on scrape, so they always reflect live state.
- */
 @Component
 public class RosterMetrics {
 

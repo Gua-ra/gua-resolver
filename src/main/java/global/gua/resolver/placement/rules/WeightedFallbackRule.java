@@ -15,11 +15,7 @@ import global.gua.resolver.placement.PlacementDecision;
 import global.gua.resolver.placement.PlacementRule;
 import global.gua.resolver.roster.RosterStore;
 
-/**
- * Last-resort placement: spread new accounts across homeservers that accept new accounts, proportional to
- * weight, but using stable hashing instead of randomness. The same context + roster snapshot yields the
- * same homeserver, which makes resolver answers reproducible across nodes and mirrors.
- */
+/** Stable hashing: the same context and roster version give the same homeserver on every node. */
 @Component
 @Order(Integer.MAX_VALUE)
 public class WeightedFallbackRule implements PlacementRule {

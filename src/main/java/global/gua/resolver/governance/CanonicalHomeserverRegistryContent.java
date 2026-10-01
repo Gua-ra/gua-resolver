@@ -6,19 +6,7 @@ import java.util.Map;
 import global.gua.resolver.crypto.CanonicalEncoder;
 import global.gua.resolver.placement.ClaimPredicate;
 
-/**
- * The {@code gua-homeserver-registry-content.v1} canonical bytes, encoded with {@code gua-lp.v1} (ADM-007).
- * This is the object a {@code HomeserverRegistry} epoch commits to by hash.
- *
- * <p>Field order: schema tag; members as a list sorted by homeserverId, each {homeserverId, status,
- * memberEntryHash (optional), weight (int64), acceptsNew (bool), claims}. A claim is encoded as country,
- * mccmnc and carrier (each optional), phonePrefixes as a set, affiliation (optional), attributeMatch as a
- * count then its key/value pairs sorted by key, remoteClaimUrl (optional) and priority (int64).
- *
- * <p>Claims keep the order the content object carries, because that order is part of what the operator
- * signed and what the resolver rebuilds; members are sorted, because a membership set has no natural order
- * and a duplicate homeserver id would let one member be counted twice.
- */
+/** Members are sorted by homeserverId; claims keep the order that was signed. */
 public final class CanonicalHomeserverRegistryContent {
 
     private CanonicalHomeserverRegistryContent() {}

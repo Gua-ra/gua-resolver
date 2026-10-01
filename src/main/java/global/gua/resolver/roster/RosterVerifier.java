@@ -16,17 +16,6 @@ import org.springframework.stereotype.Component;
 import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.crypto.Ed25519;
 
-/**
- * Verifies that a {@link SignedRoster} carries at least {@code k} valid authority signatures (k-of-n
- * threshold, §5) over its canonical bytes, each from a distinct published authority key. This is the
- * "verify-on-read" gate every resolver, authority or mirror, runs before trusting any roster entry. It stops
- * a tampered mirror feed. It stops a single corrupt authority key only when k is at least 2 across distinct
- * operators; the deployed configuration is k=1, n=1 (ADM-001 O12).
- *
- * <p>It also holds the per-entry gate: {@link #verifiedView} applies the member self-signature rules
- * (ADM-007) to each entry and reports which ACTIVE entries carry no valid one. The authority filters before
- * signing and a mirror filters what it routes on; both use this method so the two can never diverge.
- */
 @Component
 public class RosterVerifier {
 
@@ -50,7 +39,6 @@ public class RosterVerifier {
         return countValidSignatures(roster) >= threshold;
     }
 
-    /** Verify or throw; use on the trust boundary (mirror pull, roster load). */
     public void requireVerified(SignedRoster roster) {
         int valid = countValidSignatures(roster);
         if (valid < threshold) {
@@ -89,16 +77,8 @@ public class RosterVerifier {
         return requireMemberSignature;
     }
 
-    /** One entry's member-signature outcome. */
     public record MemberCheck(String homeserverId, boolean active, MemberEntryVerifier.Result result) {}
 
-    /**
-     * @param entries             the entries to keep: all of them unless the transition flag excludes some
-     * @param checks              every entry's outcome, in roster order
-     * @param unattestedActiveIds ACTIVE entries with no valid member self-signature, served or excluded
-     * @param excluded            entries the transition flag dropped
-     * @param nextWindowChange    when the next validity window opens or closes, so a cache can expire itself
-     */
     public record VerifiedView(List<RosterEntry> entries, List<MemberCheck> checks,
                                Set<String> unattestedActiveIds, List<MemberCheck> excluded,
                                Instant nextWindowChange) {
@@ -108,18 +88,10 @@ public class RosterVerifier {
         }
     }
 
-    /** The verified view of a served roster at this moment, with no prior state to compare against. */
     public VerifiedView verifiedView(SignedRoster roster) {
         return verifiedView(roster.entries(), Instant.now(), id -> null, Set.of());
     }
 
-    /**
-     * Apply the member rules to each entry.
-     *
-     * @param at        the acceptance time the validity window is checked against
-     * @param priors    the last entry this verifier accepted per homeserver id, or null where it has none
-     * @param malformed homeserver ids whose member block failed the strict transport parse
-     */
     public VerifiedView verifiedView(List<RosterEntry> entries, Instant at,
                                      Function<String, MemberEntryVerifier.Prior> priors,
                                      Set<String> malformed) {
@@ -152,7 +124,6 @@ public class RosterVerifier {
                 List.copyOf(excluded), next);
     }
 
-    /** When this entry's attestation next changes state: it opens, or it expires. */
     private static Instant windowChange(RosterEntry entry, Instant at) {
         MemberAttestation m = entry.member();
         if (m == null || m.notBefore() == null || m.notAfter() == null) {

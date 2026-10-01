@@ -1,9 +1,5 @@
 package global.gua.resolver.policy;
 
-/**
- * One signed routing rule inside a policy bundle. Rules choose only among homeservers that are already in
- * the signed roster; they cannot admit homeservers by themselves.
- */
 public record RoutingPolicyRule(
         String id,
         int priority,

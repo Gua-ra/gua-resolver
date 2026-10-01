@@ -11,7 +11,6 @@ import global.gua.resolver.policy.CompositeRoutingPolicyProvider;
 import global.gua.resolver.policy.RoutingPolicyBundle;
 import global.gua.resolver.policy.RoutingPolicySource;
 
-/** Public signed routing-policy distribution and status surface for mirrors, clients, and auditors. */
 @RestController
 public class PolicyController {
 

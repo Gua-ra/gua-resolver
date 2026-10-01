@@ -11,14 +11,6 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.MultiGauge;
 import io.micrometer.core.instrument.Tags;
 
-/**
- * {@code gua_resolver_placement_records{origin,homeserver}}: how many records this node holds, split by the
- * homeserver that holds the accounts and by whether the account is genesis-rooted or bootstrap.
- *
- * <p>Refreshed on a timer rather than on scrape because it is a grouped query, and the cardinality is bounded
- * by the roster size times two. The counters live where the decisions are made: accepted records and
- * rejections in the ingest service, conflicts in the same place, orphaned records in the auditor.
- */
 @Component
 @ConditionalOnExpression(PlacementFeature.ENABLED)
 public class PlacementMetrics {

@@ -16,13 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/**
- * Applies {@link ResolveRateLimiter} to {@code /resolve} (registered for that path only, see
- * {@link AbuseControlsConfig}). It runs ahead of the security chain and never reads the request body, so a
- * refused request costs one cache lookup and reveals nothing: the 429 body is a constant, and no phone is
- * parsed, echoed or logged. The WARN on the first refusal per key per window carries a truncated hash of the
- * client key, never the address itself.
- */
+/** Never reads the request body, and logs a hash of the client key, never the address. */
 public class ResolveAbuseFilter extends OncePerRequestFilter {
 
     static final String RATE_LIMITED_BODY =

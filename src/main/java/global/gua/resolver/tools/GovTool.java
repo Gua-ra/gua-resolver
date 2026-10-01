@@ -36,28 +36,7 @@ import global.gua.resolver.governance.RegistryEpoch;
 import global.gua.resolver.policy.CanonicalRoutingPolicy;
 import global.gua.resolver.policy.RoutingPolicyBundle;
 
-/**
- * Offline governance tool (ADM-001 L10, S5). An operator runs it on a machine outside the cluster, with the
- * governance private key that never enters a resolver namespace, to create a federation genesis, sign a
- * membership epoch, sign a routing-policy bundle, or sign a governance key transition. See
- * docs/runbooks/governance-keys.md.
- *
- * <pre>
- *   keygen     --operator ID --key-id ID --private-key-out FILE
- *   genesis    create --fields FILE
- *   genesis    sign   --genesis FILE --key-id ID --private-key-file FILE|-
- *   genesis    id     --genesis FILE
- *   epoch      sign   --pending FILE --key-id ID --private-key-file FILE|-
- *   policy     sign   --policy  FILE --key-id ID --private-key-file FILE|-
- *   transition sign   --transition FILE --key-id ID --private-key-file FILE|-
- * </pre>
- *
- * <p>A private key is read from a file or, with {@code -}, from standard input. There is no flag that takes a
- * key as an argument value, because an argument lands in the shell history and the process list. The
- * only command that writes a private key is {@code keygen}, which writes it to the file named by
- * {@code --private-key-out} with owner-only permissions and prints only the public half. Nothing this tool
- * prints on standard output contains key material.
- */
+/** Offline governance signing tool. Keys are read from a file or standard input, never from an argument. */
 public final class GovTool {
 
     private static final ObjectMapper JSON = new ObjectMapper().findAndRegisterModules()
@@ -77,7 +56,7 @@ public final class GovTool {
         System.exit(new GovTool(System.in, System.out, System.err).run(args));
     }
 
-    /** @return 0 on success, 2 for a usage problem, 3 when signing or verification fails */
+    /** Returns 0 on success, 2 for a usage problem, 3 when signing or verification fails. */
     public int run(String[] args) {
         try {
             if (args.length == 0) {
@@ -134,10 +113,7 @@ public final class GovTool {
         };
     }
 
-    /**
-     * Generate a governance keypair. The private half is written to a file, never printed, because a key on
-     * standard output ends up in a terminal scrollback, a CI log or a pipe nobody meant to keep.
-     */
+    /** The private key is written to a file, never printed. */
     private int keygen(Map<String, String> options) throws Exception {
         String operatorId = required(options, "--operator");
         String keyId = required(options, "--key-id");
@@ -157,7 +133,6 @@ public final class GovTool {
         return 0;
     }
 
-    /** Build the unsigned genesis from a fields file, so nobody hand-composes canonical bytes. */
     private int genesisCreate(Map<String, String> options) throws Exception {
         JsonNode fields = readJson(required(options, "--fields"));
         List<GovernanceKey> keys = new ArrayList<>();
@@ -212,11 +187,7 @@ public final class GovTool {
         }
     }
 
-    /**
-     * Sign the epoch the resolver is asking for. The content hash is recomputed from the content here rather
-     * than trusted from the response, so the operator signs a membership they derived, not one they were
-     * handed.
-     */
+    /** The content hash is recomputed from the content, not trusted from the response. */
     private int epochSign(Map<String, String> options) throws Exception {
         JsonNode pending = readJson(required(options, "--pending"));
         HomeserverRegistryContent content =
@@ -305,7 +276,6 @@ public final class GovTool {
         return signatures;
     }
 
-    /** Sign canonical bytes, checking that the signature verifies before it is emitted. */
     private GovernanceSignature sign(byte[] canonical, String keyId, Map<String, String> options,
                                      String flag) throws Exception {
         String privateKey = readPrivateKey(required(options, flag));

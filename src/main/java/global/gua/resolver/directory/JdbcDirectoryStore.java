@@ -14,14 +14,6 @@ import org.springframework.stereotype.Component;
 
 import global.gua.resolver.crypto.MerkleTree;
 
-/**
- * JDBC-backed {@link DirectoryStore} over the {@code directory_entry} / {@code username_index} tables
- * (Postgres in prod, H2 in tests). Phones are stored only as peppered HMACs. Upserts are portable
- * (UPDATE-then-INSERT, no vendor-specific {@code ON CONFLICT}/{@code MERGE}).
- *
- * <p>Stores the directory rows in AUTHORITY mode. Mirrors {@link RemoteDirectoryStore query} it instead
- * of replicating it (§4).
- */
 @Component
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)
 public class JdbcDirectoryStore implements DirectoryStore {
@@ -68,11 +60,7 @@ public class JdbcDirectoryStore implements DirectoryStore {
         jdbc.update("DELETE FROM directory_entry WHERE phone_hash = ?", hasher.hashPhone(e164Phone));
     }
 
-    /**
-     * A deterministic Merkle checkpoint over the current directory: sorted leaves of
-     * {@code P|<phoneHash>|<hsId>} and {@code U|<username>|<hsId>}. The root depends only on the entries
-     * (not the time), so the same directory always produces the same root; the raw phone graph never leaves.
-     */
+    /** Sorted leaves {@code P|<phoneHash>|<hsId>} and {@code U|<username>|<hsId>}. */
     public DirectoryCheckpoint checkpoint() {
         List<String> leaves = new ArrayList<>();
         leaves.addAll(jdbc.query("SELECT phone_hash, homeserver_id FROM directory_entry",

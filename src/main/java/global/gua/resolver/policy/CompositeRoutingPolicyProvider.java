@@ -6,7 +6,6 @@ import java.util.Optional;
 
 import org.springframework.stereotype.Component;
 
-/** Chooses the highest-version verified policy among all configured sources. */
 @Component
 public class CompositeRoutingPolicyProvider {
 

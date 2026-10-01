@@ -16,7 +16,6 @@ import org.springframework.stereotype.Component;
 import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.crypto.Ed25519;
 
-/** Verifies signed MAS / identity-service routing claims before policy rules can consume them. */
 @Component
 public class RoutingClaimsVerifier {
 
@@ -45,16 +44,8 @@ public class RoutingClaimsVerifier {
         this.clock = clock;
         this.replayStore = replayStore;
 
-        // Trust root for routing-claims signatures, gated on gua.resolver.governance.required exactly like
-        // the policy trust root, so one flag moves both and neither moves on its own at deploy time.
-        //
-        // Flag on: keys scoped to the claims issuer, and nothing else. An empty list is no keys, and no keys
-        // rejects every envelope. ADM-001 L8 names this fallback explicitly and requires it to fail closed:
-        // "Any independence rule must fail closed. No fallback, ever."
-        //
-        // Flag off: the pre-cutover chain (claims, then policy, then authority). It widens WHO can mint
-        // institutional and OIDC claims all the way to the roster-signing key, which is the defect; it stays
-        // until the cutover because it is what an environment that has not run the key ceremony is serving on.
+        // With governance required only claims issuer keys verify; otherwise policy keys, then authority
+        // keys.
         boolean governanceRequired = props.getGovernance().isRequired();
         String keySource = "claims";
         List<ResolverProperties.TrustedKey> keys = props.getClaims().getTrustedKeys();
@@ -87,13 +78,6 @@ public class RoutingClaimsVerifier {
         }
     }
 
-    /**
-     * Verify the envelope and return the trusted affiliations/attributes.
-     *
-     * @param envelope        the transported (signed) envelope, or {@code null} if the caller sent none
-     * @param expectedSubject the E.164 phone the request is for; the envelope's {@code subject}, when present
-     *                        (and always when subject binding is required), must equal this
-     */
     public VerifiedRoutingClaims verify(RoutingClaimsEnvelope envelope, String expectedSubject) {
         if (envelope == null) {
             return VerifiedRoutingClaims.empty();
@@ -101,8 +85,6 @@ public class RoutingClaimsVerifier {
         validateEnvelope(envelope, expectedSubject);
         requireValidSignature(envelope);
         recordNonce(envelope);
-        // Only the raw asserted affiliations/attributes are returned; the "verified" signal is carried by
-        // PlacementContext.claimsVerified (a non-forgeable flag), never by a magic attribute a caller could set.
         Map<String, String> attrs = new HashMap<>();
         if (envelope.attributes() != null) {
             envelope.attributes().forEach((k, v) -> {
@@ -150,8 +132,6 @@ public class RoutingClaimsVerifier {
         if (replayProtectionEnabled && blank(envelope.nonce())) {
             throw invalid("routing claims nonce is required");
         }
-        // Reject malformed collections up front so canonicalization (which sorts affiliations and would NPE
-        // on a null element) never runs on bad input: a crafted null entry becomes a clean 400, not a 500.
         if (envelope.affiliations() != null) {
             for (String affiliation : envelope.affiliations()) {
                 if (blank(affiliation)) {
@@ -188,9 +168,7 @@ public class RoutingClaimsVerifier {
         if (!replayProtectionEnabled) {
             return;
         }
-        // Retain the nonce until the end of the ACCEPTANCE window (expiresAt + skew), not just expiresAt, so
-        // an envelope still accepted during the skew grace period cannot be replayed after cleanup would
-        // otherwise have purged its row.
+        // Retain the nonce until expiresAt plus skew, the end of the acceptance window.
         Duration skew = maxClockSkew == null ? Duration.ZERO : maxClockSkew;
         Instant retainUntil = envelope.expiresAt().plus(skew);
         if (!replayStore.recordIfNew(envelope.issuer(), envelope.nonce(), retainUntil)) {
@@ -206,11 +184,6 @@ public class RoutingClaimsVerifier {
         return new InvalidRoutingClaimsException(message);
     }
 
-    /**
-     * The trusted result of verification. {@code verified} is true only when a real envelope passed every
-     * check; it is the non-forgeable signal the placement context keys off, so it is derived from the
-     * verification outcome here rather than re-inferred from envelope presence at the call site.
-     */
     public record VerifiedRoutingClaims(List<String> affiliations, Map<String, String> attributes,
                                         boolean verified) {
         static VerifiedRoutingClaims empty() {

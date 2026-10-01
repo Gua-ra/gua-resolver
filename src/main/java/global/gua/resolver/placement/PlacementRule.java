@@ -2,18 +2,9 @@ package global.gua.resolver.placement;
 
 import java.util.Optional;
 
-/**
- * SPI for placement rules. The {@link PlacementEngine} runs enabled rules in priority order and takes the
- * first non-empty result, so a new placement strategy is a new {@code PlacementRule} bean; the engine is
- * never edited.
- *
- * <p>Most operator-specific placement is expressed as declarative {@link ClaimPredicate}s in the signed
- * roster (handled by the built-in claim rules); implement this interface only for genuinely new strategy
- * *mechanisms* (e.g. a different weighting algorithm), not per-operator data.
- */
 public interface PlacementRule {
 
-    /** @return the placement decision, or empty to defer to the next rule. */
+    /** Empty defers to the next rule. */
     Optional<PlacementDecision> evaluate(PlacementContext context);
 
     /** Lower runs first. */

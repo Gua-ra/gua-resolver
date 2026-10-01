@@ -3,21 +3,7 @@ package global.gua.resolver.governance;
 import java.time.Instant;
 import java.util.List;
 
-/**
- * One version of one registry, signed by the governance keys (ADM-001 L10). Each registry has its own epoch
- * chain under the common genesis, so a verifier rotation is not a membership epoch.
- *
- * <p>The chain is what makes an epoch hard to replace rather than merely signed: {@code genesisId} binds it
- * to one federation root, {@code epoch} must be exactly one past the accepted one, and
- * {@code previousEpochHash} must be the accepted epoch's own hash. A correctly signed epoch that does not
- * continue the chain is refused, so an old epoch cannot be replayed and a fork cannot be spliced in.
- *
- * @param registry          which of the four registries this versions
- * @param epoch             counts from 1
- * @param previousEpochHash the accepted epoch's hash, and the empty string at epoch 1
- * @param contentHash       SHA-256 hex of the registry content object's canonical bytes
- * @param signatures        outside the canonical bytes; must meet the governance threshold by operator
- */
+/** previousEpochHash is the empty string at epoch 1. */
 public record RegistryEpoch(
         String schema,
         Registry registry,

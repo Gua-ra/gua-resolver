@@ -12,7 +12,6 @@ import org.slf4j.MDC;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/** Propagates a correlation id through logs and responses without logging PII-bearing request bodies. */
 @Component
 public class CorrelationIdFilter extends OncePerRequestFilter {
 

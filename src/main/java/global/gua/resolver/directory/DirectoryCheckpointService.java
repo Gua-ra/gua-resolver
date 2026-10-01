@@ -15,15 +15,6 @@ import global.gua.resolver.crypto.Ed25519;
 import global.gua.resolver.roster.JdbcTransparencyLog;
 import global.gua.resolver.roster.SignedRoster;
 
-/**
- * Authority-side directory checkpoint publisher: periodically computes the directory Merkle root, signs it
- * with the authority key, and appends the root to the transparency log ({@code DIRECTORY_CHECKPOINT},
- * idempotent per root). The signed root commits the authority node to one directory state per checkpoint;
- * it is an assertion by the signer, not a proof that the state is correct, and no per-entry inclusion proof
- * is served, so a client cannot yet confirm an individual mapping against it (ADM-001 L11, O1). The root
- * is over peppered hashes, the scheme ADM-001 L15 replaces. Mirrors and clients read the signed checkpoint
- * from {@code /directory/checkpoint}. Authority mode only.
- */
 @Component
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)
 public class DirectoryCheckpointService {
@@ -49,13 +40,11 @@ public class DirectoryCheckpointService {
                 ? null : Ed25519.privateKey(auth.getSigningPrivateKey());
     }
 
-    /** Canonical bytes signed over a directory checkpoint. */
     public static byte[] canonicalBytes(DirectoryCheckpoint cp) {
         return ("gua-directory-checkpoint.v1\nroot=" + cp.merkleRoot() + "\nsize=" + cp.size()
                 + "\nissuedAt=" + cp.issuedAt().toEpochMilli() + "\n").getBytes(StandardCharsets.UTF_8);
     }
 
-    /** Build, sign, and (if the root is new) log the current directory checkpoint. */
     @Scheduled(fixedDelayString = "${gua.resolver.directory.checkpoint-interval:PT5M}")
     public synchronized DirectoryCheckpoint.Signed publish() {
         DirectoryCheckpoint cp = directory.checkpoint();
@@ -64,8 +53,7 @@ public class DirectoryCheckpointService {
                 : List.of(new SignedRoster.AuthoritySignature(keyId,
                         Ed25519.sign(signingKey, canonicalBytes(cp))));
         DirectoryCheckpoint.Signed signed = new DirectoryCheckpoint.Signed(cp, sigs);
-        // Only anchor a non-empty directory (an empty checkpoint carries no commitment and would otherwise
-        // bump the roster/log version at startup for nothing). Idempotent per root once there are entries.
+        // An empty directory is not anchored: it would only bump the log version at startup.
         if (cp.size() > 0 && !transparencyLog.hasLeaf(EVENT_TYPE, cp.merkleRoot())) {
             transparencyLog.append(EVENT_TYPE, "directory:size" + cp.size(), cp.merkleRoot());
             log.info("Published directory checkpoint root={} size={}", cp.merkleRoot(), cp.size());
@@ -74,7 +62,6 @@ public class DirectoryCheckpointService {
         return signed;
     }
 
-    /** The current signed checkpoint, computing one on first access. */
     public DirectoryCheckpoint.Signed current() {
         DirectoryCheckpoint.Signed c = cached;
         return c != null ? c : publish();

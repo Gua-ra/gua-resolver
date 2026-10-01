@@ -7,19 +7,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import global.gua.resolver.roster.MemberEntryJson;
 
-/**
- * Strict transport parsing for governance objects, on the same rule ADM-007 sets for member entries: a
- * signed sub-object is read through a reader that refuses unknown fields, duplicate keys and trailing
- * content, so a signature can never cover fewer fields than the resolver goes on to act on.
- *
- * <p>It reuses the member-entry strict reader rather than configuring a second one, so the two can never
- * drift into different notions of strict.
- */
 public final class GovernanceJson {
 
     private GovernanceJson() {}
 
-    /** Parse {@code json} as {@code type}, strictly; anything unparseable is a refused governance object. */
     public static <T> T read(ObjectMapper base, String json, Class<T> type) {
         if (json == null || json.isBlank()) {
             throw new GovernanceException("empty " + type.getSimpleName() + " document");
@@ -31,7 +22,6 @@ public final class GovernanceJson {
         }
     }
 
-    /** The same, from an already-parsed node (a sub-object of a larger request body). */
     public static <T> T read(ObjectMapper base, JsonNode node, Class<T> type) {
         if (node == null || node.isNull() || node.isMissingNode()) {
             throw new GovernanceException("missing " + type.getSimpleName());

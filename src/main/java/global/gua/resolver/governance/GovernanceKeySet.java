@@ -9,15 +9,6 @@ import java.util.Set;
 import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.crypto.Ed25519;
 
-/**
- * The governance keys in force: the genesis key set with every valid transition applied, plus the threshold
- * that applies with them.
- *
- * <p>It holds keys and answers lookups; it does not count votes. The counting rule lives in
- * {@link GovernanceVerifier} because thresholds must count operators (ADM-001 L8), and keeping it in one
- * place is what stops a future caller from reaching for
- * {@code RosterVerifier.countValidSignatures} and reintroducing per-key counting.
- */
 public final class GovernanceKeySet {
 
     private final String genesisId;
@@ -56,7 +47,6 @@ public final class GovernanceKeySet {
         return List.copyOf(byKeyId.values());
     }
 
-    /** The distinct operators holding these keys: the population a threshold is counted against. */
     public Set<String> operators() {
         return byKeyId.values().stream().map(GovernanceKey::operatorId)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
@@ -70,13 +60,7 @@ public final class GovernanceKeySet {
         return publicKeys.get(keyId);
     }
 
-    /**
-     * These keys as a trusted-key list, so the policy bundle verifier can check bundles against the
-     * governance root instead of against the operational authority key. Policy bundles keep the shipped
-     * envelope and its per-key counting in v1; that is tolerable only because it is a single-operator key
-     * set today and because no independence claim rests on it. A threshold that has to mean independence
-     * goes through {@link GovernanceVerifier}.
-     */
+    /** Policy bundle verification counts these per key, not per operator. */
     public List<ResolverProperties.TrustedKey> asTrustedKeys() {
         return byKeyId.values().stream().map(k -> {
             ResolverProperties.TrustedKey trusted = new ResolverProperties.TrustedKey();
@@ -86,12 +70,6 @@ public final class GovernanceKeySet {
         }).toList();
     }
 
-    /**
-     * Structural validation of a key set and the threshold that goes with it. A threshold higher than the
-     * number of distinct operators is refused at load rather than at first use: it can never be satisfied
-     * honestly, and the failure should be a startup error an operator sees, not a governance act that
-     * silently cannot happen.
-     */
     static void validateKeys(List<GovernanceKey> keys, long threshold) {
         if (keys == null || keys.isEmpty()) {
             throw new GovernanceException("a governance key set needs at least one key");

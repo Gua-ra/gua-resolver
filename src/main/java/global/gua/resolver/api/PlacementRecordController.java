@@ -31,24 +31,6 @@ import global.gua.resolver.placement.record.StoredPlacementRecord;
 import io.github.resilience4j.ratelimiter.RequestNotPermitted;
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 
-/**
- * Ingest and read surface for generation-1 placement records (migration plan Phase 4).
- *
- * <p>{@code POST /placement/records} is public and self-authenticating: the record names a homeserver, and
- * it is accepted only if it verifies under the roster signing key of that homeserver while that homeserver
- * is ACTIVE. There is no caller identity, no token and no admin role, because there is nothing an
- * unauthenticated caller can do with it. Every presented record either verifies under an active roster key
- * or is refused, the storage rules are reached only after that signature check, so the endpoint is not an
- * oracle for what is already stored, and it is rate limited on top.
- *
- * <p>The reads serve what the shadow reconciler compares against: one record by accountId, and a paged
- * listing per homeserver. An accountId is a 256-bit hash and carries no identifier, so neither read exposes
- * a phone, a phone hash or a Matrix user id. This is still new public state, and production publishing waits
- * for the enumeration review (ADM-001 L16) as ADM-008 requires.
- *
- * <p>Nothing here is on the resolution path. No routing answer reads a placement record in this phase, and
- * no flag would make one (ADM-008 decision 9).
- */
 @RestController
 @RequestMapping("/placement/records")
 @ConditionalOnExpression(PlacementFeature.ENABLED)
@@ -62,10 +44,6 @@ public class PlacementRecordController {
         this.props = properties.getPlacement();
     }
 
-    /**
-     * Present a signed placement record. 201 when the accountId had no home, 200 when the holding
-     * homeserver re-issued or re-presented the same bytes.
-     */
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     @RateLimiter(name = "placementRecords")
     public ResponseEntity<IngestResponse> ingest(@RequestBody byte[] body) {
@@ -78,7 +56,6 @@ public class PlacementRecordController {
                 .body(new IngestResponse(outcome.name().toLowerCase(Locale.ROOT)));
     }
 
-    /** The stored signed envelope, verbatim: the bytes that were signed, not a re-encoding of them. */
     @GetMapping("/{accountId}")
     @RateLimiter(name = "placementRecords")
     public PlacementRecordEnvelope record(@PathVariable String accountId) {
@@ -91,10 +68,6 @@ public class PlacementRecordController {
                         "no record is held for that accountId"));
     }
 
-    /**
-     * One page of a homeserver's records, for reconciliation. The homeserver id is required: there is no
-     * unbounded listing of every record this node holds.
-     */
     @GetMapping
     @RateLimiter(name = "placementRecords")
     public PageResponse list(@RequestParam(required = false) String homeserverId,
@@ -143,7 +116,6 @@ public class PlacementRecordController {
         return new ProblemResponse("rate_limited", "too many placement record requests");
     }
 
-    /** A request this endpoint cannot answer as asked; carries a stable code, never the caller's input. */
     static class BadQueryException extends RuntimeException {
 
         private final String code;

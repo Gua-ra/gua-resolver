@@ -4,14 +4,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Signed claims from MAS / identity-service used for routing decisions. Public clients may transport this
- * envelope, but resolver policy treats institution/OIDC attributes as trusted only after signature,
- * audience, expiry, and subject-binding verification.
- *
- * <p>{@code subject} binds the envelope to the E.164 phone it was issued for, so a captured envelope cannot
- * be replayed against a different number. It is part of the signed canonical bytes.
- */
+/** subject binds the envelope to one E.164 phone and is part of the signed bytes. */
 public record RoutingClaimsEnvelope(
         String schemaVersion,
         String issuer,

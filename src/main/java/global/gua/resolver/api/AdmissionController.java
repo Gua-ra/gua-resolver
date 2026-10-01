@@ -29,17 +29,7 @@ import global.gua.resolver.roster.MemberEntryJson;
 import global.gua.resolver.roster.RosterEntry;
 import global.gua.resolver.roster.SignedRoster;
 
-/**
- * Authority admin surface for federation membership (§3, §5). All under {@code /authority/**}, which the
- * SecurityConfig requires the ADMIN role for. Admit vets + records a new homeserver; status changes
- * suspend/revoke one; member attestation accepts a member's signature over its own entry (ADM-007). Every
- * call appends to the transparency log and returns the freshly re-signed roster.
- *
- * <p>Bodies that carry a member self-signature are read from the raw bytes through a strict reader rather
- * than the shared lenient {@code ObjectMapper}: an unknown field, a duplicate key or trailing content is
- * refused, so a signature can never cover fewer fields than the resolver goes on to store and serve. A
- * legacy admission body (no member block) is parsed as before.
- */
+/** {@code /authority/**} requires the ADMIN role, enforced in SecurityConfig. */
 @RestController
 @RequestMapping("/authority")
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)
@@ -55,19 +45,16 @@ public class AdmissionController {
         this.validator = validator;
     }
 
-    /** Admit a new homeserver into the roster. */
     @PostMapping(path = "/admission", consumes = MediaType.APPLICATION_JSON_VALUE)
     public SignedRoster admit(@RequestBody byte[] body) {
         return admission.admit(parseAdmission(body));
     }
 
-    /** Accept a member's self-signature over its own entry (first attestation, update, or key rotation). */
     @PostMapping(path = "/roster/{id}/member", consumes = MediaType.APPLICATION_JSON_VALUE)
     public SignedRoster attest(@PathVariable String id, @RequestBody byte[] body) {
         return admission.attest(id, MemberEntryJson.read(json, body, MemberAttestationRequest.class));
     }
 
-    /** Suspend or revoke an admitted homeserver. */
     @PostMapping("/roster/{id}/status")
     public SignedRoster setStatus(@PathVariable String id, @RequestParam RosterEntry.Status status) {
         return admission.setStatus(id, status);

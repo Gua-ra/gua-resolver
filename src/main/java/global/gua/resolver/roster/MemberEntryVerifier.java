@@ -10,39 +10,16 @@ import global.gua.resolver.crypto.CanonicalEncoder;
 import global.gua.resolver.crypto.Ed25519;
 import global.gua.resolver.domain.Homeserver;
 
-/**
- * Verifies a member's self-signature over its roster entry (ADM-007, brief rules 1.4). Stateless: the caller
- * passes the acceptance time and, when it has one, the last entry it accepted for the same homeserver id.
- *
- * <ol>
- *   <li>The block names {@code gua-member-entry.v1} and {@code Ed25519}.</li>
- *   <li>The canonical bytes are recomputed from the transported fields; a field with no canonical encoding
- *       refuses the entry.</li>
- *   <li>A signature whose key id equals {@code member.keyId} verifies under {@code homeserver.signingKey}.</li>
- *   <li>The acceptance time lies in {@code [notBefore, notAfter]}, the window is positive, at millisecond
- *       precision, and no longer than the configured maximum lifetime.</li>
- *   <li>With a prior entry: the sequence never goes backwards, one sequence names one entry, and a changed
- *       signing key must also be signed by the previous key under a new key id (rotation).</li>
- * </ol>
- * A failure is reported, never repaired; what the caller does with it (drop, count, reject) is its policy.
- */
+/** Stateless: the caller passes the acceptance time and the last entry it accepted for the homeserver. */
 public final class MemberEntryVerifier {
 
     public static final Duration DEFAULT_MAX_LIFETIME = Duration.ofDays(400);
 
     public enum Outcome { VALID, UNATTESTED, INVALID }
 
-    /**
-     * The last entry a verifier accepted for a homeserver id.
-     *
-     * @param keyId      its key id, or null when the entry was never attested (a legacy or seeded entry)
-     * @param signingKey its signing key (base64 X.509)
-     * @param sequence   its sequence, 0 when never attested
-     * @param entryHash  SHA-256 hex of its canonical bytes, or null when never attested
-     */
+    /** keyId and entryHash are null, and sequence is 0, when the entry was never attested. */
     public record Prior(String keyId, String signingKey, long sequence, String entryHash) {}
 
-    /** @param entryHash SHA-256 hex of the canonical bytes when they could be computed, else null */
     public record Result(Outcome outcome, String reason, String entryHash) {
         public boolean valid() {
             return outcome == Outcome.VALID;

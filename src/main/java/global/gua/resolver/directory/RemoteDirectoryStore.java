@@ -15,12 +15,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 
 import global.gua.resolver.config.ResolverProperties;
 
-/**
- * Mirror-mode {@link DirectoryStore} (§4): the phone graph is sensitive (PII + enumeration risk), so a
- * mirror never holds a copy: it <b>queries</b> the upstream authority's rate-limited lookup endpoint by
- * peppered HMAC (computed locally; the raw phone never leaves this node). Writes are rejected: only the
- * hosting homeserver writes directory rows, at the authority.
- */
+/** A mirror holds no directory rows; it queries the authority by a locally computed peppered HMAC. */
 @Component
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "MIRROR")
 public class RemoteDirectoryStore implements DirectoryStore {
@@ -32,7 +27,6 @@ public class RemoteDirectoryStore implements DirectoryStore {
     private final boolean failOpenOnLookupError;
     private final Duration lookupTimeout;
     private final Duration cacheTtl;
-    // Last verified POSITIVE result per lookup key, for serve-stale-within-budget on an authority outage.
     private final Map<String, Cached> positiveCache = new ConcurrentHashMap<>();
 
     public RemoteDirectoryStore(ResolverProperties props, PhoneHasher hasher, WebClient.Builder builder) {
@@ -80,10 +74,7 @@ public class RemoteDirectoryStore implements DirectoryStore {
             if (failOpenOnLookupError) {
                 return Optional.empty();
             }
-            // Authority unreachable: keep returning users resolvable by serving a recently-verified POSITIVE
-            // mapping within the staleness budget. Negatives are never served stale (that would let an
-            // existing account be treated as new). The result is still checked against the active roster
-            // upstream in DefaultResolutionService, so a suspended/revoked homeserver is never returned.
+            // Never serve a stale negative: it would treat an existing account as new.
             Cached cached = positiveCache.get(key);
             if (cached != null && !cacheTtl.isZero()
                     && Instant.now().isBefore(cached.at().plus(cacheTtl))) {
