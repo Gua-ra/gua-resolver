@@ -7,7 +7,7 @@ import global.gua.resolver.placement.ClaimPredicate;
 /**
  * Non-overlap validation for placement claims (§6): the authority must never admit two homeservers that
  * claim the same accounts, or placement becomes ambiguous and an operator could hijack another's range.
- * Two predicates conflict when they could match the same signup — same carrier (MCCMNC or name), nested
+ * Two predicates conflict when they could match the same signup: same carrier (MCCMNC or name), nested
  * phone prefixes, same affiliation domain, or an unqualified same-country claim.
  */
 public final class ClaimOverlap {

@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * RFC 6962 Merkle behaviour: a stable root, and consistency proofs that accept genuine append-only
- * extensions while rejecting a rewritten/forked history — the tamper-evidence the transparency log relies
+ * extensions while rejecting a rewritten/forked history: the tamper-evidence the transparency log relies
  * on (§5).
  */
 class MerkleTreeTest {

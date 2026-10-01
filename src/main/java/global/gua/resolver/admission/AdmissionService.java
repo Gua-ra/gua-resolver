@@ -77,7 +77,7 @@ public class AdmissionService {
     public SignedRoster admit(AdmissionRequest req) {
         boolean selfSigned = req.member() != null;
 
-        // Gate 1 — proof the applicant controls the signing key it is registering (membership credential).
+        // Gate 1: proof the applicant controls the signing key it is registering (membership credential).
         if (!selfSigned) {
             if (props.getRoster().isRequireMemberSignature()) {
                 throw new AdmissionException("a member self-signature is required: "
@@ -91,11 +91,11 @@ public class AdmissionService {
                 throw new AdmissionException("key-possession proof invalid for " + req.serverName());
             }
         }
-        // Gate 2 — domain ownership.
+        // Gate 2: domain ownership.
         if (!domainVerifier.verify(req.serverName(), req.domainProof())) {
             throw new AdmissionException("domain-ownership proof rejected for " + req.serverName());
         }
-        // Gate 3 — uniqueness + claim non-overlap against currently-admitted entries.
+        // Gate 3: uniqueness + claim non-overlap against currently-admitted entries.
         if (entries.existsByServerName(req.serverName())) {
             throw new AdmissionException(req.serverName() + " is already admitted");
         }

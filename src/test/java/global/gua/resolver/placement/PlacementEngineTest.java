@@ -53,7 +53,7 @@ class PlacementEngineTest {
     }
 
     private static PlacementEngine engineFor(RosterStore store) {
-        // Registered out of priority order on purpose — the engine must sort them.
+        // Registered out of priority order; the engine must sort them.
         return new PlacementEngine(List.of(new WeightedFallbackRule(store), new ClaimRule(store)));
     }
 

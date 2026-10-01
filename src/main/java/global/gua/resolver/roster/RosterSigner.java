@@ -58,7 +58,7 @@ public class RosterSigner {
     private List<SignedRoster.AuthoritySignature> signatureFor(byte[] canonical) {
         if (!canSign()) {
             // Unsigned roster (no authority key configured yet). RosterVerifier will reject it unless the
-            // threshold is met by other means — surfaced loudly rather than silently trusted.
+            // threshold is met by other means: surfaced loudly rather than silently trusted.
             return List.of();
         }
         return List.of(new SignedRoster.AuthoritySignature(keyId, Ed25519.sign(signingKey, canonical)));

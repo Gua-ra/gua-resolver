@@ -17,7 +17,7 @@ import global.gua.resolver.config.ResolverProperties;
 
 /**
  * Mirror-mode {@link DirectoryStore} (§4): the phone graph is sensitive (PII + enumeration risk), so a
- * mirror never holds a copy — it <b>queries</b> the upstream authority's rate-limited lookup endpoint by
+ * mirror never holds a copy: it <b>queries</b> the upstream authority's rate-limited lookup endpoint by
  * peppered HMAC (computed locally; the raw phone never leaves this node). Writes are rejected: only the
  * hosting homeserver writes directory rows, at the authority.
  */

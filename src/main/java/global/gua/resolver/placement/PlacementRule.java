@@ -4,7 +4,7 @@ import java.util.Optional;
 
 /**
  * SPI for placement rules. The {@link PlacementEngine} runs enabled rules in priority order and takes the
- * first non-empty result, so a new placement strategy is a new {@code PlacementRule} bean — the engine is
+ * first non-empty result, so a new placement strategy is a new {@code PlacementRule} bean; the engine is
  * never edited.
  *
  * <p>Most operator-specific placement is expressed as declarative {@link ClaimPredicate}s in the signed

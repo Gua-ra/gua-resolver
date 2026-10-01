@@ -17,7 +17,7 @@ import global.gua.resolver.roster.RosterStore;
 /**
  * Honours operator-declared {@link ClaimPredicate}s from the signed roster: a carrier claiming its MCCMNC,
  * a university claiming an affiliation domain, a region claiming a phone prefix, etc. This is how the
- * Brazil carrier-agreement scenario works — a carrier's homeserver entry declares {@code {mccmnc:"72411"}}
+ * Brazil carrier-agreement scenario works: a carrier's homeserver entry declares {@code {mccmnc:"72411"}}
  * and matching signups land there automatically, with no resolver code change.
  *
  * <p>Runs first (highest priority). Remote (webhook) claims are evaluated by a separate RemoteClaimRule so

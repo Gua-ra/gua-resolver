@@ -10,7 +10,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
  *
  * <p>Because predicates live in the authority-signed roster, an operator can only claim what was admitted,
  * and the authority validates non-overlap at admission (two carriers can't claim the same range). Adding a
- * carrier/institution claim is therefore a signed-roster edit — no resolver code change, no redeploy.
+ * carrier/institution claim is therefore a signed-roster edit: no resolver code change, no redeploy.
  *
  * <p>All set fields are ANDed. {@code remoteClaimUrl}, when present, delegates the final yes/no to the
  * operator's own webhook (for membership logic the resolver shouldn't encode).
