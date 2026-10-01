@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * The rule ADM-001 L8 turns on: a governance threshold counts distinct operators, never key ids. These tests
+ * A governance threshold counts distinct operators, never key ids (ADM-001 L8). These tests
  * are the guard against someone "simplifying" this back into the per-key counting the roster verifier uses,
  * which would make a k-of-n satisfiable by one party holding k keys.
  */

@@ -6,13 +6,13 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
- * The four registries ADM-001 L10 fixes under the governance root. They are versioned separately, each with
+ * The four registries under the governance root (ADM-001 L10). They are versioned separately, each with
  * its own epoch chain, so a verifier rotation is not a membership epoch and neither drags the other forward.
  *
  * <p>The constant's wire name is its canonical name: it is what the genesis enumerates and what a
  * {@code gua-registry-epoch.v1} object carries in its canonical bytes. Only {@link #HOMESERVERS} has a code
- * path in Phase 2; the other three exist so the shape is fixed before accreditations (Phase 5) and witnesses
- * (Phase 9) need it, and their content must be empty until then.
+ * path today (migration plan phase 2); the other three exist so the shape is fixed before accreditations
+ * (phase 5) and witnesses (phase 9) need it, and their content must be empty until then.
  */
 public enum Registry {
 

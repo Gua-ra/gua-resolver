@@ -33,8 +33,8 @@ import io.micrometer.core.instrument.MeterRegistry;
  * The federation front door consumed by the iOS and Android clients BEFORE OIDC login. The client sends a
  * phone number and learns which homeserver to authenticate against; for a phone with no account it learns
  * where to register. Nothing about the phone is verified here: the endpoint is unauthenticated and takes a
- * raw E.164, so today it also answers whether an account exists for any number (ADM-001 L16 names this as
- * the enumeration oracle to close). Interim controls: {@code global.gua.resolver.abuse.ResolveAbuseFilter}
+ * raw E.164, so today it also answers whether an account exists for any number (the enumeration oracle
+ * ADM-001 L16 requires closing). Interim controls: {@code global.gua.resolver.abuse.ResolveAbuseFilter}
  * rate-limits the endpoint per client and globally, and the decision trace is returned only when
  * {@code gua.resolver.abuse.trace-enabled} is on. This is what replaces the clients' hardcoded
  * {@code GuaDefaultAccountProvider}.
@@ -93,7 +93,7 @@ public class ResolveController {
     /**
      * Build the placement context for a new-account decision. Institution/OIDC affiliations and attributes
      * are trusted ONLY when they arrive in a signature-verified routing-claims envelope bound to this phone;
-     * a public caller's self-asserted {@code affiliations}/{@code attributes} are deliberately dropped (they
+     * a public caller's self-asserted {@code affiliations}/{@code attributes} are dropped (they
      * were the self-assertion vector). Carrier/geo hints stay, because choosing a carrier homeserver is
      * self-service, not privilege.
      */

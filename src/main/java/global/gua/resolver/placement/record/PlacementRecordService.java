@@ -34,7 +34,7 @@ import io.micrometer.core.instrument.MeterRegistry;
  *       rejected, never migrated (ADM-001 L9).</li>
  * </ul>
  *
- * <p>Deliberately not transactional. Every write is a single statement whose WHERE clause carries the
+ * <p>Not transactional. Every write is a single statement whose WHERE clause carries the
  * condition it depends on: the primary key for the insert, the holder and the issuedAt floor for the
  * replace. That gives the same guarantees without a transaction that a constraint violation would abort
  * mid-flight, which is what would happen on Postgres if the duplicate-key race were caught inside one.

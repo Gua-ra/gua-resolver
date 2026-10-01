@@ -24,7 +24,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * The reference client verifier verifies signed artifacts and independently reproduces the resolver's
  * new-account decision, so a client never has to trust the resolver's answer.
  *
- * <p>The two trust roots are deliberately different keys here. Before Phase 2 this test passed the authority
+ * <p>The two trust roots are different keys here. Before migration plan phase 2 this test passed the authority
  * keys as the policy keys, which the fallback made indistinguishable from having no policy keys at all; with
  * the fallback gone, a port that conflates them fails.
  */

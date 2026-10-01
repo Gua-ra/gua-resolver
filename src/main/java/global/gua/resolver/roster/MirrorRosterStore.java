@@ -35,7 +35,7 @@ import global.gua.resolver.crypto.MerkleTree;
  * key, or replays an older entry (ADM-007). Under
  * {@code gua.resolver.roster.require-member-signature} an ACTIVE entry that fails is dropped from that view.
  *
- * <p>The directory is deliberately NOT mirrored here; a mirror queries the AUTHORITY-mode node's
+ * <p>The directory is not mirrored here; a mirror queries the AUTHORITY-mode node's
  * directory (whose member write endpoint is removed, ADM-001 L1b) row by row; only the public roster is
  * replicated.
  */

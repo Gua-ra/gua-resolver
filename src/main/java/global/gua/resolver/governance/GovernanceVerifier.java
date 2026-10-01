@@ -11,15 +11,15 @@ import global.gua.resolver.crypto.Ed25519;
  * The governance threshold rule: a governance object is valid when valid signatures over its canonical bytes
  * come from at least {@code threshold} <b>distinct operators</b>.
  *
- * <p>It dedupes on {@code operatorId} and never on {@code keyId}. ADM-001 L8 names the shipped
- * {@code RosterVerifier.countValidSignatures} shape ("one vote per authority key") as the defect to avoid:
- * counting keys yields a threshold that one operator holding k keys satisfies alone. Counting operators
- * makes k = 1 at one operator no matter how many keys are listed, which is the true answer. That is also why
- * this class exists separately rather than as a flag on the roster verifier: the roster keeps its per-key
- * counting for the operational snapshot, and no governance threshold may borrow it.
+ * <p>It dedupes on {@code operatorId} and never on {@code keyId}. Counting keys yields a threshold that one
+ * operator holding k keys satisfies alone, the defect ADM-001 L8 names in the shipped
+ * {@code RosterVerifier.countValidSignatures} shape ("one vote per authority key"). Counting operators makes
+ * k = 1 at one operator no matter how many keys are listed. This class exists separately rather than as a
+ * flag on the roster verifier because the roster keeps its per-key counting for the operational snapshot,
+ * and no governance threshold may borrow it.
  *
- * <p>At one operator this yields no independence. It yields an honest count, which is the prerequisite for
- * independence later and the thing a second operator turns into a real guarantee.
+ * <p>At one operator this yields no independence, only a true count, which a second operator turns into a
+ * real guarantee.
  */
 public final class GovernanceVerifier {
 

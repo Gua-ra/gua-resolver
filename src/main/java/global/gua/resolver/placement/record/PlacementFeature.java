@@ -12,8 +12,8 @@ package global.gua.resolver.placement.record;
  * carries a second flag of its own ({@code gua.resolver.placement.ingest-enabled}), so reads and writes roll
  * out separately.
  *
- * <p>There is deliberately no flag that would serve routing from these records. Nothing in this phase reads
- * the table on the resolution path (ADM-008 decision 9).
+ * <p>No flag serves routing from these records; nothing in this phase reads the table on the resolution path
+ * (ADM-008 decision 9).
  */
 public final class PlacementFeature {
 

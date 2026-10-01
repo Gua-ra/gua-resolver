@@ -52,8 +52,8 @@ import global.gua.resolver.policy.RoutingPolicyBundle;
  *   transition sign   --transition FILE --key-id ID --private-key-file FILE|-
  * </pre>
  *
- * <p>A private key is read from a file or, with {@code -}, from standard input. There is deliberately no flag
- * that takes a key as an argument value: an argument lands in the shell history and the process list. The
+ * <p>A private key is read from a file or, with {@code -}, from standard input. There is no flag that takes a
+ * key as an argument value, because an argument lands in the shell history and the process list. The
  * only command that writes a private key is {@code keygen}, which writes it to the file named by
  * {@code --private-key-out} with owner-only permissions and prints only the public half. Nothing this tool
  * prints on standard output contains key material.

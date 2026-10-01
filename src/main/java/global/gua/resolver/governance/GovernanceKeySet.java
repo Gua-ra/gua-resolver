@@ -14,7 +14,7 @@ import global.gua.resolver.crypto.Ed25519;
  * that applies with them.
  *
  * <p>It holds keys and answers lookups; it does not count votes. The counting rule lives in
- * {@link GovernanceVerifier} precisely because it is the part ADM-001 L8 constrains, and keeping it in one
+ * {@link GovernanceVerifier} because thresholds must count operators (ADM-001 L8), and keeping it in one
  * place is what stops a future caller from reaching for
  * {@code RosterVerifier.countValidSignatures} and reintroducing per-key counting.
  */

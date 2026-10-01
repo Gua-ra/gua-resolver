@@ -32,10 +32,10 @@ public final class AccountId {
     /** accountId format version, the first raw byte. */
     public static final byte FORMAT_VERSION = 0x01;
 
-    /** Root class 0x00: a bootstrap id, minted for an account that predates account authority (L5). */
+    /** Root class 0x00: a bootstrap id, minted for an account that predates account authority (ADM-001 L5). */
     public static final byte CLASS_BOOTSTRAP = 0x00;
 
-    /** Root class 0x01: a genesis-rooted id, derived from an on-device AccountGenesis (L4). */
+    /** Root class 0x01: a genesis-rooted id, derived from an on-device AccountGenesis (ADM-001 L4). */
     public static final byte CLASS_GENESIS = 0x01;
 
     /** The canonical spelling: 54 free base32 characters and a last one whose low three bits are zero. */

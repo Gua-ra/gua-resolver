@@ -24,7 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>The roster version is the transparency-log size and new-account fallback placement seeds on it
  * (ADM-001 L6 [CODE]), so one leaf per ingest would move placement decisions on every record. The checkpoint
- * appends at most one leaf per interval, and only when the Merkle root over the records actually changed,
+ * appends at most one leaf per interval, and only when the Merkle root over the records changed,
  * which is the same idempotent-per-root rule the directory checkpoint follows.
  */
 @SpringBootTest(properties = "gua.resolver.placement.enabled=true")
@@ -74,7 +74,7 @@ class PlacementCheckpointTest {
         assertThat(transparencyLog.eventsOfType(PlacementCheckpointService.EVENT_TYPE))
                 .hasSize(afterFirst);
 
-        // A new record changes the root, and that is what earns exactly one more leaf.
+        // A new record changes the root, so exactly one more leaf is appended.
         String rootBefore = signed.checkpoint().merkleRoot();
         store.insert(record("checkpoint-b"));
         PlacementCheckpoint.Signed next = service.publish();

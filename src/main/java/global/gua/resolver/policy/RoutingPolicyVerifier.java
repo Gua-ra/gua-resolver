@@ -20,37 +20,32 @@ import global.gua.resolver.governance.GovernanceKeySet;
 /**
  * Verifies routing-policy bundles at two levels:
  * <ol>
- *   <li><b>Authority</b> (governance): k-of-n threshold Ed25519 signatures over the whole canonical bundle.
- *       This attests the bundle including each delegation zone's grant (scope + delegate public key).</li>
- *   <li><b>Delegate</b>: each zone's rules must be signed by that zone's delegate key. A rule is only
- *       trusted when its zone is delegate-verified, so a delegate controls its own rules within its
- *       authority-granted scope. This constrains delegates, not the authority: the authority attests the
- *       delegate key by signing the bundle and no delegate key is pinned, so an authority can publish a
- *       zone whose delegate key it holds (ADM-001 L6 on unreviewed routing authority).</li>
+ *   <li><b>Authority</b> (governance): k-of-n threshold Ed25519 signatures over the whole canonical bundle,
+ *       which covers each delegation zone's grant (scope + delegate public key).</li>
+ *   <li><b>Delegate</b>: each zone's rules must be signed by that zone's delegate key, so a delegate controls
+ *       its own rules within its granted scope. This constrains delegates, not the authority: no delegate key
+ *       is pinned, so an authority can publish a zone whose delegate key it holds (unreviewed routing
+ *       authority, ADM-001 L6).</li>
  * </ol>
  *
- * <p><b>Which trust root is in force follows {@code gua.resolver.governance.required}, and nothing else.</b>
- *
+ * <p><b>The trust root follows {@code gua.resolver.governance.required}, and nothing else.</b>
  * <ul>
  *   <li><b>Flag off (the default).</b> Bundles verify under {@code policy.trusted-keys}, or, when that list
  *       is unset, under {@code authority.trusted-keys}. That fallback lets the operational roster-signing
- *       key attest policy, which is exactly the key-role sharing ADM-001 L8 wants gone, and it is kept here
- *       only because it is what an environment that has not run the key ceremony is already serving on.</li>
- *   <li><b>Flag on.</b> The governance key set from the pinned genesis is the only trust root. Both
- *       fallbacks are gone and a bundle signed by the operational key is refused.</li>
+ *       key attest policy, the key-role sharing ADM-001 L8 forbids; it stays only because an environment
+ *       that has not run the key ceremony is serving on it.</li>
+ *   <li><b>Flag on.</b> The governance key set from the pinned genesis is the only trust root. There is no
+ *       fallback, and a bundle signed by the operational key is refused.</li>
  * </ul>
  *
- * <p>The gate is the correction to how this shipped the first time. The fail-closed root was applied
- * unconditionally, so an environment whose bundle was signed with the operational key stopped verifying its
- * own policy at startup: {@code FileRoutingPolicySource} throws from its constructor when no bundle loads,
- * so the context never started and the service crash-looped. A trust root is chosen at startup, so widening
- * or narrowing it is a deploy-time event that has to be tied to the same flag the operator flips
- * deliberately, and tested by booting the application (see {@code global.gua.resolver.startup}).
+ * <p>The trust root is chosen at startup, so narrowing it is a deploy-time event that must follow the flag
+ * the operator flips, never the build alone. {@code FileRoutingPolicySource} throws when no bundle verifies,
+ * so a wrong root stops the context. The startup tests in {@code global.gua.resolver.startup} pin this.
  *
- * <p>Signature counting here still dedupes by key id, which is the shipped envelope's shape. That is
- * tolerable only because policy is a single-operator key set today and no independence claim rests on it;
- * a threshold that has to mean independence uses {@code GovernanceVerifier}, which counts operators
- * (ADM-001 L8). Do not reuse this counter for one.
+ * <p>Signature counting here dedupes by key id, the shipped envelope's shape. That is acceptable only
+ * because policy is a single-operator key set today and no independence claim rests on it. A threshold that
+ * has to mean independence counts operators, never keys (ADM-001 L8): use {@code GovernanceVerifier}, and do
+ * not reuse this counter for one.
  */
 @Component
 public class RoutingPolicyVerifier {
@@ -106,7 +101,7 @@ public class RoutingPolicyVerifier {
                     + "({}), configure the genesis the bundle was signed under (ADM-001 L8)",
                     root, governanceRequired);
         } else {
-            // Logged at every startup because it is the fact that decides whether a deployed bundle loads.
+            // Logged at every startup: this decides whether a deployed bundle loads.
             log.info("Routing-policy trust root: {} ({} key(s), threshold {}, governance required: {})",
                     root, trustedKeys.size(), threshold, governanceRequired);
         }

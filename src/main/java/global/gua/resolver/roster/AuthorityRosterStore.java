@@ -20,7 +20,7 @@ import global.gua.resolver.roster.store.RosterEntryRepository;
  * does not yet support (ADM-001 L11, O12). Every rebuild re-signs with a fresh {@code issuedAt}, so the
  * served bytes are not stable across rebuilds, and if its own signature threshold is not met it logs an
  * error and still serves the under-signed roster. On a fresh database it seeds the single configured dev
- * homeserver (Phase 1) and logs an ADMIT event, so the audit trail exists from the very first entry; that
+ * homeserver (migration plan phase 1) and logs an ADMIT event, so the audit trail exists from the first entry; that
  * seeded entry proves nothing and stays unattested until its operator attests it (ADM-007).
  *
  * <p>The roster {@code version} tracks the transparency-log size: every membership change appends a log
@@ -139,7 +139,7 @@ public class AuthorityRosterStore implements RosterStore {
                 unattested.size(), String.join(", ", unattested));
     }
 
-    /** Seed the configured dev homeserver into a fresh roster (Phase 1) and record the ADMIT event. */
+    /** Seed the configured dev homeserver into a fresh roster (migration plan phase 1) and record the ADMIT event. */
     private void seedIfEmpty() {
         if (entries.count() > 0) {
             return;

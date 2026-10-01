@@ -29,25 +29,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 /**
- * The second way this configuration can fail to start, and the one the signature tests structurally cannot
- * see: roster state rather than which key signed the bundle.
+ * The second way this configuration can fail to start, which the signature tests cannot see: roster state
+ * rather than which key signed the bundle.
  *
  * <p>A policy bundle may only name homeservers that are ACTIVE in the roster, and
- * {@code FileRoutingPolicySource} validates against the roster BEFORE it checks signatures. With governance
+ * {@code FileRoutingPolicySource} validates against the roster before it checks signatures. With governance
  * required, the seeded member is PENDING and a PENDING entry is kept out of the signed roster, so on a
- * database whose very first boot already has the flag on, a bundle that targets that member fails validation
- * and the constructor throws. The shape is byte-identical to the incident this branch exists to prevent:
- * "no valid routing policy loaded from ...", context never started, pod crash-loop.
+ * database whose first boot already has the flag on, a bundle that targets that member fails validation and
+ * the constructor throws ("no valid routing policy loaded from ...", context never started).
  *
- * <p>The other startup tests cannot reach this because they use a zone-less, rule-less bundle, which targets
- * nobody. This one deliberately uses a bundle that targets a homeserver, which is what a deployment mounts.
+ * <p>The other startup tests use a zone-less, rule-less bundle that targets nobody. This one uses a bundle
+ * that targets a homeserver, which is what a deployment mounts.
  *
- * <p>So the cutover order in docs/runbooks/governance-keys.md is load-bearing, not stylistic: the first boot
- * of a database has to happen with the flag off, which is what puts an ACTIVE member there. Two consequences
- * are pinned below because an operator would otherwise meet them during an incident: a database wiped under
- * an environment that already carries the flag reaches this state on its own, and flipping the flag back is
- * NOT sufficient to recover once the seed has landed PENDING, because the seed only happens on an empty
- * database.
+ * <p>Invariant, which the cutover order in docs/runbooks/governance-keys.md depends on: the first boot of a
+ * database must happen with the flag off, so that an ACTIVE member exists. Two consequences are pinned
+ * below: a database wiped under an environment that already carries the flag reaches this state on its own,
+ * and flipping the flag back does not recover a seed that landed PENDING, because the seed only happens on
+ * an empty database.
  *
  * <p>Every key here is minted in memory and every file is temporary; nothing is read from an environment.
  */

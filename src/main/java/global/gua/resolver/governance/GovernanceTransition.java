@@ -13,8 +13,8 @@ import java.util.List;
  * {@code previousHash} is the genesis id at index 1 and the previous transition's hash after that, so a
  * transition cannot be reordered, replayed or grafted onto a different genesis.
  *
- * <p>Catastrophic loss of the whole set is not recoverable here and stays ADM-001 O13: with no old-set
- * signatures there is no valid transition, and the answer is a new genesis plus a client re-pin.
+ * <p>Catastrophic loss of the whole set is not recoverable here (ADM-001 O13): with no old-set signatures
+ * there is no valid transition, and recovery requires a new genesis and a client re-pin.
  *
  * @param genesisId    the genesis this chain descends from
  * @param index        position in the chain, from 1

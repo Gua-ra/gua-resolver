@@ -43,11 +43,11 @@ import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
  *
  * <p>The reads serve what the shadow reconciler compares against: one record by accountId, and a paged
  * listing per homeserver. An accountId is a 256-bit hash and carries no identifier, so neither read exposes
- * a phone, a phone hash or a Matrix user id. This is still new public state and ADM-008 gates production
- * publishing on the ADM-001 L16 review.
+ * a phone, a phone hash or a Matrix user id. This is still new public state, and production publishing waits
+ * for the enumeration review (ADM-001 L16) as ADM-008 requires.
  *
  * <p>Nothing here is on the resolution path. No routing answer reads a placement record in this phase, and
- * there is deliberately no flag that would make one.
+ * no flag would make one (ADM-008 decision 9).
  */
 @RestController
 @RequestMapping("/placement/records")

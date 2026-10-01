@@ -5,7 +5,7 @@ package global.gua.resolver.roster;
  * <ul>
  *   <li><b>authority</b>: the node that signs and serves the roster in AUTHORITY mode and appends membership
  *       changes to the transparency log. Self-signed roster entries, with this node as a sequencer rather
- *       than the roster's owner, are the ADM-001 L10 target.</li>
+ *       than the roster's owner, are the target (ADM-001 L10).</li>
  *   <li><b>mirror</b>: pulls the signed roster from upstream, verifies threshold signatures + log
  *       inclusion, and serves a read-only copy (an institution running its own resolver).</li>
  * </ul>

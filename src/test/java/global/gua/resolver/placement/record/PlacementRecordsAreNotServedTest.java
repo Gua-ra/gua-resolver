@@ -44,33 +44,26 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Nothing is served from placement records in this phase. This is the explicit non-goal, and it is a test so
- * that wiring the table into the resolution path fails the build rather than passing review.
+ * Nothing is served from placement records in this phase. The non-goal is a test so that wiring the table
+ * into the resolution path fails the build.
  *
- * <p>It is checked three ways. Structurally, no class that makes up the resolution path mentions the
- * placement-record package or the table's name anywhere in its bytecode. Behaviourally, {@code /resolve}
- * answers byte for byte the same with records stored as without them, for an account the directory places
- * and for one it does not. And by configuration, there is no serve-from-records flag to turn on: the feature
- * has a custody flag and an ingest flag, and that is all.
+ * <p>It is checked three ways. Structurally: no class on the resolution path mentions the placement-record
+ * package or the table name anywhere in its bytecode. Behaviourally: {@code /resolve} answers byte for byte
+ * the same with records stored as without them, for an account the directory places and for one it does
+ * not. By configuration: the feature has a custody flag and an ingest flag, and no serve-from-records flag.
  *
- * <p>The structural check is deliberately not a list of class names. The resolution path is larger than any
- * list somebody remembers to update: {@code DefaultResolutionService} holds a {@link PlacementEngine} and
- * every {@link global.gua.resolver.placement.PlacementRule} behind it, so a rule added tomorrow is on the
- * path the day it is written. The class set is derived from the packages instead, and the check reads
- * compiled bytecode rather than the reflective surface, so a reference made inside a method body is caught
- * as well as a field, and the table name is checked as a string so that a raw JDBC query against
- * {@code placement_record} is caught even though it names no type.
+ * <p>The structural check derives the class set from the packages instead of listing names, because
+ * {@code DefaultResolutionService} holds a {@link PlacementEngine} and every
+ * {@link global.gua.resolver.placement.PlacementRule} behind it, so a rule added tomorrow is on the path the
+ * day it is written. It reads compiled bytecode, so a reference inside a method body is caught as well as a
+ * field, and it checks the table name as a string, so a raw JDBC query against {@code placement_record} is
+ * caught too. A record also carries no identifier, so there is nothing {@code /resolve} could key a phone
+ * lookup on until the binding record of migration plan phase 5.
  *
- * <p>The deepest reason it cannot be served is in the record itself: it carries no identifier, so there is
- * nothing in it {@code /resolve} could key a phone lookup on. Phase 5's binding record is what would change
- * that, and it is not in this scope.
- *
- * <p>One limit of the behavioural check, worth stating so the phrase "byte-identical" is not read as
- * unconditional: it holds while no checkpoint leaf has been published. A {@code PLACEMENT_CHECKPOINT} leaf
- * moves the log size, the log size is the roster version, and {@code WeightedFallbackRule} seeds on it
- * (ADM-001 L6 [CODE]), so once checkpoints publish, new-account placement does move as a function of
- * placement content. That is documented and accepted in ADM-008's consequences. What this test pins is the
- * rule that keeps it bounded: ingest itself appends no leaf, so the answer cannot move per record.
+ * <p>The behavioural check holds while no checkpoint leaf has been published. A {@code PLACEMENT_CHECKPOINT}
+ * leaf moves the log size, the log size is the roster version, and {@code WeightedFallbackRule} seeds on it
+ * (ADM-001 L6 [CODE]), which ADM-008's consequences accept. What this test pins is the bound: ingest itself
+ * appends no leaf, so the answer cannot move per record.
  */
 @SpringBootTest(properties = {
         "gua.resolver.placement.enabled=true",

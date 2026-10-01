@@ -11,7 +11,7 @@ import java.time.Instant;
  *
  * <p>It binds nothing to an identifier. There is no phone, no phone hash, no Matrix user id and no
  * identifier of any kind in the object, which is what separates this per-account state from the directory
- * write ADM-001 L1b deleted, and what keeps replicated federation state clear of routing keys (L15).
+ * write ADM-001 L1b deleted, and what keeps replicated federation state clear of routing keys (ADM-001 L15).
  *
  * <p>This is the decoded view. The authoritative form is always the received bytes, which the resolver
  * stores verbatim and re-verifies from; these fields exist so the row can be indexed and compared.

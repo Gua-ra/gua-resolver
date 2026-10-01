@@ -21,8 +21,8 @@ import global.gua.resolver.roster.RosterStore;
 /**
  * Authority admin surface for routing-policy governance: validation only.
  *
- * <p>This endpoint used to sign. Signing a policy bundle is a governance act, and ADM-001 L8 requires the
- * key roles to stop sharing, so the signing key left this process in Phase 2: an operator signs a bundle
+ * <p>This endpoint used to sign. Signing a policy bundle is a governance act and key roles must not be shared
+ * (ADM-001 L8), so the signing key left this process in migration plan phase 2: an operator signs a bundle
  * offline with the governance key and ships the signed file. What is left here is the part that genuinely
  * needs the live roster, and cannot be done offline: checking that every target is an active member, that
  * each rule sits inside its delegation zone, and that the delegate signatures present will actually route.

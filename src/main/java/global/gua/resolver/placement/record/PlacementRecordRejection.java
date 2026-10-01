@@ -55,7 +55,7 @@ public enum PlacementRecordRejection {
     /** The declared homeserver-id length is zero or above the maximum. */
     BAD_HOMESERVER_ID_LENGTH("bad_homeserver_id_length"),
 
-    /** The homeserver id is not printable ASCII, or carries the character the checkpoint leaves delimit on. */
+    /** The homeserver id is not printable ASCII, or contains the checkpoint-leaf delimiter character. */
     INVALID_HOMESERVER_ID("invalid_homeserver_id"),
 
     /** A timestamp is outside the range an epoch-millisecond instant can hold. */

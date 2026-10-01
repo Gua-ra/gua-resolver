@@ -29,8 +29,7 @@ import java.util.Arrays;
  * ({@link PlacementRecordRejection}) and none is repaired.
  *
  * <p>The decode is pure: no clock, no database, no roster. Everything that depends on this node's state
- * lives in {@link PlacementRecordVerifier}, which is why a decode result can be trusted to say nothing about
- * what the resolver holds.
+ * lives in {@link PlacementRecordVerifier}, so a decode result says nothing about what the resolver holds.
  *
  * <p>{@link #encode} exists for tests and for offline tooling. The ingest path never re-encodes: it hashes,
  * verifies and stores the bytes it received, and {@link #decode} only re-derives the accountId string from
@@ -89,7 +88,7 @@ public final class PlacementRecordCodec {
         if (origin == null) {
             throw new PlacementRecordException(PlacementRecordRejection.UNKNOWN_ORIGIN);
         }
-        // The origin byte is redundant with the class byte on purpose: an id whose class says bootstrap and
+        // The origin byte duplicates the class byte by design: an id whose class says bootstrap and
         // whose record claims a genesis root is the audit marker ADM-008 decision 2 relies on, and a record
         // that disagrees with itself is refused rather than resolved in either direction.
         if (origin.code() != rootClass) {

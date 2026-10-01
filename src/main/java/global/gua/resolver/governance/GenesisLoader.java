@@ -19,7 +19,7 @@ import global.gua.resolver.roster.MemberEntryJson;
  * Loads the pinned federation genesis at startup, applies the governance key transitions, and exposes the
  * key set in force.
  *
- * <p>Four things are deliberately startup failures rather than runtime degradations. A genesis whose id is
+ * <p>Four things are startup failures, not runtime degradations. A genesis whose id is
  * not the configured {@code expected-id} is refused, so whoever controls the mount cannot swap the file for
  * another valid genesis: the pin, not the file, is the trust anchor. A genesis whose own keys do not meet its
  * own threshold is refused, because an unverifiable root is worse than none. A chain whose head is not the
@@ -28,7 +28,8 @@ import global.gua.resolver.roster.MemberEntryJson;
  * {@code gua.resolver.governance.required=true} with no genesis configured is refused, because that
  * combination promises governance the resolver cannot perform.
  *
- * <p>With no genesis configured the resolver runs exactly as it did before Phase 2: governance features are
+ * <p>With no genesis configured the resolver runs as it did before governance keys (migration plan phase 2):
+ * governance features are
  * off, membership changes take effect directly, and a WARN says so. That is the default.
  *
  * <p>Verifying a genesis here proves only that the keys it enumerates signed it (ADM-001 L10 locks that and

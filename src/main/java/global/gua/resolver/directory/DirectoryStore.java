@@ -25,8 +25,8 @@ public interface DirectoryStore {
     Optional<String> homeserverIdForUsername(String username);
 
     /**
-     * Upsert a phone→homeserver row. Internal API only: no HTTP path reaches it (ADM-001 L1b). ADM-001 L7
-     * replaces these rows with attested binding records.
+     * Upsert a phone→homeserver row. Internal API only: no HTTP path reaches it (ADM-001 L1b). Attested
+     * binding records replace these rows (ADM-001 L7).
      */
     void putPhone(String e164Phone, String homeserverId);
 

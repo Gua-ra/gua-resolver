@@ -27,9 +27,9 @@ import global.gua.resolver.roster.RosterStore;
  * refused. No part of this check consults the placement table, so a caller learns nothing about stored state
  * by failing it.
  *
- * <p>The validity window is checked against this node's own clock with the configured claims skew. ADM-008
- * records that as admission rather than a replayable transition (ADM-001 L11): these windows move to
- * sequenced time when placements enter the state root.
+ * <p>The validity window is checked against this node's own clock with the configured claims skew. That is
+ * admission, not a replayable transition (ADM-001 L11, recorded in ADM-008): these windows move to sequenced
+ * time when placements enter the state root.
  */
 @Component
 @ConditionalOnExpression(PlacementFeature.ENABLED)

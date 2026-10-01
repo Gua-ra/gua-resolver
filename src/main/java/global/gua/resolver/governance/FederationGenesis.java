@@ -8,10 +8,9 @@ import java.util.Set;
  * The pinned root of the federation's trust chain (ADM-001 L10): a threshold set of governance keys, the
  * registries that hang beneath them, and the label the federation goes by.
  *
- * <p><b>v1 is signed by the keys it enumerates.</b> ADM-001 L10 locks that and says why it is unavoidable,
- * which is exactly why a genesis has to travel out of band: it is pinned in first-party builds, published at
- * a well-known location, and compared by fingerprint across independent channels. Verifying a genesis against
- * itself proves only that its own keys signed it, so a genesis nobody compared out of band proves nothing.
+ * <p><b>v1 is signed by the keys it enumerates</b> (locked in ADM-001 L10), so a genesis has to travel out of
+ * band: it is pinned in first-party builds, published at a well-known location, and compared by fingerprint
+ * across independent channels. Verifying a genesis against itself proves only that its own keys signed it.
  *
  * <p>{@code federationLabel} is a label, not an identity. The identity is {@code genesisId}, the SHA-256 of
  * the canonical bytes; two genesis objects with the same label are different federations.
@@ -21,7 +20,7 @@ import java.util.Set;
  * @param hashSuite        {@code SHA-256}
  * @param threshold        governance k: how many distinct operators must sign a governance act
  * @param keys             the enumerated governance keys, each recording the operator that holds it
- * @param registries       the registry names, fixed in v1 to the four ADM-001 L10 names. They are a set:
+ * @param registries       the registry names, fixed in v1 to the four registries ADM-001 L10 lists. A set:
  *                         the JSON list order is not significant and the canonical bytes sort them
  * @param signatures       outside the canonical bytes; at least {@code threshold} from distinct operators
  */

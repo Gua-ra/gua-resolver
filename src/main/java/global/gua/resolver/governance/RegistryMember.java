@@ -12,8 +12,8 @@ import global.gua.resolver.roster.RosterEntry;
  * <p>{@code memberEntryHash} is what keeps governance from redefining a member. The epoch signs the hash of
  * the entry the member signed, not the member's fields, so governance can admit that exact entry, suspend it
  * or revoke it, and can do nothing else to it (ADM-001 L10: "governance able only to admit or revoke"). It
- * is absent for an entry that has not been attested yet, which is the honest encoding of "governance is
- * admitting a member whose own signature is not yet on file".
+ * is absent for an entry that has not been attested yet, which encodes "governance is admitting a member
+ * whose own signature is not yet on file".
  *
  * @param homeserverId    the federation id
  * @param status          ACTIVE, SUSPENDED or REVOKED; PENDING is an intent, never a governed status
@@ -47,8 +47,8 @@ public record RegistryMember(
             throw new GovernanceException("weight must not be negative");
         }
         // The roster holds weight in a 32-bit column and Homeserver carries an int, so a wider value cannot
-        // be applied as it was signed. Refusing it is the honest answer; narrowing it silently would apply a
-        // weight the operator never signed.
+        // be applied as it was signed. Refusing is correct; narrowing it silently would apply a weight the
+        // operator never signed.
         if (weight > Integer.MAX_VALUE) {
             throw new GovernanceException("weight " + weight + " exceeds the largest weight the roster can "
                     + "hold (" + Integer.MAX_VALUE + ")");

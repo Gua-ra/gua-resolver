@@ -16,7 +16,7 @@ import global.gua.resolver.placement.ClaimPredicate;
  * no two entries' claim predicates overlap before admitting/updating.
  *
  * <p>An entry also carries the member's own signature over the fields it controls ({@link MemberAttestation},
- * ADM-007) once that member has attested. It is null for an entry admitted before Phase 1 or through the
+ * ADM-007) once that member has attested. It is null for an entry admitted before self-signed entries or through the
  * legacy path, which {@link MemberEntryVerifier} reports as unattested rather than invalid, and it is omitted
  * from the JSON when null, so a roster of unattested entries is byte-identical to what clients see today.
  *
@@ -44,7 +44,7 @@ public record RosterEntry(
      */
     public enum Status { ACTIVE, SUSPENDED, REVOKED, PENDING }
 
-    /** An entry with no member attestation (seeded, legacy, or admitted before Phase 1). */
+    /** An entry with no member attestation (seeded, legacy, or admitted before self-signed entries existed). */
     public RosterEntry(Homeserver homeserver, List<ClaimPredicate> claims, Instant admittedAt, Status status) {
         this(homeserver, claims, admittedAt, status, null);
     }

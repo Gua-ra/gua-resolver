@@ -27,15 +27,13 @@ import global.gua.resolver.roster.store.RosterEntryRepository;
  * a signed epoch, applies it, and commits it to the transparency log (ADM-001 L10).
  *
  * <p><b>An epoch ratifies, it does not originate.</b> The resolver rebuilds the pending membership from its
- * own state and refuses an epoch whose content hash is anything else. So governance cannot invent a status
- * the resolver never proposed, and the operational key cannot change a status without governance signing the
- * result. What each side can do alone is: the operational key proposes, governance ratifies or refuses. That
- * is the separation Phase 2 buys, and it is worth naming precisely, because it is narrower than "governance
- * controls membership".
+ * own state and refuses an epoch whose content hash is anything else. Governance cannot invent a status the
+ * resolver never proposed, and the operational key cannot change a status without governance signing the
+ * result. Migration plan phase 2 separates proposing (operational key) from ratifying (governance key); it
+ * does not give governance control of membership.
  *
- * <p>With one operator holding both the operational key and the governance key, this separates processes and
- * custody, not principals (ADM-001 standing rule). It becomes a real control when a second operator holds a
- * governance key.
+ * <p>With one operator holding both keys, this separates processes and custody, not principals (ADM-001
+ * standing rule). It becomes a real control when a second operator holds a governance key.
  */
 @Service
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)
