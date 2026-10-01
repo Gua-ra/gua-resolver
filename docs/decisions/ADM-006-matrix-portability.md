@@ -8,7 +8,7 @@ ADM-001 fixed:
 
 - L3: an identifier is an account attribute; superseding it transfers nothing.
 - L9: no native Matrix operation preserves device keys, cross-signing, membership, history attribution or key backup across homeservers. Placement and identity migration are separate, and any Gua tooling claim needs its own demonstration.
-- L5 and L6: account authority buys migration authorization; placement never commits without `HostingAcceptance`.
+- L5 and L6: account authority is what authorizes a migration; placement never commits without `HostingAcceptance`.
 
 ADM-001 left open O9 (`ADOPT_ROOT`), S6 (OIDC subject migration) and the L13 recovery mechanism. The migration plan puts identity migration out of scope.
 
@@ -99,7 +99,7 @@ H1 only; H0 changes nothing.
 
 - Services. gua-resolver stores g+1 placements with a predecessor chain and pending state. The destination MAS creates the user at first login, under an upstream link whose subject is not the source MXID (S6). The source deactivates through `POST /account/deactivate`, never the admin API.
 - Data. ADM-008 fixes `PlacementRecord` v0x01 at generation 0x01, signed by the holding homeserver's roster key. The g+1 record above is a new version, superseding ADM-008's rule that the resolver rejects a record naming another homeserver.
-- Order. Plan Phases 3 and 4, then O9 and S6, then Phase 7, then tooling. Requirement 5 holds only after Phase 7 moves authentication to homeservers. H1 also waits on ADM-008 decisions 8 and 9, since routing must read a placement record.
+- Order. Migration plan phases 3 (account genesis) and 4 (placement records), then `ADOPT_ROOT` (O9) and the OIDC subject migration (S6), then phase 7 (authentication moves to homeservers), then tooling. Requirement 5 holds only after phase 7. H1 also waits on ADM-008 decisions 8 and 9, since routing must read a placement record.
 - Tests. The resolver rejects a g+1 record lacking the account-authority signature, naming a non-member, or with a wrong predecessor hash. Copy review closes R1 and R7; a reissue test closes R8. SP1 to SP3 run end to end.
 - Rollback. Before deactivation, a sequenced cancellation revokes the pending placement. Afterwards there is no protocol rollback, so deactivation follows confirmation and a cooling period, both sequenced inputs (L11).
 

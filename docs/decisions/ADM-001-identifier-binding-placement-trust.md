@@ -2,7 +2,7 @@
 >
 > **Frozen pending implementation evidence.** Locked decisions are not reopened by preference or speculative alternatives. They are reopened by a concrete counterexample, a changed threat model or requirement, standards or cryptographic evidence, spike or benchmark evidence, or implementation evidence. Open decisions and spikes proceed normally. Each closes in its own follow-up record.
 >
-> **How to use it.** Link to the decision by its label (`L7`, `O11`, `S1`) rather than restating its reasoning elsewhere. The plain-language explanation is the [architecture guide](../architecture/gua-identity-and-federation.md). Read that first if you are new to the design.
+> **How to use it.** Link to the decision by its label (`L7`, `O11`, `S1`) rather than restating its reasoning elsewhere; the [identifier index](IDENTIFIERS.md) lists every label. The plain-language explanation is the [architecture guide](../architecture/gua-identity-and-federation.md). Read that first if you are new to the design.
 >
 > **Reasoning record.** The three memos that produced this decision set are preserved in [rationale/](rationale/) with only punctuation normalized. They are not normative. They are kept so the reasoning can be audited.
 >
@@ -67,7 +67,7 @@ Exact serialization is **O2**. This rule is what makes a signature mean one thin
 
 First-party clients generate account authority at creation. B1, where the binding commits an intended initial homeserver, is a **bootstrap path with a defined end**. It is marked in state so an auditor can distinguish rooted from bootstrap accounts.
 
-**What account authority buys, and what it does not.** Account authority does *not* improve the generation-1 compromise condition. It buys rotation, pre-authorized recovery, migration authorization, and continuity when an identifier is recycled. Anyone building the transaction expecting a squat defence at creation will not find one.
+**What account authority guarantees, and what it does not.** Account authority does *not* improve the generation-1 compromise condition. It provides rotation, pre-authorized recovery, migration authorization, and continuity when an identifier is recycled. Anyone building the transaction expecting a squat defence at creation will not find one.
 
 ## L6. Generation-1 is a five-step transaction, and `HostingAcceptance` is not a gate
 
@@ -148,7 +148,7 @@ A witness co-signature is admissible only if that witness independently did all 
 
 **The design constraint locked with it:** every state-affecting input must be an **explicitly authenticated and sequenced input**. That includes authoritative time and any relevant request context. They are permitted, and they are permitted *as inputs in the log*. A replaying witness then sees exactly what the sequencer saw. Security-sensitive sequenced time must be monotonic and is checked against the defined time policy on replay. The sequencer records the time; it does not choose it arbitrarily.
 
-What is forbidden is narrower. It is the thing that actually breaks replay: **dependence on unsynchronized local observations**. A transition may not read the replaying node's own clock, its own environment, or anything else that differs between the sequencer and a witness. Time-based rules are fine when the time is a sequenced, authenticated input. They are not fine when each node consults its own clock.
+What is forbidden is narrower, and it is what breaks replay: **dependence on unsynchronized local observations**. A transition may not read the replaying node's own clock, its own environment, or anything else that differs between the sequencer and a witness. Time-based rules are fine when the time is a sequenced, authenticated input. They are not fine when each node consults its own clock.
 
 R2 stated this as "forbids wall-clock transitions and per-request-context state, forever". That was too strong. It would have foreclosed ordinary features such as expiry windows and delay periods, which this architecture already requires elsewhere.
 
