@@ -1,9 +1,13 @@
 package global.gua.resolver.verify;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import global.gua.resolver.account.authority.AccountAuthorityHeadException;
+import global.gua.resolver.account.authority.AccountAuthorityHeadProof;
+import global.gua.resolver.account.authority.AccountAuthorityHeadRejection;
 import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.placement.PlacementContext;
@@ -80,6 +84,36 @@ public final class ResolverVerifier {
     /** Verify the policy's authority threshold signature; throws if not. */
     public void verifyPolicy(RoutingPolicyBundle policy) {
         policyVerifier.requireVerified(policy);
+    }
+
+    /**
+     * Verify a published account authority chain head against what the account's own homeserver served
+     * (ADM-009 decision 12): the roster's k-of-n signature first, then the head object, its log leaf, its
+     * inclusion under the signed log root, and finally that the logged head is the one that was served.
+     *
+     * <p>This is the only verification step in this class that reads the transparency log. The roster and
+     * policy checks above verify signatures, and the placement reproduction re-runs a decision; a head is the
+     * first artefact whose evidence is "it was logged", so it is also the first that needs an inclusion proof.
+     *
+     * <p>It reaches two of the three properties decision 12 names. The head is published in the authenticated
+     * federation state, and a client can verify it. It does not make authority rest on more than one trust
+     * domain: the publishing key is the homeserver's own roster membership key, so what a passing check proves
+     * is that the homeserver committed publicly to this head, not that an independent party agreed with it.
+     * Witness co-signatures are ADM-005's.
+     *
+     * @throws global.gua.resolver.account.authority.AccountAuthorityHeadException with one reason, including
+     *         {@code roster_unverified} when the roster is below the threshold
+     */
+    public AccountAuthorityHeadCheck.Result verifyAccountAuthorityHead(
+            AccountAuthorityHeadCheck.Expected expected, AccountAuthorityHeadProof proof,
+            AccountAuthorityHeadCheck.Consistency consistency, SignedRoster roster, Instant now) {
+        try {
+            rosterVerifier.requireVerified(roster);
+        } catch (RosterVerifier.RosterVerificationException e) {
+            throw new AccountAuthorityHeadException(
+                    AccountAuthorityHeadRejection.ROSTER_UNVERIFIED, e.getMessage());
+        }
+        return AccountAuthorityHeadCheck.check(expected, proof, consistency, roster, now);
     }
 
     /**

@@ -9,6 +9,12 @@
 > - checkpoints carrying an authenticated **state root** with witness co-signatures (L11, L12); the log checkpoint below proves history, not current state;
 > - **non-membership proofs**, so "no account for this identifier" is an unsigned answer.
 >
+> One step of the target has since landed, behind a flag, and section 4 specifies it: a client can verify that
+> the account authority chain head its own homeserver served was published, signed by that homeserver and
+> anchored in the transparency log (ADM-009 decision 12). It proves the head was logged; it does not prove the
+> head is the latest one, and it adds no second trust domain, because the publishing key is the homeserver's own
+> roster membership key. Both limits are stated in that section rather than left to be inferred.
+>
 > Do not read this document as describing the target. When the target verification chain is specified, this file will be moved to `history/` and replaced.
 
 # Gua Resolver Client Verification Protocol
@@ -48,6 +54,10 @@ These are the only inputs the verifier trusts. Everything else is fetched and ve
   Served by the authority node only; a mirror does not relay them, so a client pointed at a mirror cannot
   run the log steps below today.
 - `GET /policy/log` -> the `POLICY_PUBLISH` history + checkpoint.
+- `GET /account/authority/heads/{accountId}` -> the published head envelope, and
+  `GET /account/authority/heads/{accountId}/proof` -> that envelope plus its log leaf, audit path and the
+  checkpoint the path was computed against. Both exist only where the deployment has turned on
+  `gua.resolver.account-authority.enabled`, and both are authority-node only.
 - `POST /resolve` with `trace: true` -> the decision plus the artifact coordinates it used
   (`rosterVersion`, `policyId`, `policyVersion`), only where the deployment has opted in with
   `gua.resolver.abuse.trace-enabled=true`. It is off by default because the trace names policy internals to
@@ -152,6 +162,61 @@ this). To verify a `/resolve` answer:
   commits the authority node to a directory state as a whole and carries no proof for an individual mapping
   (ADM-001 L11, O1).
 
+## 4. Verify a published account authority head (flag-gated)
+
+This step applies only to an account whose authority chain the client already reads from its own homeserver,
+and only where the resolver has `gua.resolver.account-authority.enabled` turned on. The reference
+implementation is `ResolverVerifier.verifyAccountAuthorityHead`, which delegates to
+`global.gua.resolver.verify.AccountAuthorityHeadCheck`; a platform verifier ports that file.
+
+**Inputs.** What the account's own homeserver served over its authenticated, own-account-only read
+(`accountId`, `headHash`, `headSeq`), the resolver's proof, a roster verified under section 1, and the newest
+checkpoint this client verified before.
+
+**The algorithm, in this order.**
+
+1. Decode the `record` field as unpadded base64url, re-encode it, and require the result to equal the input.
+   One head has one transport form.
+2. Decode the canonical bytes strictly: magic `GUAH`, version `0x01`, suite `0x01`, the 34 accountId bytes, a
+   32-byte non-zero `headHash`, an unsigned `headSeq` of at least 1, the length-prefixed publisher id, and the
+   three epoch-millisecond timestamps. Refuse every malformed case with its own reason; repair none.
+3. Find the publisher in the verified roster, require it to be `ACTIVE` at the time of reading, and verify the
+   detached Ed25519 signature over the exact received bytes under that entry's roster signing key.
+4. Check the window against the reader's clock with its skew, and refuse a head past `notAfter`. An expired
+   head is the staleness signal: it is how a client sees that its homeserver stopped publishing.
+5. Require the leaf to be an `ACCOUNT_AUTHORITY` leaf, its `publisherId` to equal the publisher in the signed
+   bytes, and its `payloadHash` to equal SHA-256 of those bytes.
+6. Recompute the leaf hash from the leaf's own fields, never from the served hash:
+   `leafHash = RFC6962-leaf(index|type|publisherId|payloadHash|recordedAtMillis)`, UTF-8, where the time is
+   epoch **milliseconds**. `GET /roster/log` serves `recordedAt` as ISO-8601, which is not what the preimage
+   hashes over.
+7. Verify the RFC 6962 audit path places that leaf hash in the tree the proof's checkpoint names.
+8. Require that checkpoint to be the one inside the verified roster's canonical bytes, or to be provably
+   extended by it with a consistency proof from `GET /roster/log/consistency`. The roster's `logCheckpoint` is
+   the only log root that carries a signature, and the log moves between two requests.
+9. Require the signed checkpoint to extend the newest checkpoint this client verified before, again with a
+   consistency proof. Store the new one.
+10. Only now compare the claim: the `accountId`, `headHash` and `headSeq` in the logged bytes must equal what
+    the homeserver served.
+
+**What passing this proves.** The head was published by the homeserver named in the signed bytes, under the key
+admission proved that member holds; those exact bytes are committed by that log leaf; and that leaf is in the
+tree whose root the authority signed. A homeserver that shows two devices two different heads for one account
+now has to produce two published, logged heads, and either device can show the contradiction to a third party.
+
+**What it does not prove.** Three things, none of which this phase can close:
+
+- **not the latest head.** The log commits history, not current state. There is no authenticated state root
+  (ADM-005 requirement 3) and no non-membership proof (ADM-005 requirement 9), so a withheld transition is
+  indistinguishable from one that never happened. Remembering the highest `headSeq` it has verified narrows a
+  client's exposure to a head it has never seen being hidden from it.
+- **no second trust domain.** The publishing key is the chain-storing homeserver's own roster membership key,
+  so the resolver adds a second service, key and store rather than an independent party. ADM-005 requirement 12
+  forbids claiming more before witnesses hold keys.
+- **no non-equivocation.** Nothing witnesses or co-signs the checkpoint, so two readers can be served two
+  self-consistent views (ADM-001 L12). Step 9 detects a rewrite only relative to a checkpoint this same client
+  held before.
+
 ### Verified vs self-asserted claims
 
 Institution/OIDC placement is granted only for affiliations/attributes that arrived inside a
@@ -168,6 +233,9 @@ institution/OIDC rules only when the context is marked claims-verified.
   big-endian lengths, `int64` big-endian integers, a presence byte for optionals, sets sorted by unsigned
   UTF-8 byte order. It is the encoding for every signed object added from ADM-007 onwards, and the vectors in
   `docs/specs/gua-lp-v1-vectors.json` pin it.
+- `gua-account-authority-head.v1` is its own fixed-layout encoding (magic `GUAH`), specified in section 4 and in
+  `AccountAuthorityHeadCodec`. It is not a placement record with different fields and it is not a chain record:
+  each object has its own magic, which is also its signature domain, so none can be replayed as another.
 - Only the routing-claims encoding escapes. `CanonicalRoster` joins fields with a raw `0x1F` that is asserted,
   not enforced, to be absent from values, and collapses null and empty. Port it byte for byte to verify what
   is served today; do not reuse it as the encoding for any new signed object (ADM-001 L4).
