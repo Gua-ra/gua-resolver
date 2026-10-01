@@ -14,7 +14,6 @@ final class CanonicalOrder {
 
     private CanonicalOrder() {}
 
-    /** Sorts by the unsigned UTF-8 byte order of the key and refuses a duplicate. */
     static <T> List<T> sortedUnique(Collection<T> values, Function<T, String> key, String what) {
         if (values == null) {
             throw new CanonicalEncoder.CanonicalEncodingException(what + " list must not be null");

@@ -15,7 +15,6 @@ import org.springframework.jdbc.datasource.init.ScriptUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** The H2 test schema is mirrored by hand from the Flyway migrations; this compares the resulting columns. */
 class SchemaParityTest {
 
     @Test

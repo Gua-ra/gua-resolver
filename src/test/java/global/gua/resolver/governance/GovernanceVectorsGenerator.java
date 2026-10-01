@@ -16,7 +16,7 @@ import global.gua.resolver.crypto.Rfc8032Keys;
 import global.gua.resolver.placement.ClaimPredicate;
 import global.gua.resolver.roster.RosterEntry;
 
-/** Regenerates docs/specs/gua-governance-v1-vectors.json, a published wire contract. */
+/** The output file is a published wire contract. */
 public final class GovernanceVectorsGenerator {
 
     private static final ObjectMapper JSON = GovernanceFixtures.mapper();
@@ -68,7 +68,6 @@ public final class GovernanceVectorsGenerator {
         vectors.add(genesisVector("one operator, one key, threshold 1: what a deployment ships", single,
                 Map.of("gov-1", TEST1)));
 
-        // Two keys, one operator: the threshold still counts one.
         FederationGenesis shared = new FederationGenesis(FederationGenesis.SCHEMA, "gua-vectors-shared",
                 Instant.parse("2026-09-01T00:00:00Z"), FederationGenesis.HASH_SUITE, 1,
                 List.of(new GovernanceKey("gov-1", GovernanceKey.ALG, TEST1.publicKeyB64(), "operator-a"),
@@ -80,7 +79,6 @@ public final class GovernanceVectorsGenerator {
         sharedVector.put("distinctOperators", 1);
         vectors.add(sharedVector);
 
-        // Keys given out of order: the canonical bytes sort them.
         FederationGenesis unordered = new FederationGenesis(FederationGenesis.SCHEMA, "gua-vectors-shared",
                 Instant.parse("2026-09-01T00:00:00Z"), FederationGenesis.HASH_SUITE, 1,
                 List.of(new GovernanceKey("gov-2", GovernanceKey.ALG, TEST2.publicKeyB64(), "operator-a"),
@@ -145,7 +143,6 @@ public final class GovernanceVectorsGenerator {
                         "3b1f1a1cf1f0b9f0a8e5f0d7c6b5a49382716059483726150493827160594837",
                         1, true, List.of())))));
 
-        // Unsorted members, one unattested, one suspended, and a claim exercising every field kind.
         vectors.add(contentVector(
                 "members out of order, an unattested member, and a claim with every field shape",
                 HomeserverRegistryContent.of(List.of(

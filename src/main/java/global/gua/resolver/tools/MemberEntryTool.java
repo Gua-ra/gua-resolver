@@ -31,7 +31,6 @@ import global.gua.resolver.roster.MemberEntryVerifier;
 import global.gua.resolver.roster.RosterEntry;
 import global.gua.resolver.roster.SignedRoster;
 
-/** Offline member-entry tool. Keys are read from a file or standard input; on a rotation, new key first. */
 public final class MemberEntryTool {
 
     private static final ObjectMapper JSON = new ObjectMapper().findAndRegisterModules()
@@ -52,7 +51,6 @@ public final class MemberEntryTool {
         System.exit(new MemberEntryTool(System.in, System.out, System.err).run(args));
     }
 
-    /** Returns 0 on success, 2 for a usage problem, 3 when signing or verification fails. */
     public int run(String[] args) {
         try {
             if (args.length == 0) {

@@ -1,6 +1,5 @@
 package global.gua.resolver.roster;
 
-/** Leaves carry payload hashes, not payloads. */
 public interface TransparencyLog {
 
     /** Payload: SHA-256 of the gua-member-entry.v1 canonical bytes. */

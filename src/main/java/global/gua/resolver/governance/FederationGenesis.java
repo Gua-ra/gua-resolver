@@ -42,7 +42,6 @@ public record FederationGenesis(
         if (createdAt == null || createdAt.getNano() % 1_000_000 != 0) {
             throw new GovernanceException("createdAt is required at millisecond precision");
         }
-        // Compared as a set because the canonical bytes encode a set; duplicates are still refused.
         if (registries.size() != Set.copyOf(registries).size()
                 || !Set.copyOf(registries).equals(Set.copyOf(Registry.allWireNames()))) {
             throw new GovernanceException("a v1 genesis enumerates exactly " + Registry.allWireNames()

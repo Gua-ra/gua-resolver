@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 
-/** RFC 6962 Merkle tree hashing: leaf = SHA256(0x00 || data), node = SHA256(0x01 || left || right). */
+/** RFC 6962 Merkle tree. */
 public final class MerkleTree {
 
     private static final byte[] LEAF_PREFIX = {0x00};

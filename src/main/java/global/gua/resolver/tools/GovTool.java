@@ -36,7 +36,6 @@ import global.gua.resolver.governance.RegistryEpoch;
 import global.gua.resolver.policy.CanonicalRoutingPolicy;
 import global.gua.resolver.policy.RoutingPolicyBundle;
 
-/** Offline governance signing tool. Keys are read from a file or standard input, never from an argument. */
 public final class GovTool {
 
     private static final ObjectMapper JSON = new ObjectMapper().findAndRegisterModules()
@@ -56,7 +55,6 @@ public final class GovTool {
         System.exit(new GovTool(System.in, System.out, System.err).run(args));
     }
 
-    /** Returns 0 on success, 2 for a usage problem, 3 when signing or verification fails. */
     public int run(String[] args) {
         try {
             if (args.length == 0) {
@@ -113,7 +111,6 @@ public final class GovTool {
         };
     }
 
-    /** The private key is written to a file, never printed. */
     private int keygen(Map<String, String> options) throws Exception {
         String operatorId = required(options, "--operator");
         String keyId = required(options, "--key-id");
@@ -187,7 +184,6 @@ public final class GovTool {
         }
     }
 
-    /** The content hash is recomputed from the content, not trusted from the response. */
     private int epochSign(Map<String, String> options) throws Exception {
         JsonNode pending = readJson(required(options, "--pending"));
         HomeserverRegistryContent content =

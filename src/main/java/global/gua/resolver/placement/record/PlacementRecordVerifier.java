@@ -66,7 +66,6 @@ public class PlacementRecordVerifier {
         return new Verified(record, envelope);
     }
 
-    /** Accepts only unpadded base64url that re-encodes to the input: one record, one transport spelling. */
     private static byte[] decodeCanonicalBase64Url(String value) {
         if (value.indexOf('=') >= 0) {
             throw new PlacementRecordException(PlacementRecordRejection.BAD_BASE64);

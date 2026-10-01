@@ -12,7 +12,6 @@ import java.util.Collection;
 import java.util.HexFormat;
 import java.util.List;
 
-/** The gua-lp.v1 length-prefixed canonical encoding: every object has exactly one byte representation. */
 public final class CanonicalEncoder {
 
     public static final String ENCODING = "gua-lp.v1";

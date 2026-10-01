@@ -15,7 +15,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.roster.MemberEntryJson;
 
-/** Fails startup when the genesis id or chain head differs from its pin. */
 @Component
 public class GenesisLoader {
 
@@ -181,7 +180,6 @@ public class GenesisLoader {
 
     private record Applied(GovernanceKeySet keys, String chainHead) {}
 
-    /** Each transition must be signed by both the outgoing and the incoming key set. */
     private static Applied applyTransitions(GovernanceKeySet genesisKeys, String genesisId,
                                             List<GovernanceTransition> transitions) {
         GovernanceKeySet current = genesisKeys;

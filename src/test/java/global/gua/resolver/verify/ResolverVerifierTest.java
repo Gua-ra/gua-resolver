@@ -96,7 +96,7 @@ class ResolverVerifierTest {
         verifier.verifyRoster(roster);
         verifier.verifyPolicy(policy);
 
-        var ctx = PlacementContext.forPhone("+5511987654321");   // matches +551198 -> carrier
+        var ctx = PlacementContext.forPhone("+5511987654321");
         assertThat(verifier.reproduceNewAccountPlacement(ctx, roster, policy).id()).isEqualTo("carrier");
         assertThat(verifier.verifyRegisterDecision("carrier", ctx, roster, policy)).isTrue();
         assertThat(verifier.verifyRegisterDecision("default", ctx, roster, policy)).isFalse();

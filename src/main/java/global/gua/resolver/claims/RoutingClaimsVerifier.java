@@ -44,7 +44,6 @@ public class RoutingClaimsVerifier {
         this.clock = clock;
         this.replayStore = replayStore;
 
-        // With governance required only the claims keys verify; otherwise policy, then authority keys too.
         boolean governanceRequired = props.getGovernance().isRequired();
         String keySource = "claims";
         List<ResolverProperties.TrustedKey> keys = props.getClaims().getTrustedKeys();
@@ -167,7 +166,6 @@ public class RoutingClaimsVerifier {
         if (!replayProtectionEnabled) {
             return;
         }
-        // Retain the nonce until expiresAt plus skew, the end of the acceptance window.
         Duration skew = maxClockSkew == null ? Duration.ZERO : maxClockSkew;
         Instant retainUntil = envelope.expiresAt().plus(skew);
         if (!replayStore.recordIfNew(envelope.issuer(), envelope.nonce(), retainUntil)) {

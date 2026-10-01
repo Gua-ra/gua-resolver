@@ -109,7 +109,6 @@ public class PlacementRecordService {
             throw new PlacementRecordException(PlacementRecordRejection.PLACEMENT_CONFLICT);
         }
         if (held.sameSignedBytesAs(incoming)) {
-            // The same bytes again: a retry, not a re-issue.
             return Outcome.UNCHANGED;
         }
         if (!incoming.issuedAt().isAfter(held.issuedAt())) {

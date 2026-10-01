@@ -111,7 +111,6 @@ class PlacementRecordsAreNotServedTest {
 
     @Test
     void theGuardDetectsAReferenceWhereThereIsOne() throws Exception {
-        // The store is the known positive, which proves the detector can fire.
         String store = new String(bytecodeOf(JdbcPlacementRecordStore.class), StandardCharsets.ISO_8859_1);
 
         assertThat(store).contains(RECORD_PACKAGE_MARKER);

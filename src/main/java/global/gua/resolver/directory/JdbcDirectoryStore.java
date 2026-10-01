@@ -60,7 +60,6 @@ public class JdbcDirectoryStore implements DirectoryStore {
         jdbc.update("DELETE FROM directory_entry WHERE phone_hash = ?", hasher.hashPhone(e164Phone));
     }
 
-    /** Sorted leaves {@code P|<phoneHash>|<hsId>} and {@code U|<username>|<hsId>}. */
     public DirectoryCheckpoint checkpoint() {
         List<String> leaves = new ArrayList<>();
         leaves.addAll(jdbc.query("SELECT phone_hash, homeserver_id FROM directory_entry",

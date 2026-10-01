@@ -44,7 +44,6 @@ resilience4j:
 
 gua:
   resolver:
-    # AUTHORITY or MIRROR.
     mode: ${GUA_RESOLVER_MODE:AUTHORITY}
     directory:
       # Must match identity-service. Required at runtime.
@@ -113,8 +112,7 @@ gua:
       # The genesis id, or the hash of the last applied transition. Update it at each key rotation.
       expected-chain-head: ${GUA_RESOLVER_GENESIS_EXPECTED_CHAIN_HEAD:}
 
-    # When true, membership changes need a governance-signed epoch and the policy and claims trust roots
-    # lose their fallbacks. Re-sign the policy bundle with the governance key first, or startup fails.
+    # Re-sign the policy bundle with the governance key before turning this on, or startup fails.
     governance:
       required: ${GUA_RESOLVER_GOVERNANCE_REQUIRED:false}
 

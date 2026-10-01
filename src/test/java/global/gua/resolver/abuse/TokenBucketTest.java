@@ -13,7 +13,6 @@ class TokenBucketTest {
 
     @Test
     void burstIsGrantedThenTheNextRequestWaitsForARefill() {
-        // 3 per minute, burst 3: one token every 20 seconds once the burst is spent.
         TokenBucket bucket = new TokenBucket(3, 3, Duration.ofMinutes(1), T0);
         assertThat(bucket.tryAcquire(T0)).isZero();
         assertThat(bucket.tryAcquire(T0)).isZero();

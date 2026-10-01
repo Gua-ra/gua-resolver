@@ -37,5 +37,4 @@ gua:
       base-url: https://matrix.gua.local
       mas-issuer: https://account.gua.local
       region: dev
-      # Matches the private key DirectoryFlowTest signs with.
       signing-key: MCowBQYDK2VwAyEAg+PkHYfc3kRJjw/Nssh+8NvEHkWK0m1n3FGqP5xVQ5o=

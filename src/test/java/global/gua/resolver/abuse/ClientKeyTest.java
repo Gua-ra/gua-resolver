@@ -5,7 +5,6 @@ import org.springframework.mock.web.MockHttpServletRequest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Addresses are from the RFC 5737 and RFC 3849 documentation ranges. */
 class ClientKeyTest {
 
     @Test

@@ -14,7 +14,6 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 
-/** Public keys are base64 X.509 SubjectPublicKeyInfo; private keys are base64 PKCS#8. */
 public final class Ed25519 {
 
     private static final String ALG = "Ed25519";
@@ -65,7 +64,6 @@ public final class Ed25519 {
         }
     }
 
-    /** Returns false on any malformed input. */
     public static boolean verify(PublicKey key, byte[] message, String signatureB64) {
         if (key == null || signatureB64 == null) {
             return false;

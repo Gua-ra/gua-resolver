@@ -50,7 +50,7 @@ public class RosterVerifier {
 
     private int countValidSignatures(SignedRoster roster) {
         byte[] canonical = CanonicalRoster.bytes(roster);
-        Set<String> counted = new HashSet<>();   // one vote per authority key
+        Set<String> counted = new HashSet<>();
         int valid = 0;
         for (SignedRoster.AuthoritySignature sig : roster.authoritySignatures()) {
             PublicKey key = trustedKeys.get(sig.authorityKeyId());

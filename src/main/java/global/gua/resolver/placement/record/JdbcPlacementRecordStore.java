@@ -58,7 +58,6 @@ public class JdbcPlacementRecordStore {
                 record.recordB64(), record.signatureB64(), utc(record.receivedAt()));
     }
 
-    /** The holder and issuedAt floor are in the WHERE clause; zero rows means a newer record exists. */
     public int replaceIfNewer(StoredPlacementRecord record) {
         return jdbc.update("""
                 UPDATE placement_record
@@ -99,7 +98,6 @@ public class JdbcPlacementRecordStore {
 
     public record OriginCount(String homeserverId, String origin, long count) {}
 
-    /** Sorted leaves {@code A|<accountId>|<homeserverId>|<origin>}; an unchanged mapping keeps the root. */
     public PlacementCheckpoint checkpoint() {
         List<String> leaves = new ArrayList<>(jdbc.query(
                 "SELECT account_id, homeserver_id, origin FROM placement_record",

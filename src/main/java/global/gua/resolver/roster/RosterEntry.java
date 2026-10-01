@@ -19,7 +19,7 @@ public record RosterEntry(
         Status status,
         @JsonInclude(JsonInclude.Include.NON_NULL) MemberAttestation member) {
 
-    /** PENDING is an admission awaiting a governance epoch; it is never part of the signed roster. */
+    /** PENDING is an admission awaiting a governance epoch. */
     public enum Status { ACTIVE, SUSPENDED, REVOKED, PENDING }
 
     public RosterEntry(Homeserver homeserver, List<ClaimPredicate> claims, Instant admittedAt, Status status) {

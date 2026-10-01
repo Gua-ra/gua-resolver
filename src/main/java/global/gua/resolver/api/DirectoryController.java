@@ -24,7 +24,6 @@ public class DirectoryController {
     @RateLimiter(name = "directoryLookup")
     public LookupResponse lookup(@RequestParam(required = false) String phoneHash,
                                  @RequestParam(required = false) String username) {
-        // The caller sends the already-computed hash, so the raw phone never crosses the wire.
         String hsId = (phoneHash != null && !phoneHash.isBlank())
                 ? directory.homeserverIdForPhoneHash(phoneHash).orElse(null)
                 : (username != null ? directory.homeserverIdForUsername(username).orElse(null) : null);

@@ -10,7 +10,6 @@ import global.gua.resolver.crypto.CanonicalEncoder;
 import global.gua.resolver.crypto.Ed25519;
 import global.gua.resolver.domain.Homeserver;
 
-/** Stateless: the caller passes the acceptance time and the last entry it accepted for the homeserver. */
 public final class MemberEntryVerifier {
 
     public static final Duration DEFAULT_MAX_LIFETIME = Duration.ofDays(400);
@@ -171,7 +170,6 @@ public final class MemberEntryVerifier {
         if (!keyChanged) {
             return null;
         }
-        // Rotation: the previous key must sign the same bytes, and the new key gets its own id.
         if (prior.keyId() != null && prior.keyId().equals(member.keyId())) {
             return "a rotated key needs a new keyId";
         }

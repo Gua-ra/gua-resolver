@@ -118,7 +118,6 @@ public class RoutingPolicyValidator {
             if (!withinZone(rule, zone)) {
                 throw invalid("rule " + rule.id() + " match is outside delegation zone " + zone.id());
             }
-            // For OIDC_CLAIM the match key includes the issuer and claim name, not only the value.
             String matchKey = rule.matchType() == RoutingPolicyRule.MatchType.OIDC_CLAIM
                     ? String.join(":", rule.matchType().name(), normalize(rule.oidcIssuer()),
                             normalize(rule.oidcClaim()), normalize(rule.matchValue()))

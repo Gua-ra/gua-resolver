@@ -1,7 +1,5 @@
 name: CI/CD
 
-# A PR labelled deploy:dev deploys that branch to dev. A merge to main deploys dev and stages prod
-# for approval.
 on:
   push:
     branches: ["main"]
@@ -53,7 +51,6 @@ jobs:
             echo "dev=false" >> "$GITHUB_OUTPUT"
           fi
 
-  # Origin repo only: the publish and deploy jobs skip in a fork.
   build:
     needs: test
     if: >-
@@ -81,7 +78,6 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE }}
-          # Deploys use the immutable sha tag; the dev tag tracks main.
           tags: |
             type=sha,format=long
             type=raw,value=dev,enable=${{ github.ref == 'refs/heads/main' }}
@@ -127,8 +123,7 @@ jobs:
               body: `Deployed to **dev** (ns \`gua\`): \`${{ needs.build.outputs.ref }}\`\n\nDev keeps running this build until something else is deployed over it. Merging to main returns dev to main's build.`
             })
 
-  # Waits for approval of the production environment, and for a runner labelled
-  # gua-resolver-incluster-prod; until one is registered the job queues.
+  # Queues until a runner labelled gua-resolver-incluster-prod is registered.
   deploy-prod:
     needs: build
     if: >-

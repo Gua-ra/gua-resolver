@@ -50,7 +50,6 @@ class DeployedPolicyTrustRootStartupTest {
         registry.add("gua.resolver.policy.file", file::toString);
         registry.add("gua.resolver.policy.require-signatures", () -> "true");
         registry.add("gua.resolver.policy.signature-threshold", () -> "1");
-        // policy.trusted-keys, genesis.file and governance.required are deliberately unset.
     }
 
     @Autowired MockMvc mockMvc;

@@ -29,7 +29,7 @@ public class RosterMetrics {
         try {
             return f.get().doubleValue();
         } catch (Exception e) {
-            return Double.NaN;   // surfaced as "no data" rather than a misleading 0
+            return Double.NaN;   // reported as no data
         }
     }
 }

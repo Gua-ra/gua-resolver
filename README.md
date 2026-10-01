@@ -45,15 +45,15 @@ Each key has a `GUA_RESOLVER_*` environment override, listed in `src/main/resour
 
 - `mode`: `AUTHORITY` or `MIRROR`.
 - `authority.threshold`, `authority.trusted-keys[]`, `authority.signing-key-id`, `authority.signing-private-key`: roster signing and verification.
-- `admin.username`, `admin.password-hash`: HTTP Basic for `/authority/**`. With no hash there are no admin users.
-- `directory.pepper`: must match identity-service. Also `directory.fail-open-on-lookup-error`, `directory.checkpoint-interval`.
+- `admin.username`, `admin.password-hash`: HTTP Basic for `/authority/**`.
+- `directory.pepper`, `directory.fail-open-on-lookup-error`, `directory.checkpoint-interval`: the phone and username directory.
 - `policy.enabled`, `policy.file`, `policy.require-signatures`, `policy.signature-threshold`, `policy.trusted-keys[]`, `policy.refresh-interval`: the routing policy bundle.
 - `claims.audience`, `claims.max-clock-skew`, `claims.max-lifetime`, `claims.replay-protection-enabled`, `claims.require-subject-binding`, `claims.trusted-keys[]`: signed routing-claims envelopes.
-- `genesis.file`, `genesis.transitions-file`, `genesis.expected-id`, `genesis.expected-chain-head`: the pinned federation genesis. A genesis id or chain head that differs from its pin fails startup. Unset means governance is off.
+- `genesis.file`, `genesis.transitions-file`, `genesis.expected-id`, `genesis.expected-chain-head`: the pinned federation genesis. A genesis id or chain head that differs from its pin fails startup.
 - `governance.required`: when on, an admission lands `PENDING`, membership changes only through a governance-signed epoch, policy bundles verify only under the genesis governance keys, and claims only under `claims.trusted-keys`. Follow the [governance keys runbook](docs/runbooks/governance-keys.md) before turning it on.
-- `roster.require-member-signature`, `roster.member-max-lifetime`: when the flag is on, an ACTIVE entry without a valid member signature is not served. Follow the [member attestation runbook](docs/runbooks/member-attestation.md) first.
+- `roster.require-member-signature`, `roster.member-max-lifetime`: member self-signature enforcement. Follow the [member attestation runbook](docs/runbooks/member-attestation.md) before turning it on.
 - `mirror.upstream-url`, `mirror.refresh-interval`, `mirror.cache-file`, `mirror.lookup-timeout`, `mirror.directory-cache-ttl`.
-- `abuse.enabled`, `abuse.client-limit-for-period`, `abuse.client-refresh-period`, `abuse.client-burst`, `abuse.global-limit-for-period`, `abuse.global-refresh-period`, `abuse.global-burst`, `abuse.max-tracked-clients`, `abuse.client-expiry`: the `/resolve` rate limits. Both buckets are per pod. `abuse.trace-enabled` lets `"trace": true` return the decision trace.
+- `abuse.enabled`, `abuse.client-limit-for-period`, `abuse.client-refresh-period`, `abuse.client-burst`, `abuse.global-limit-for-period`, `abuse.global-refresh-period`, `abuse.global-burst`, `abuse.max-tracked-clients`, `abuse.client-expiry`: the `/resolve` rate limits. `abuse.trace-enabled` lets `"trace": true` return the decision trace.
 - `placement.enabled`, `placement.ingest-enabled`, `placement.checkpoint-interval`, `placement.audit-interval`, `placement.metrics-interval`, `placement.max-validity`, `placement.default-page-size`, `placement.max-page-size`: placement record custody and ingest. Off by default.
 - `dev-homeserver.*`: the homeserver seeded into an empty roster.
 

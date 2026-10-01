@@ -38,7 +38,7 @@ class ResolveRateLimiterTest {
         ResolveRateLimiter.Decision refused = limiter.check("a");
         assertThat(refused.allowed()).isFalse();
         assertThat(refused.scope()).isEqualTo(ResolveRateLimiter.Scope.CLIENT);
-        assertThat(refused.retryAfterSeconds()).isEqualTo(3);          // 20 per minute = one every 3s
+        assertThat(refused.retryAfterSeconds()).isEqualTo(3);
         assertThat(refused.firstHitInWindow()).isTrue();
         assertThat(limiter.check("a").firstHitInWindow()).isFalse();
         assertThat(limited("client")).isEqualTo(2);

@@ -45,7 +45,6 @@ public class DefaultResolutionService implements ResolutionService {
         return placementEngine.decideWithTrace(context);
     }
 
-    /** Only resolve to homeservers that are currently ACTIVE in the verified roster. */
     private Optional<Homeserver> activeHomeserverById(String id) {
         return rosterStore.current().activeEntries().stream()
                 .map(global.gua.resolver.roster.RosterEntry::homeserver)

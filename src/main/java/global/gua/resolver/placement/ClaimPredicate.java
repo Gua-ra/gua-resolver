@@ -16,7 +16,6 @@ public record ClaimPredicate(
         String remoteClaimUrl,
         int priority) {
 
-    /** affiliation and attributeMatch match only when ctx.claimsVerified() is true. */
     public boolean matchesLocally(PlacementContext ctx) {
         if (country != null && !country.equalsIgnoreCase(ctx.country())) return false;
         if (mccmnc != null && !mccmnc.equals(ctx.mccmnc())) return false;

@@ -13,7 +13,6 @@ import com.fasterxml.jackson.databind.ObjectReader;
 import global.gua.resolver.domain.Homeserver;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-/** Strict parsing: unknown fields, duplicate keys and trailing content are refused in signed objects. */
 public final class MemberEntryJson {
 
     private MemberEntryJson() {}

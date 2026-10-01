@@ -10,7 +10,7 @@ import java.util.Arrays;
 /** Strict big-endian fixed-layout codec. Malformed input is refused, never repaired. */
 public final class PlacementRecordCodec {
 
-    /** ASCII "GUAP", also the signature domain separating a record from anything else a roster key signs. */
+    /** Also the signature domain: it separates a record from anything else a roster key signs. */
     public static final byte[] MAGIC = {'G', 'U', 'A', 'P'};
 
     public static final int VERSION = 0x01;

@@ -3,7 +3,6 @@
 FROM eclipse-temurin:21-jdk AS builder
 WORKDIR /workspace
 
-# Wrapper and build files first, for layer caching.
 COPY gradlew ./
 COPY gradle gradle
 COPY build.gradle settings.gradle ./

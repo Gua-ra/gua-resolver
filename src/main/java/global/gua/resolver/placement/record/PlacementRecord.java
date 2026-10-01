@@ -33,7 +33,6 @@ public record PlacementRecord(
             return code;
         }
 
-        /** Null when the byte names no origin. */
         public static Origin of(byte code) {
             for (Origin origin : values()) {
                 if (origin.code == code) {

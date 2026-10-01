@@ -38,7 +38,6 @@ class DirectoryFlowTest {
     void validlySignedDirectoryWriteIsRefusedAndWritesNothing() throws Exception {
         String phone = "+5511987654321";
         String username = "sec002-alice";
-        // The payload the removed POST /directory/entries accepted.
         String sig = sign("directory-write.v1|dev|" + phone + "|" + username);
         String body = """
                 {"homeserverId":"dev","e164Phone":"%s","username":"%s","signature":"%s"}

@@ -105,7 +105,6 @@ class MemberEntryToolTest {
         java.nio.file.Path fields = write(dir, "rotate.json", fields(next.publicKeyB64(), "hs1-2", 2,
                 ",\"previousKeyId\":\"hs1-1\",\"previousSigningKey\":\"" + previous.publicKeyB64() + "\""));
 
-        // Both keys on standard input: the new key first.
         Run run = run(next.privateKeyB64() + "\n" + previous.privateKeyB64() + "\n", "rotate",
                 "--fields", fields.toString(), "--private-key-file", "-",
                 "--previous-private-key-file", "-");

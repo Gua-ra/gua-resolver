@@ -29,7 +29,6 @@ public record RegistryMember(
         if (weight < 0) {
             throw new GovernanceException("weight must not be negative");
         }
-        // The roster stores weight as a 32-bit int; a wider signed value is refused, never narrowed.
         if (weight > Integer.MAX_VALUE) {
             throw new GovernanceException("weight " + weight + " exceeds the largest weight the roster can "
                     + "hold (" + Integer.MAX_VALUE + ")");
