@@ -44,8 +44,7 @@ public class RoutingClaimsVerifier {
         this.clock = clock;
         this.replayStore = replayStore;
 
-        // With governance required only claims issuer keys verify; otherwise policy keys, then authority
-        // keys.
+        // With governance required only the claims keys verify; otherwise policy, then authority keys too.
         boolean governanceRequired = props.getGovernance().isRequired();
         String keySource = "claims";
         List<ResolverProperties.TrustedKey> keys = props.getClaims().getTrustedKeys();

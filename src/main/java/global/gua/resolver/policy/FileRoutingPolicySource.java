@@ -19,7 +19,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.roster.RosterStore;
 
-/** Never serves a bundle outside its validity window and never accepts a lower version. */
+/** Never serves a bundle outside its validity window or accepts a version below the one it serves. */
 @Component
 @ConditionalOnProperty(name = "gua.resolver.policy.enabled", havingValue = "true")
 public class FileRoutingPolicySource implements RoutingPolicySource {

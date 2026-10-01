@@ -49,7 +49,7 @@ public class RosterSigner {
 
     private List<SignedRoster.AuthoritySignature> signatureFor(byte[] canonical) {
         if (!canSign()) {
-            // No signing key configured: the roster is unsigned and RosterVerifier rejects it.
+            // No signing key configured: the roster is unsigned, and RosterVerifier rejects it.
             return List.of();
         }
         return List.of(new SignedRoster.AuthoritySignature(keyId, Ed25519.sign(signingKey, canonical)));

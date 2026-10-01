@@ -145,8 +145,7 @@ public final class GovernanceVectorsGenerator {
                         "3b1f1a1cf1f0b9f0a8e5f0d7c6b5a49382716059483726150493827160594837",
                         1, true, List.of())))));
 
-        // Out-of-order members, an unattested and a suspended member, and a claim exercising every field
-        // kind.
+        // Unsorted members, one unattested, one suspended, and a claim exercising every field kind.
         vectors.add(contentVector(
                 "members out of order, an unattested member, and a claim with every field shape",
                 HomeserverRegistryContent.of(List.of(
