@@ -1,22 +1,12 @@
 server:
   port: 8095
-  # Pinned, not left to Boot's platform detection (which deduces native only when it detects Kubernetes),
-  # because the /resolve per-client key depends on it. The pod receives X-Forwarded-For as
-  # "<caller-supplied entries>, <client>, <internal hop>": the public edge appends the client address, then
-  # the in-cluster ingress appends the address it saw the connection come from, which is always internal.
-  # native installs Tomcat's RemoteIpValve, which walks that chain from the right, skips every address in
-  # the internal-proxies set (Boot's default: RFC 1918, 100.64/10, loopback, link-local and IPv6
-  # unique-local, which covers every hop in this chain), sets the remote address to the first other address
-  # (the client) and leaves only the caller-supplied leftovers in the header. The abuse controls key on the
-  # remote address and never read the header.
+  # Pinned: the /resolve client key depends on Tomcat's RemoteIpValve, which only this strategy installs.
   forward-headers-strategy: native
 
 spring:
   application:
     name: gua-resolver
   datasource:
-    # Persistent roster + transparency log + shared directory. Postgres in every real environment;
-    # all values are env-overridable per deployment.
     url: ${GUA_RESOLVER_DB_URL:jdbc:postgresql://localhost:5432/gua_resolver}
     username: ${GUA_RESOLVER_DB_USER:resolver}
     password: ${GUA_RESOLVER_DB_PASSWORD:resolver}
@@ -34,14 +24,12 @@ management:
         enabled: true
   metrics:
     tags:
-      application: gua-resolver   # so dashboards can filter Gua app metrics by service
+      application: gua-resolver
   prometheus:
     metrics:
       export:
         enabled: true
 
-# Rate-limit the directory lookup: the phone graph is queried, never bulk-exported. /resolve has its own
-# per-client + global limiter under gua.resolver.abuse below (ADM-001 L16).
 resilience4j:
   ratelimiter:
     instances:
@@ -49,8 +37,6 @@ resilience4j:
         limit-for-period: 50
         limit-refresh-period: 1s
         timeout-duration: 0s
-      # Placement records: a public, self-authenticating ingest plus its reconciliation reads. The limit is
-      # what bounds the work an unauthenticated caller can make this node do before a signature is checked.
       placementRecords:
         limit-for-period: 20
         limit-refresh-period: 1s
@@ -58,69 +44,43 @@ resilience4j:
 
 gua:
   resolver:
-    # AUTHORITY (builds, logs and signs the roster) or MIRROR (pulls + verifies an upstream node's roster).
-    # A process mode, not a governance role: running a resolver grants no authority (ADM-001 O12).
+    # AUTHORITY or MIRROR.
     mode: ${GUA_RESOLVER_MODE:AUTHORITY}
     directory:
-      # Shared HMAC pepper for the phone directory. MUST match identity-service. Required at runtime.
-      # Non-rotatable as built; scheduled for replacement (ADM-001 L15).
+      # Must match identity-service. Required at runtime.
       pepper: ${GUA_RESOLVER_DIRECTORY_PEPPER:}
       fail-open-on-lookup-error: ${GUA_RESOLVER_DIRECTORY_FAIL_OPEN_ON_LOOKUP_ERROR:false}
-      # How often the authority signs + logs a directory checkpoint (Merkle root over the mappings).
       checkpoint-interval: ${GUA_RESOLVER_DIRECTORY_CHECKPOINT_INTERVAL:PT5M}
     claims:
       audience: ${GUA_RESOLVER_CLAIMS_AUDIENCE:gua-resolver}
       max-clock-skew: ${GUA_RESOLVER_CLAIMS_MAX_CLOCK_SKEW:PT2M}
       max-lifetime: ${GUA_RESOLVER_CLAIMS_MAX_LIFETIME:PT5M}
       replay-protection-enabled: ${GUA_RESOLVER_CLAIMS_REPLAY_PROTECTION_ENABLED:true}
-      # Bind each envelope to the phone it was issued for, so a captured envelope cannot be replayed
-      # against a different number.
       require-subject-binding: ${GUA_RESOLVER_CLAIMS_REQUIRE_SUBJECT_BINDING:true}
       replay-cleanup-interval: ${GUA_RESOLVER_CLAIMS_REPLAY_CLEANUP_INTERVAL:PT10M}
       trusted-keys: []
-    # HTTP Basic admin auth for /authority/** (admission, status changes). Fails closed: with no password
-    # hash set there are no admin users and the endpoints stay denied. Set a BCrypt hash to enable admin.
+    # With no password hash there are no admin users and /authority/** stays denied.
     admin:
       username: ${GUA_RESOLVER_ADMIN_USER:admin}
       password-hash: ${GUA_RESOLVER_ADMIN_PASSWORD_HASH:}
-    # Interim abuse controls on POST /resolve (ADM-001 L16). Two token buckets: one per client key (the
-    # request's remote address after Tomcat's RemoteIpValve has resolved the forwarded chain, see
-    # server.forward-headers-strategy above; the X-Forwarded-For header itself is never read; IPv6 keyed by
-    # /64) and one global ceiling for the whole process. Both are per pod, so with the resolver autoscaled to
-    # 2 or 3 replicas the effective in-service per-client rate is replicas x client-limit-for-period per
-    # period. The per-source limit shared across replicas is the Traefik rateLimit middleware on the resolver
-    # ingress, defined in gua-deploy (k8s/services/login-ingress.sh) and applied by its deploy script; these
-    # buckets are the floor for a request that reaches a pod without passing the ingress. Over the limit: 429
-    # with Retry-After and a constant JSON body, before the request body is read. Everything here defaults on.
+    # Both buckets are per pod; the limit shared across replicas is enforced at the ingress.
     abuse:
-      # Rollback lever for the rate limits only; trace-enabled is independent of it.
       enabled: ${GUA_RESOLVER_ABUSE_ENABLED:true}
-      # Per client: client-limit-for-period tokens per client-refresh-period, at most client-burst in hand.
       client-limit-for-period: ${GUA_RESOLVER_ABUSE_CLIENT_LIMIT_FOR_PERIOD:20}
       client-refresh-period: ${GUA_RESOLVER_ABUSE_CLIENT_REFRESH_PERIOD:PT1M}
       client-burst: ${GUA_RESOLVER_ABUSE_CLIENT_BURST:20}
-      # Global ceiling for this process, same shape.
       global-limit-for-period: ${GUA_RESOLVER_ABUSE_GLOBAL_LIMIT_FOR_PERIOD:200}
       global-refresh-period: ${GUA_RESOLVER_ABUSE_GLOBAL_REFRESH_PERIOD:PT1S}
       global-burst: ${GUA_RESOLVER_ABUSE_GLOBAL_BURST:200}
-      # Bound on per-client state: at most this many client buckets in memory, each dropped after
-      # client-expiry without a request. An evicted client starts over with a full bucket; the global
-      # ceiling still bounds the total.
       max-tracked-clients: ${GUA_RESOLVER_ABUSE_MAX_TRACKED_CLIENTS:10000}
       client-expiry: ${GUA_RESOLVER_ABUSE_CLIENT_EXPIRY:PT5M}
-      # Whether "trace": true in a /resolve request returns the decision trace (matched rule, policy
-      # id/version, delegated zone, roster version). Off unless a deployment opts in: the trace exposes
-      # policy internals to anonymous callers. The dev testbed runbook relies on it, so the dev deployment
-      # has to set it to true.
+      # Returns policy internals to anonymous callers; off unless a deployment opts in.
       trace-enabled: ${GUA_RESOLVER_ABUSE_TRACE_ENABLED:false}
     policy:
       enabled: ${GUA_RESOLVER_POLICY_ENABLED:false}
       file: ${GUA_RESOLVER_POLICY_FILE:}
       require-signatures: ${GUA_RESOLVER_POLICY_REQUIRE_SIGNATURES:true}
       signature-threshold: ${GUA_RESOLVER_POLICY_SIGNATURE_THRESHOLD:1}
-      # Policy signing left this process in Phase 2: a bundle is signed offline by the governance key
-      # (ADM-001 L8), so a resolver normally configures no policy signing key at all and signs nothing.
-      # Which keys a bundle is VERIFIED under is chosen by gua.resolver.governance.required below, not here.
       signing-key-id: ${GUA_RESOLVER_POLICY_KEY_ID:}
       signing-private-key: ${GUA_RESOLVER_POLICY_PRIVATE_KEY:}
       refresh-interval: ${GUA_RESOLVER_POLICY_REFRESH_INTERVAL:PT1M}
@@ -129,8 +89,6 @@ gua:
       threshold: ${GUA_RESOLVER_AUTHORITY_THRESHOLD:1}
       signing-key-id: ${GUA_RESOLVER_AUTHORITY_KEY_ID:}
       signing-private-key: ${GUA_RESOLVER_AUTHORITY_PRIVATE_KEY:}
-      # The published authority key set (n). Today n=1. Adding entries raises the roster signing threshold;
-      # federation governance itself is rooted in a pinned genesis outside this list (ADM-001 L10, S5).
       trusted-keys:
         - id: ${GUA_RESOLVER_AUTHORITY_KEY_ID:}
           public-key: ${GUA_RESOLVER_AUTHORITY_PUBLIC_KEY:}
@@ -138,59 +96,32 @@ gua:
       upstream-url: ${GUA_RESOLVER_MIRROR_UPSTREAM_URL:}
       refresh-interval: ${GUA_RESOLVER_MIRROR_REFRESH_INTERVAL:PT5M}
       cache-file: ${GUA_RESOLVER_MIRROR_CACHE_FILE:}
-      # Hard cap on a single upstream directory lookup so a stalled authority cannot hang mirror threads.
       lookup-timeout: ${GUA_RESOLVER_MIRROR_LOOKUP_TIMEOUT:PT3S}
-      # How long a mirror may serve a previously-verified POSITIVE directory result during an authority
-      # outage (returning-user login stays up). Negatives are never served stale. Zero = strict fail-closed.
+      # How long a mirror may serve a cached positive lookup during an authority outage. Zero disables it.
       directory-cache-ttl: ${GUA_RESOLVER_MIRROR_DIRECTORY_CACHE_TTL:PT10M}
 
-    # Member self-signed roster entries (ADM-007). require-member-signature is a cutover: with it true an
-    # ACTIVE entry carrying no valid member self-signature is excluded from /roster, from placement and from
-    # existing-account resolution. Attest every ACTIVE member first (docs/runbooks/member-attestation.md);
-    # setting it back to false is the rollback and needs no code rollout.
+    # When true, an ACTIVE entry without a valid member self-signature is not served or routed to.
     roster:
       require-member-signature: ${GUA_RESOLVER_ROSTER_REQUIRE_MEMBER_SIGNATURE:false}
       member-max-lifetime: ${GUA_RESOLVER_ROSTER_MEMBER_MAX_LIFETIME:P400D}
 
-    # The pinned federation genesis and the governance keys under it (ADM-001 L10). The genesis file is
-    # public and committed; expected-id is the pin, so a swapped file fails startup rather than quietly
-    # changing the trust root. With no file configured, governance is off and nothing below applies.
+    # With no file configured, governance is off.
     genesis:
       file: ${GUA_RESOLVER_GENESIS_FILE:}
       transitions-file: ${GUA_RESOLVER_GENESIS_TRANSITIONS_FILE:}
       expected-id: ${GUA_RESOLVER_GENESIS_EXPECTED_ID:}
-      # How far the governance key chain has run: the genesis id until a key is rotated, then the hash of
-      # the last transition. Pinning it is what makes a truncated or removed transitions file a startup
-      # failure instead of a silent downgrade to a rotated-out key (ADM-001 O8). Update it at each rotation.
+      # The genesis id, or the hash of the last applied transition. Update it at each key rotation.
       expected-chain-head: ${GUA_RESOLVER_GENESIS_EXPECTED_CHAIN_HEAD:}
 
-    # governance.required is the whole cutover, and it moves three things at once so that none of them can
-    # move on a deploy instead of on an operator decision:
-    #   1. membership: an admission lands PENDING, a suspend or revoke records intent only, and only a
-    #      governance-signed membership epoch changes a served status;
-    #   2. the routing-policy trust root: the genesis governance key set alone, with no fallback to
-    #      policy.trusted-keys or authority.trusted-keys;
-    #   3. the routing-claims trust root: claims.trusted-keys alone, with no fallback to policy or authority.
-    # With it off, all three keep their pre-cutover behaviour exactly, including the fallback to the
-    # operational key set that a deployed policy bundle is signed with. Re-sign that bundle with the
-    # governance key BEFORE turning this on, or the policy source will refuse to load it and the service will
-    # not start. Setting it back to false is the rollback for all three (docs/runbooks/governance-keys.md).
+    # When true, membership changes need a governance-signed epoch and the policy and claims trust roots
+    # lose their fallbacks. Re-sign the policy bundle with the governance key first, or startup fails.
     governance:
       required: ${GUA_RESOLVER_GOVERNANCE_REQUIRED:false}
 
-    # Generation-1 placement records (migration plan Phase 4, ADM-008): which homeserver holds which account,
-    # signed by that homeserver's roster membership key. Shadow mode, so nothing is served from them: no
-    # routing answer reads this table and there is deliberately no flag that would make one. Both switches
-    # are off in every environment until an operator turns them on, and turning them back off is the
-    # rollback, with the table left in place.
+    # Shadow mode: no routing answer reads these records.
     placement:
-      # Custody: the store, the read endpoints, the checkpoint and the auditor. Off means no bean, no path.
       enabled: ${GUA_RESOLVER_PLACEMENT_ENABLED:false}
-      # Whether POST /placement/records accepts records. Separate, so reads can go live first.
       ingest-enabled: ${GUA_RESOLVER_PLACEMENT_INGEST_ENABLED:false}
-      # One checkpoint leaf per interval, and only when the Merkle root over the records actually changed.
-      # Never one leaf per record: the roster version is the log size and new-account fallback placement
-      # seeds on it, so every leaf moves placement decisions (ADM-001 L6).
       checkpoint-interval: ${GUA_RESOLVER_PLACEMENT_CHECKPOINT_INTERVAL:PT1H}
       audit-interval: ${GUA_RESOLVER_PLACEMENT_AUDIT_INTERVAL:PT5M}
       metrics-interval: ${GUA_RESOLVER_PLACEMENT_METRICS_INTERVAL:PT1M}

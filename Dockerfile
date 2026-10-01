@@ -1,29 +1,22 @@
 # syntax=docker/dockerfile:1.6
 
-##############################
-# Build stage
-##############################
 FROM eclipse-temurin:21-jdk AS builder
 WORKDIR /workspace
 
-# Copy Gradle wrapper and build files first for better layer caching
+# Wrapper and build files first, for layer caching.
 COPY gradlew ./
 COPY gradle gradle
 COPY build.gradle settings.gradle ./
 RUN chmod +x gradlew
 
-# Warm up dependency cache (ignore failure if the task isn't available)
+# Warm the dependency cache.
 RUN ./gradlew --no-daemon help >/dev/null 2>&1 || true
 
-# Copy source
 COPY src src
 
-# Build the fat jar (tests run in CI)
+# Tests run in CI.
 RUN ./gradlew --no-daemon bootJar -x test
 
-##############################
-# Runtime stage
-##############################
 FROM eclipse-temurin:21-jre
 LABEL org.opencontainers.image.source="https://github.com/Gua-ra/gua-resolver"
 WORKDIR /app
