@@ -51,7 +51,7 @@ These are the only inputs the verifier trusts. Everything else is fetched and ve
 - `POST /resolve` with `trace: true` -> the decision plus the artifact coordinates it used
   (`rosterVersion`, `policyId`, `policyVersion`), only where the deployment has opted in with
   `gua.resolver.abuse.trace-enabled=true`. It is off by default because the trace names policy internals to
-  anonymous callers (README, "Interim abuse controls"); with it off the response carries no `trace` field
+  anonymous callers (`gua.resolver.abuse.trace-enabled`); with it off the response carries no `trace` field
   and is otherwise unchanged. Without the trace, the verifier takes the coordinates from the artifacts it
   fetched and verified itself (the roster's `version`, the bundle's `policyId` and `version`) and
   reproduces the decision in section 3 against those. They can be newer than the ones the resolver decided

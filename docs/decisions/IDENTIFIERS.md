@@ -1,18 +1,18 @@
 # Decision record identifiers
 
-Every short label used in this repository's comments, docs and runbooks, with where it is defined. Labels are stable: they are never renumbered, and a label is cited after the rule it names ("thresholds count operators, never keys (ADM-001 L8)"). This page defines; the records decide.
+Every short label used in this repository's docs and runbooks, with where it is defined. Code comments and configuration state the rule in plain words; a few log and error messages still cite a label. Labels are stable: they are never renumbered, and a label is cited after the rule it names ("thresholds count operators, never keys (ADM-001 L8)"). This page defines; the records decide.
 
 ## Records
 
-- [ADM-001](ADM-001-identifier-binding-placement-trust.md): the frozen decision set: identifier binding, account placement, resolver trust, federation governance. Normative.
-- [ADM-002](ADM-002-account-recovery.md): account recovery and login-factor reset. Proposed.
-- [ADM-003](ADM-003-private-identifier-lookup.md): a private routing key that keeps identifiers out of replicated state. Proposed.
-- [ADM-004](ADM-004-passkey-discovery-and-relying-party.md): passkey discovery and the relying-party architecture. Proposed.
-- [ADM-005](ADM-005-federation-state-replication-witnesses-ordering.md): replication, witnesses, checkpoints and ordering. Proposed.
-- [ADM-006](ADM-006-matrix-portability.md): what moving a Matrix account can and cannot mean. Proposed.
-- [ADM-007](ADM-007-canonical-encoding-and-member-entries.md): the `gua-lp.v1` encoding, self-signed member entries and the phase 2 governance objects. Accepted.
-- [ADM-008](ADM-008-account-genesis-and-placement-records.md): account genesis, bootstrap identity and placement record formats. Accepted for implementation.
-- R1 and R2: the two review rounds that produced ADM-001, preserved as [rationale/ADM-001-R1-corrections.md](rationale/ADM-001-R1-corrections.md) and [rationale/ADM-001-R2-foundations.md](rationale/ADM-001-R2-foundations.md), after the [base memo](rationale/ADM-001-base.md). Reasoning record only, not normative. The D1 to D8 numbering inside the base memo is the memo's own and is not the D list of any record below.
+- The frozen decision set: identifier binding, account placement, resolver trust, federation governance ([ADM-001](ADM-001-identifier-binding-placement-trust.md)). Normative.
+- Account recovery and login-factor reset ([ADM-002](ADM-002-account-recovery.md)). Proposed.
+- A private routing key that keeps identifiers out of replicated state ([ADM-003](ADM-003-private-identifier-lookup.md)). Proposed.
+- Passkey discovery and the relying-party architecture ([ADM-004](ADM-004-passkey-discovery-and-relying-party.md)). Proposed.
+- Replication, witnesses, checkpoints and ordering ([ADM-005](ADM-005-federation-state-replication-witnesses-ordering.md)). Proposed.
+- What moving a Matrix account can and cannot mean ([ADM-006](ADM-006-matrix-portability.md)). Proposed.
+- The `gua-lp.v1` encoding, self-signed member entries and the phase 2 governance objects ([ADM-007](ADM-007-canonical-encoding-and-member-entries.md)). Accepted.
+- Account genesis, bootstrap identity and placement record formats ([ADM-008](ADM-008-account-genesis-and-placement-records.md)). Accepted for implementation.
+- The two review rounds that produced ADM-001 (R1 and R2), preserved as [rationale/ADM-001-R1-corrections.md](rationale/ADM-001-R1-corrections.md) and [rationale/ADM-001-R2-foundations.md](rationale/ADM-001-R2-foundations.md), after the [base memo](rationale/ADM-001-base.md). Reasoning record only, not normative. The D1 to D8 numbering inside the base memo is the memo's own and is not the D list of any record below.
 
 ## ADM-001 labels
 
@@ -73,7 +73,7 @@ Each record numbers its own decisions and questions. A bare `D1` or `Q1` is only
 - ADM-005: two lists share the letter D. Under "Options considered", D1 and D2 are the two tree options (sparse Merkle, sorted-neighbour indexed Merkle); decisions 1 to 13 follow, and decision 13 narrows O1 to tree option D1. Under "Blockers for production", D1 to D8 are open questions, unrelated to the tree options.
 - ADM-006: H0 is decided (option A, no per-account move); H1 is narrowed and not built (option B). Q1 to Q7 are the production blockers.
 - ADM-007: items 1 to 6 are the encoding and member-entry decisions; items 7 to 13 are the phase 2 governance objects (7 the four `gua-lp.v1` objects, 8 thresholds count operators, 9 governance admits and does not redefine, 10 registry scope, 11 key custody, 12 the `gua.resolver.governance.required` flag, 13 the chain-head pin).
-- ADM-008: decisions 1 to 10 (1 canonical bytes, 2 accountId, 3 entropy and proof, 4 recovery framework, 5 authority key, 6 attach handle, 7 placement records, 8 accounts without evidence, 9 shadow mode, 10 order and subject), then the shadow-mode exit criteria 1 to 6. "Decision N" in code without a record name means ADM-008 decision N.
+- ADM-008: decisions 1 to 10 (1 canonical bytes, 2 accountId, 3 entropy and proof, 4 recovery framework, 5 authority key, 6 attach handle, 7 placement records, 8 accounts without evidence, 9 shadow mode, 10 order and subject), then the shadow-mode exit criteria 1 to 6.
 
 ## Migration plan phases
 
@@ -88,11 +88,10 @@ Each record numbers its own decisions and questions. A bare `D1` or `Q1` is only
 - Phase 8: [blinded routing keys](../migrations/gua-resolver-migration-plan.md#phase-8-blinded-routing-keys)
 - Phase 9: [independent witnesses](../migrations/gua-resolver-migration-plan.md#phase-9-independent-witnesses)
 
-"Phase N" in code and runbooks means these phases. The [July 2026 plan](../migrations/history/gua-resolver-migration-plan-2026-07.md) used a different numbering and is superseded.
+"Phase N" in the docs and runbooks means these phases. The [July 2026 plan](../migrations/history/gua-resolver-migration-plan-2026-07.md) used a different numbering and is superseded.
 
-## Labels local to the code
+## Names fixed on the wire
 
-- Admission gates 1 to 3 (`admission/AdmissionService.java`): key possession, domain ownership, uniqueness and claim non-overlap.
 - `MEMBER_ATTEST`, `MEMBERSHIP_EPOCH`, `STATUS_INTENT`, `PLACEMENT_CHECKPOINT`: transparency-log leaf types, defined in `roster/TransparencyLog.java` and fixed on the wire.
 - Framework `0x01`, `0x02`: recovery framework ids (ADM-008 decision 4, ADM-002 D1). Suite `0x00`, `0x01`: genesis suites (ADM-008 decision 1).
 
