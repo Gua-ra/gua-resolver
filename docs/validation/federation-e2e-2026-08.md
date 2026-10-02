@@ -6,7 +6,7 @@
 
 # Federation e2e validation (dev, 2026-08)
 
-End-to-end validation of the decentralized routing from PR #4 (`codex/decentralized-resolver-policy`) on a live two-homeserver dev
+End-to-end validation of the decentralized routing from PR #4 on a live two-homeserver dev
 federation testbed: the primary dev homeserver (hs1) plus a temporary second full
 Synapse + MAS stack (hs2), both admitted to the signed roster.
 
