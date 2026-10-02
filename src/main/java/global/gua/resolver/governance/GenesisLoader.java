@@ -15,6 +15,23 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.roster.MemberEntryJson;
 
+/**
+ * Loads the pinned federation genesis at startup, applies the governance key transitions, and exposes the
+ * key set in force.
+ *
+ * <p>Four things are startup failures rather than runtime degradations:
+ * <ul>
+ *   <li>a genesis whose id is not the configured {@code expected-id}, so whoever controls the mount cannot
+ *       swap the file for another valid genesis: the pin, not the file, is the trust anchor;</li>
+ *   <li>a genesis whose own keys do not meet its own threshold;</li>
+ *   <li>a chain whose head is not the configured {@code expected-chain-head}, which stops a truncated or
+ *       removed transitions file from reinstating a governance key that was rotated out;</li>
+ *   <li>{@code gua.resolver.governance.required=true} with no genesis configured.</li>
+ * </ul>
+ *
+ * <p>With no genesis configured, governance features are off, membership changes take effect directly, and
+ * a WARN says so. That is the default.
+ */
 @Component
 public class GenesisLoader {
 
@@ -99,10 +116,17 @@ public class GenesisLoader {
         return keySet == null ? null : keySet.genesisId();
     }
 
+    /**
+     * How far the governance key chain has run: the genesis id while no transition has been applied, and the
+     * hash of the last applied transition after that. It is the value an operator pins as
+     * {@code gua.resolver.genesis.expected-chain-head} once a key has been rotated, and the value a reader
+     * compares to see that a resolver is not running on a shortened chain.
+     */
     public String chainHead() {
         return chainHead;
     }
 
+    /** The key set, or a refusal naming what is missing. Callers that need governance use this. */
     public GovernanceKeySet requireKeySet() {
         if (keySet == null) {
             throw new GovernanceException("no federation genesis is configured on this resolver, so there "
@@ -130,7 +154,12 @@ public class GenesisLoader {
         }
     }
 
-    /** A prefix of a valid chain is valid, so only the pinned head detects a truncated file. */
+    /**
+     * The chain-head pin. {@code expected-id} pins the root and nothing else, so without this check a resolver
+     * whose transitions file is truncated or removed would start on the genesis key set and put a rotated-out
+     * governance key back in force. The in-chain checks cannot catch that: a prefix of a valid chain is itself
+     * a valid chain.
+     */
     private static void requireExpectedChainHead(String expected, String actual, int applied) {
         if (expected == null || expected.isBlank()) {
             if (applied > 0) {
@@ -178,8 +207,18 @@ public class GenesisLoader {
         return List.copyOf(parsed);
     }
 
+    /** The key set a chain leaves in force, and the hash that says how far the chain ran. */
     private record Applied(GovernanceKeySet keys, String chainHead) {}
 
+    /**
+     * Apply each transition in order. Every step is checked against the set it replaces and the set it
+     * installs: the old set authorises the change, and the new set proves the incoming keys are held, so
+     * governance cannot be handed to a key that cannot sign.
+     *
+     * <p>These checks make a chain impossible to reorder or to splice on to, and none of them makes it
+     * impossible to shorten, because a prefix of a valid chain is a valid chain.
+     * {@link #requireExpectedChainHead} is what covers that.
+     */
     private static Applied applyTransitions(GovernanceKeySet genesisKeys, String genesisId,
                                             List<GovernanceTransition> transitions) {
         GovernanceKeySet current = genesisKeys;

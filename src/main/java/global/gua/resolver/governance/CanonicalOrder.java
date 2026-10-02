@@ -10,10 +10,17 @@ import java.util.function.Function;
 
 import global.gua.resolver.crypto.CanonicalEncoder;
 
+/**
+ * The ordering rule the {@code gua-lp.v1} set encoding uses, applied to lists whose elements are records
+ * rather than bare strings: sort by one field's unsigned UTF-8 byte order and refuse a duplicate. Sorting
+ * makes the bytes independent of the order a list arrived in; refusing duplicates keeps one operator's key
+ * or one homeserver from appearing twice and being counted twice.
+ */
 final class CanonicalOrder {
 
     private CanonicalOrder() {}
 
+    /** {@code values} sorted by {@code key}, with a duplicate key refused as an encoding error. */
     static <T> List<T> sortedUnique(Collection<T> values, Function<T, String> key, String what) {
         if (values == null) {
             throw new CanonicalEncoder.CanonicalEncodingException(what + " list must not be null");

@@ -17,6 +17,11 @@ import global.gua.resolver.roster.SignedRoster;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
+/**
+ * An ACTIVE roster entry whose signing key does not decode gets its own refusal reason. Admission normally
+ * keeps such an entry out, so the verifier is tested directly with a roster that holds exactly the broken
+ * entry.
+ */
 class PlacementRecordVerifierKeyTest {
 
     @Test
@@ -31,6 +36,7 @@ class PlacementRecordVerifierKeyTest {
         PlacementRecordException refused = catchThrowableOfType(
                 () -> verifier.verify(envelope, Instant.now()), PlacementRecordException.class);
 
+        // Its own reason, not a bad_signature: an unusable key is this node's defect to fix, not the caller's.
         assertThat(refused).isNotNull();
         assertThat(refused.rejection()).isEqualTo(PlacementRecordRejection.SIGNER_KEY_UNUSABLE);
         assertThat(refused.reason()).isEqualTo("signer_key_unusable");

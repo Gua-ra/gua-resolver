@@ -19,7 +19,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.roster.RosterStore;
 
-/** Never serves a bundle outside its validity window or accepts a version below the one it serves. */
+/**
+ * File-backed policy source. On refresh failure it keeps serving the last verified bundle, if any, but never
+ * serves a bundle that is outside its own signed validity window (an expired or not-yet-active policy
+ * degrades to no policy, so placement falls back deterministically rather than applying stale data), and
+ * never accepts a lower version than the one already loaded (rollback protection).
+ */
 @Component
 @ConditionalOnProperty(name = "gua.resolver.policy.enabled", havingValue = "true")
 public class FileRoutingPolicySource implements RoutingPolicySource {
@@ -95,7 +100,10 @@ public class FileRoutingPolicySource implements RoutingPolicySource {
             RoutingPolicyBundle loaded = json.readValue(Files.readString(file), RoutingPolicyBundle.class);
             validator.validate(loaded, rosterStore.current());
             verifier.requireVerified(loaded);
-            // An expired bundle no longer floors the version, so a lower in-window one can be adopted.
+            // Rollback protection is only meaningful against a policy we are actually still serving. If the
+            // current bundle has expired, it no longer floors the version, so an operator can recover by
+            // re-adopting a signed, in-window lower or equal version instead of being deadlocked until a
+            // brand-new higher version is minted.
             RoutingPolicyBundle existing = current;
             if (existing != null && withinValidityWindow(existing) && loaded.version() < existing.version()) {
                 throw new IllegalStateException("routing policy rollback rejected: loaded v" + loaded.version()

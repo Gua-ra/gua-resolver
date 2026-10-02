@@ -20,7 +20,17 @@ import org.springframework.stereotype.Component;
 
 import global.gua.resolver.crypto.MerkleTree;
 
-/** accountId is the primary key, so a second homeserver's claim collides on insert. */
+/**
+ * Custody of {@code placement_record}, held on the authority node only.
+ *
+ * <p>The accountId is the primary key, so one accountId has one home by construction rather than by
+ * convention: a second homeserver's claim collides on insert instead of overwriting. The received bytes and
+ * signature are stored as text and never rewritten.
+ *
+ * <p>Timestamps are stored as UTC {@link LocalDateTime} rather than through the JVM's default zone, because
+ * these are signed values: a zone change or a daylight-saving fold must not be able to move a stored window
+ * away from the one the signature covers.
+ */
 @Component
 @ConditionalOnExpression(PlacementFeature.ENABLED)
 public class JdbcPlacementRecordStore {
@@ -51,6 +61,7 @@ public class JdbcPlacementRecordStore {
                 mapper, accountId).stream().findFirst();
     }
 
+    /** Insert a record for an accountId that has no home yet; collides rather than overwrites. */
     public void insert(StoredPlacementRecord record) {
         jdbc.update("INSERT INTO placement_record (" + COLUMNS + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 record.accountId(), record.homeserverId(), record.generation(), record.origin().name(),
@@ -58,6 +69,12 @@ public class JdbcPlacementRecordStore {
                 record.recordB64(), record.signatureB64(), utc(record.receivedAt()));
     }
 
+    /**
+     * Replace a record the same homeserver re-issued, and only when the new one is strictly newer. The
+     * homeserver id and the issuedAt floor are in the WHERE clause, so a concurrent write can never move a
+     * record to another homeserver or backwards in time; zero rows updated means someone else already wrote
+     * a newer one.
+     */
     public int replaceIfNewer(StoredPlacementRecord record) {
         return jdbc.update("""
                 UPDATE placement_record
@@ -71,6 +88,7 @@ public class JdbcPlacementRecordStore {
                 record.accountId(), record.homeserverId(), utc(record.issuedAt()));
     }
 
+    /** One page of a homeserver's records, ordered by accountId, for reconciliation. */
     public List<StoredPlacementRecord> listByHomeserver(String homeserverId, String afterAccountId,
                                                         int limit) {
         return jdbc.query("SELECT " + COLUMNS + " FROM placement_record "
@@ -78,6 +96,7 @@ public class JdbcPlacementRecordStore {
                 mapper, homeserverId, afterAccountId == null ? "" : afterAccountId, limit);
     }
 
+    /** One page of every record, ordered by accountId, for the auditor's sweep. */
     public List<StoredPlacementRecord> page(String afterAccountId, int limit) {
         return jdbc.query("SELECT " + COLUMNS + " FROM placement_record "
                         + "WHERE account_id > ? ORDER BY account_id LIMIT ?",
@@ -89,6 +108,7 @@ public class JdbcPlacementRecordStore {
         return n == null ? 0L : n;
     }
 
+    /** How many records each homeserver holds, split by origin, for the gauge. */
     public List<OriginCount> counts() {
         return jdbc.query("SELECT homeserver_id, origin, COUNT(*) AS n FROM placement_record "
                         + "GROUP BY homeserver_id, origin",
@@ -98,6 +118,16 @@ public class JdbcPlacementRecordStore {
 
     public record OriginCount(String homeserverId, String origin, long count) {}
 
+    /**
+     * A deterministic Merkle checkpoint over the current records: sorted leaves of
+     * {@code A|<accountId>|<homeserverId>|<origin>}. The accountId is fixed length and the origin is a fixed
+     * token, and the codec refuses the delimiter inside a homeserver id, so one leaf string has one reading.
+     * The root depends only on the records, never on the time.
+     *
+     * <p>The leaf commits to the placement mapping, not the bytes that asserted it: a re-issue that keeps the
+     * same accountId, homeserver and origin moves no leaf, and two different signed envelopes for the same
+     * placement are indistinguishable in the log.
+     */
     public PlacementCheckpoint checkpoint() {
         List<String> leaves = new ArrayList<>(jdbc.query(
                 "SELECT account_id, homeserver_id, origin FROM placement_record",

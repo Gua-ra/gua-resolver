@@ -18,6 +18,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * The abuse controls end to end through the servlet stack, with prod-style trace configuration and a small
+ * per-client budget. Client addresses are RFC 5737 documentation addresses. Runs in its own context and
+ * dirties it so the bucket state never leaks into the other MockMvc tests.
+ */
 @SpringBootTest(properties = {
         "gua.resolver.abuse.client-limit-for-period=3",
         "gua.resolver.abuse.client-burst=3",
@@ -71,15 +76,18 @@ class ResolveAbuseControlsTest {
         assertThat(refused.getResponse().getContentAsString()).doesNotContain(PHONE);
         assertThat(Long.parseLong(refused.getResponse().getHeader("Retry-After"))).isGreaterThanOrEqualTo(1);
 
+        // A refused request reveals nothing about any phone: the body is the same constant for a different one.
         MvcResult refusedOther = mockMvc.perform(resolve(client, bodyFor("+14155550100")))
                 .andExpect(status().isTooManyRequests()).andReturn();
         assertThat(refusedOther.getResponse().getContentAsString())
                 .isEqualTo(refused.getResponse().getContentAsString());
 
+        // Another client still gets served: the bucket is per client, not per pod.
         mockMvc.perform(resolve("203.0.113.11", bodyFor(PHONE)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.exists").value(false));
 
+        // The filter is registered for /resolve only: the exhausted client can still read the roster.
         mockMvc.perform(get("/roster").with(from(client)))
                 .andExpect(status().isOk());
     }

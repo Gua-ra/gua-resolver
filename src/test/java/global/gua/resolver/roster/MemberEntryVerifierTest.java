@@ -106,6 +106,7 @@ class MemberEntryVerifierTest {
         for (Homeserver t : tampered) {
             assertThat(verifier.verify(t, m, AT).valid()).as("tampered %s", t).isFalse();
         }
+        // weight and acceptsNew are authority attributes, deliberately not member-signed.
         Homeserver reweighted = new Homeserver(h.id(), h.serverName(), h.baseUrl(), h.masIssuer(), h.region(),
                 0, false, h.signingKey(), h.searchVisibility(), h.searchGroups());
         assertThat(verifier.verify(reweighted, m, AT).valid()).isTrue();
@@ -181,8 +182,10 @@ class MemberEntryVerifierTest {
 
         assertThat(verifier.verify(rotated, onlyNew, AT, prior).reason())
                 .contains("not signed by the previous key");
+        // Without prior state the same entry is self-consistent: continuity needs history.
         assertThat(verifier.verify(rotated, onlyNew, AT).valid()).isTrue();
 
+        // A signature labelled k1 but made by some other key does not stand in for the previous key.
         MemberAttestation forged = signed(rotated, onlyNew, Ed25519.generate(), "k1");
         assertThat(verifier.verify(rotated, forged, AT, prior).valid()).isFalse();
     }

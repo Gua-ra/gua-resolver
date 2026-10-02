@@ -76,6 +76,7 @@ class MirrorRosterStoreTest {
         assertThat(store.unattestedActiveCount()).isEqualTo(1);
     }
 
+    /** Build a mirror over a cached roster and report which entries it will route to. */
     private List<String> routableIds(RosterEntry[] entries, boolean requireMemberSignature) throws Exception {
         Ed25519.KeyPairB64 authority = Ed25519.generate();
         ResolverProperties props = props(authority,
@@ -125,6 +126,7 @@ class MirrorRosterStoreTest {
         return new RosterEntry(hs, List.of(), Instant.now(), RosterEntry.Status.ACTIVE);
     }
 
+    /** An entry carrying a valid member self-signature over its own fields. */
     private static RosterEntry attested(String id) {
         Homeserver hs = new Homeserver(id, id + ".gua.global", "https://" + id, "https://" + id + "/auth",
                 "BR", 1, true, MEMBER_KEY.publicKeyB64(), Homeserver.SearchVisibility.GLOBAL, List.of());
@@ -135,6 +137,7 @@ class MirrorRosterStoreTest {
         return new RosterEntry(hs, List.of(), Instant.now(), RosterEntry.Status.ACTIVE, member);
     }
 
+    /** The same entry with its baseUrl rewritten after the member signed it. */
     private static RosterEntry substitutedBaseUrl(RosterEntry original) {
         Homeserver h = original.homeserver();
         Homeserver moved = new Homeserver(h.id(), h.serverName(), "https://attacker.gua.global",

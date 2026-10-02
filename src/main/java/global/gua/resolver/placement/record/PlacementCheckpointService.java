@@ -18,7 +18,14 @@ import global.gua.resolver.crypto.Ed25519;
 import global.gua.resolver.roster.JdbcTransparencyLog;
 import global.gua.resolver.roster.SignedRoster;
 
-/** One leaf per changed root, never per record: every log leaf reseeds new-account fallback placement. */
+/**
+ * Anchors the placement state in the transparency log, mirroring the directory checkpoint service.
+ *
+ * <p>The roster version is the log size, and {@code WeightedFallbackRule} seeds on the roster version, so
+ * every appended leaf moves new-account fallback placement. So this computes the Merkle root over the
+ * records once per interval and appends a {@code PLACEMENT_CHECKPOINT} leaf only when that root has changed,
+ * never one leaf per record. Authority mode only, and only with the placement flag on.
+ */
 @Component
 @ConditionalOnExpression(PlacementFeature.ENABLED)
 public class PlacementCheckpointService {
@@ -49,6 +56,7 @@ public class PlacementCheckpointService {
                 + "\nissuedAt=" + cp.issuedAt().toEpochMilli() + "\n").getBytes(StandardCharsets.UTF_8);
     }
 
+    /** Build, sign, and (only if the root is new) log the current placement checkpoint. */
     @Scheduled(fixedDelayString = "${gua.resolver.placement.checkpoint-interval:PT1H}")
     public synchronized PlacementCheckpoint.Signed publish() {
         PlacementCheckpoint cp = records.checkpoint();
@@ -57,6 +65,8 @@ public class PlacementCheckpointService {
                 : List.of(new SignedRoster.AuthoritySignature(keyId,
                         Ed25519.sign(signingKey, canonicalBytes(cp))));
         PlacementCheckpoint.Signed signed = new PlacementCheckpoint.Signed(cp, signatures);
+        // An empty placement state carries no commitment, and anchoring it would bump the log size, and with
+        // it every new-account fallback decision, for nothing. Idempotent per root once there are records.
         if (cp.size() > 0 && !transparencyLog.hasLeaf(EVENT_TYPE, cp.merkleRoot())) {
             transparencyLog.append(EVENT_TYPE, null, cp.merkleRoot());
             log.info("Published placement checkpoint root={} size={}", cp.merkleRoot(), cp.size());
@@ -65,6 +75,7 @@ public class PlacementCheckpointService {
         return signed;
     }
 
+    /** The current signed checkpoint, computing one on first access. */
     public PlacementCheckpoint.Signed current() {
         PlacementCheckpoint.Signed c = cached;
         return c != null ? c : publish();

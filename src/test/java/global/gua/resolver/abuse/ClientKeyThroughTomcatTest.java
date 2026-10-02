@@ -21,7 +21,13 @@ import org.springframework.test.annotation.DirtiesContext;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Uses a real Tomcat listener: MockMvc never runs RemoteIpValve. */
+/**
+ * The per-client key against a real Tomcat listener: MockMvc never runs {@code RemoteIpValve}, so only a
+ * request through a socket sees the header the way the pod does. The socket peer here is the loopback
+ * address, which is in the internal-proxies set like the in-cluster hops. Clients are RFC 5737 documentation
+ * addresses and internal hops are RFC 1918 addresses. Runs in its own context (small budget, long period)
+ * and dirties it so bucket state never leaks.
+ */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "gua.resolver.abuse.client-limit-for-period=2",
         "gua.resolver.abuse.client-burst=2",
@@ -60,6 +66,8 @@ class ClientKeyThroughTomcatTest {
 
     @Test
     void theStrategyIsPinnedToNativeInTheRunningContextAndInEveryProfileOnTheClasspath() throws IOException {
+        // The key derivation is only correct with the valve installed, and the valve is only installed under
+        // the native strategy, so neither profile may drop the pin.
         assertThat(environment.getProperty("server.forward-headers-strategy")).isEqualTo("native");
 
         Resource[] profiles = new PathMatchingResourcePatternResolver().getResources("classpath*:application.yml");
@@ -77,21 +85,26 @@ class ClientKeyThroughTomcatTest {
 
     @Test
     void theValveKeysOnTheAddressTheEdgeAppendedNotOnTheInternalHop() {
+        // "<client>, <internal hop>" is what the pod sees for an honest request. Two clients behind the same
+        // internal hop must not share a bucket.
         assertThat(status("203.0.113.9, " + INTERNAL_HOP)).isEqualTo(HttpStatus.OK);
         assertThat(status("203.0.113.9, " + INTERNAL_HOP)).isEqualTo(HttpStatus.OK);
         assertThat(status("203.0.113.9, " + INTERNAL_HOP)).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
         assertThat(status("203.0.113.10, " + INTERNAL_HOP)).isEqualTo(HttpStatus.OK);
 
+        // A further internal hop behind the client is skipped the same way: same client, same bucket.
         assertThat(status("203.0.113.10, " + INTERNAL_HOP + ", 172.16.0.1")).isEqualTo(HttpStatus.OK);
         assertThat(status("203.0.113.10, " + INTERNAL_HOP)).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
     }
 
     @Test
     void callerSuppliedEntriesNeitherChooseABucketNorDrainAnotherClients() {
+        // Entries in front of the client are the caller's. They must land in the caller's own bucket...
         assertThat(status("192.0.2.1, 192.0.2.2, 203.0.113.20, " + INTERNAL_HOP)).isEqualTo(HttpStatus.OK);
         assertThat(status("192.0.2.3, 203.0.113.20, " + INTERNAL_HOP)).isEqualTo(HttpStatus.OK);
         assertThat(status("203.0.113.20, " + INTERNAL_HOP)).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
 
+        // ...and naming a victim there must not touch the victim's bucket.
         assertThat(status("203.0.113.21, 203.0.113.22, " + INTERNAL_HOP)).isEqualTo(HttpStatus.OK);
         assertThat(status("203.0.113.21, 203.0.113.22, " + INTERNAL_HOP)).isEqualTo(HttpStatus.OK);
         assertThat(status("203.0.113.21, 203.0.113.22, " + INTERNAL_HOP)).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);

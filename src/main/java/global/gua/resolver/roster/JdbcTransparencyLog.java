@@ -11,6 +11,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import global.gua.resolver.crypto.MerkleTree;
 
+/**
+ * Persistent RFC 6962 transparency log. Every membership change (admit, update, suspend, revoke,
+ * authority-set change) is appended as an immutable, hash-chained leaf; the published checkpoint is the
+ * Merkle root over all leaves plus the tree size. Rows live in {@code transparency_log}, so the audit trail
+ * survives restarts and a mirror can detect history rewritten since its own last checkpoint.
+ */
 @Component
 public class JdbcTransparencyLog implements TransparencyLog {
 
@@ -43,6 +49,11 @@ public class JdbcTransparencyLog implements TransparencyLog {
         return new SignedRoster.LogCheckpoint(MerkleTree.root(leaves), leaves.size());
     }
 
+    /**
+     * Authority-side consistency check: confirm {@code older} is a genuine prefix of the current log (i.e.
+     * the current head extends it append-only). Computes the proof from the stored leaves and verifies it
+     * against both roots, the same check a mirror performs with the proof shipped over the wire.
+     */
     @Override
     public boolean verifyConsistency(SignedRoster.LogCheckpoint older, SignedRoster.LogCheckpoint newer) {
         int first = (int) older.size();
@@ -55,6 +66,7 @@ public class JdbcTransparencyLog implements TransparencyLog {
         return MerkleTree.verifyConsistency(first, second, older.merkleRoot(), newer.merkleRoot(), proof);
     }
 
+    /** The consistency proof between two tree sizes, for a mirror to verify an extension over the wire. */
     public List<String> consistencyProof(int first, int second) {
         return MerkleTree.consistencyProof(leafHashes(), first, second);
     }
@@ -71,6 +83,7 @@ public class JdbcTransparencyLog implements TransparencyLog {
                         rs.getTimestamp("recorded_at").toInstant().toString()));
     }
 
+    /** True if a leaf of this type with this payload hash already exists (so policy versions log once). */
     public boolean hasLeaf(String type, String payloadHash) {
         Integer n = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM transparency_log WHERE event_type = ? AND payload_hash = ?",
@@ -78,6 +91,7 @@ public class JdbcTransparencyLog implements TransparencyLog {
         return n != null && n > 0;
     }
 
+    /** Events of a single type (e.g. POLICY_PUBLISH), for the policy-log audit view. */
     public List<Event> eventsOfType(String type) {
         return events().stream().filter(e -> type.equals(e.type())).toList();
     }

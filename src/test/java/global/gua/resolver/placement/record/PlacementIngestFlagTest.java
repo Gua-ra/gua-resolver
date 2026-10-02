@@ -27,6 +27,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * With custody on and ingest off, a record that would otherwise be accepted is refused, and the reads still
+ * answer. The record presented is valid in every other respect, so a 503 can only be the flag.
+ */
 @SpringBootTest(properties = {
         "gua.resolver.placement.enabled=true",
         "gua.resolver.placement.ingest-enabled=false"
@@ -71,6 +75,7 @@ class PlacementIngestFlagTest {
 
     @Test
     void theReadsStillAnswerWhileTheIngestFlagIsOff() throws Exception {
+        // Reads are unaffected by the ingest flag: the custody flag is what mounts them.
         mockMvc.perform(get("/placement/records/"
                         + PlacementFixtures.genesisAccountId("flag-off-absent")))
                 .andExpect(status().isNotFound())

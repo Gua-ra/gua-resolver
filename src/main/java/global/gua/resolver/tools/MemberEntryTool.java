@@ -31,6 +31,22 @@ import global.gua.resolver.roster.MemberEntryVerifier;
 import global.gua.resolver.roster.RosterEntry;
 import global.gua.resolver.roster.SignedRoster;
 
+/**
+ * Offline signing and checking tool for member roster entries. A homeserver operator runs it with its own
+ * member private key to produce the body for {@code POST /authority/roster/{id}/member}; the resolver never
+ * holds that key. See docs/runbooks/member-attestation.md.
+ *
+ * <pre>
+ *   sign    --fields fields.json --private-key-file -        [--format attest|member]
+ *   rotate  --fields fields.json --private-key-file - --previous-private-key-file - [--format ...]
+ *   verify  --roster roster.json [--at 2026-09-11T00:00:00Z] [--max-lifetime-days 400]
+ * </pre>
+ *
+ * <p>A private key is read from a file or, with {@code -}, from standard input, one base64 PKCS#8 key per
+ * line; for a rotation reading both from standard input, the new key comes first. There is deliberately no
+ * flag that takes a key as an argument value: an argument would land in the shell history and in the process
+ * list. The tool prints the attestation, its canonical hash and public metadata, never key material.
+ */
 public final class MemberEntryTool {
 
     private static final ObjectMapper JSON = new ObjectMapper().findAndRegisterModules()
@@ -51,6 +67,7 @@ public final class MemberEntryTool {
         System.exit(new MemberEntryTool(System.in, System.out, System.err).run(args));
     }
 
+    /** @return 0 on success, 2 for a usage problem, 3 when signing or verification fails */
     public int run(String[] args) {
         try {
             if (args.length == 0) {
@@ -126,6 +143,7 @@ public final class MemberEntryTool {
         return 0;
     }
 
+    /** Prove locally that the key signed the fields as given, before an operator posts them. */
     private void selfCheck(Homeserver homeserver, MemberAttestation member, JsonNode fields,
                            boolean rotation) {
         MemberEntryVerifier verifier = new MemberEntryVerifier(MemberEntryVerifier.DEFAULT_MAX_LIFETIME);
@@ -221,6 +239,10 @@ public final class MemberEntryTool {
                 visibility, groups);
     }
 
+    /**
+     * Read a base64 PKCS#8 Ed25519 private key from a file, or from standard input with {@code -}. The value
+     * is validated by loading it, so a wrong file fails here rather than after a signature nobody can use.
+     */
     private String readPrivateKey(String source, String label) throws Exception {
         String value;
         if ("-".equals(source)) {

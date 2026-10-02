@@ -31,6 +31,15 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * What a caller who can reach the public ingest can do, and what they cannot.
+ *
+ * <p>They can present records, and every one either verifies under the signing key of an ACTIVE roster entry
+ * or is refused. A non-member's signature, a former member's signature and a single flipped byte all land in
+ * the same place. Nothing about stored state is reachable without a member key: the last test presents the
+ * same stranger-signed record for an accountId this node holds and one it has never seen, and the two answers are
+ * identical.
+ */
 @SpringBootTest(properties = {
         "gua.resolver.placement.enabled=true",
         "gua.resolver.placement.ingest-enabled=true"
@@ -44,6 +53,7 @@ class PlacementIngestAttackSurfaceTest {
     private static final Ed25519.KeyPairB64 STRANGER = Ed25519.generate();
     private static final Ed25519.KeyPairB64 SPELLING = Ed25519.generate();
 
+    /** The base64url alphabet, in index order, for building a second spelling of one record. */
     private static final String BASE64URL =
             "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
@@ -108,6 +118,7 @@ class PlacementIngestAttackSurfaceTest {
 
     @Test
     void aRecordSignedByANonMemberIsRefused() throws Exception {
+        // The stranger's key is a perfectly good Ed25519 key. It is simply in no roster entry.
         present(PlacementFixtures.envelope(PlacementFixtures.canonical(
                 PlacementFixtures.genesisAccountId("attack-stranger"), "hs-one", now()), STRANGER))
                 .andExpect(status().isBadRequest())
@@ -130,6 +141,7 @@ class PlacementIngestAttackSurfaceTest {
 
         admission.setStatus("hs-old", RosterEntry.Status.SUSPENDED);
 
+        // The roster is read at acceptance time, so the same signer is now refused.
         present(PlacementFixtures.envelope(PlacementFixtures.canonical(
                 PlacementFixtures.genesisAccountId("attack-after-suspend"), "hs-old", now()), FORMER))
                 .andExpect(status().isBadRequest())
@@ -210,6 +222,7 @@ class PlacementIngestAttackSurfaceTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("malformed_envelope"));
 
+        // Strict transport parsing: an unknown field is refused rather than dropped.
         present("{\"record\":\"AAAA\",\"signature\":\"AAAA\",\"homeserverId\":\"hs-one\"}")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("malformed_envelope"));
@@ -225,6 +238,8 @@ class PlacementIngestAttackSurfaceTest {
         assertThat(store.find(stored)).isPresent();
         assertThat(store.find(neverSeen)).isEmpty();
 
+        // A caller without a member key gets the same answer for an account this node holds and one it has
+        // never seen: the storage rules are only reached after the signature check.
         MvcResult held = present(PlacementFixtures.envelope(
                 PlacementFixtures.canonical(stored, "hs-one", now()), STRANGER)).andReturn();
         MvcResult unheld = present(PlacementFixtures.envelope(

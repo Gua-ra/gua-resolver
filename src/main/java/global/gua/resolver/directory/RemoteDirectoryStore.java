@@ -15,7 +15,11 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 
 import global.gua.resolver.config.ResolverProperties;
 
-/** A mirror holds no directory rows; it queries the authority by a locally computed peppered HMAC. */
+/**
+ * Mirror-mode {@link DirectoryStore}: the phone graph is sensitive (PII plus enumeration risk), so a mirror
+ * never holds a copy. It queries the upstream authority's rate-limited lookup endpoint by peppered HMAC
+ * (computed locally; the raw phone never leaves this node). Writes are rejected.
+ */
 @Component
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "MIRROR")
 public class RemoteDirectoryStore implements DirectoryStore {
@@ -27,6 +31,7 @@ public class RemoteDirectoryStore implements DirectoryStore {
     private final boolean failOpenOnLookupError;
     private final Duration lookupTimeout;
     private final Duration cacheTtl;
+    // Last verified positive result per lookup key, served stale within the TTL on an authority outage.
     private final Map<String, Cached> positiveCache = new ConcurrentHashMap<>();
 
     public RemoteDirectoryStore(ResolverProperties props, PhoneHasher hasher, WebClient.Builder builder) {
@@ -74,7 +79,10 @@ public class RemoteDirectoryStore implements DirectoryStore {
             if (failOpenOnLookupError) {
                 return Optional.empty();
             }
-            // Never serve a stale negative: it would treat an existing account as new.
+            // Authority unreachable: keep returning users resolvable by serving a recently verified positive
+            // mapping within the staleness budget. Negatives are never served stale (that would let an existing
+            // account be treated as new). The result is still checked against the active roster in
+            // DefaultResolutionService, so a suspended or revoked homeserver is never returned.
             Cached cached = positiveCache.get(key);
             if (cached != null && !cacheTtl.isZero()
                     && Instant.now().isBefore(cached.at().plus(cacheTtl))) {

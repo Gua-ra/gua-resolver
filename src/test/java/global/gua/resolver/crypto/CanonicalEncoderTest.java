@@ -8,8 +8,13 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * The gua-lp.v1 framing: injective where CanonicalRoster's delimiter form is not, absent distinct from empty,
+ * sets in unsigned UTF-8 byte order with duplicates refused, fixed-width integers.
+ */
 class CanonicalEncoderTest {
 
+    /** The byte CanonicalRoster joins entry fields with, assuming values never contain it. */
     private static final String UNIT_SEPARATOR = Character.toString(0x1F);
 
     private static String hex(CanonicalEncoder e) {

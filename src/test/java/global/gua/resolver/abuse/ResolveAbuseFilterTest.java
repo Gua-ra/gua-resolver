@@ -21,6 +21,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/** The servlet edge of the limiter: the 429 contract and what the WARN log does and does not contain. */
 class ResolveAbuseFilterTest {
 
     private static final String PHONE = "+5511987654321";
@@ -90,8 +91,8 @@ class ResolveAbuseFilterTest {
     void firstRefusalPerWindowLogsAWarnWithAHashedClientAndNeverThePhone() throws Exception {
         run(resolveRequest(CLIENT), new MockFilterChain());
         run(resolveRequest(CLIENT), new MockFilterChain());
-        run(resolveRequest(CLIENT), new MockFilterChain());
-        run(resolveRequest(CLIENT), new MockFilterChain());
+        run(resolveRequest(CLIENT), new MockFilterChain());   // refused: WARN
+        run(resolveRequest(CLIENT), new MockFilterChain());   // refused again in the same window: silent
 
         List<ILoggingEvent> warns = logs.list.stream().filter(e -> e.getLevel() == Level.WARN).toList();
         assertThat(warns).hasSize(1);
@@ -101,10 +102,10 @@ class ResolveAbuseFilterTest {
                 .doesNotContain(PHONE)
                 .doesNotContain(CLIENT);
 
-        ticker.advance(Duration.ofMinutes(1));
-        run(resolveRequest(CLIENT), new MockFilterChain());
-        run(resolveRequest(CLIENT), new MockFilterChain());
-        run(resolveRequest(CLIENT), new MockFilterChain());
+        ticker.advance(Duration.ofMinutes(1));                // a full period: the burst of 2 is back
+        run(resolveRequest(CLIENT), new MockFilterChain());   // allowed
+        run(resolveRequest(CLIENT), new MockFilterChain());   // allowed
+        run(resolveRequest(CLIENT), new MockFilterChain());   // refused in a new window: WARN again
         assertThat(logs.list.stream().filter(e -> e.getLevel() == Level.WARN)).hasSize(2);
     }
 

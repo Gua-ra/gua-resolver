@@ -4,7 +4,14 @@ import java.util.List;
 
 import global.gua.resolver.crypto.CanonicalEncoder;
 
-/** Registries are encoded as a sorted set, so their JSON order never changes the genesisId. */
+/**
+ * The {@code gua-federation-genesis.v1} canonical bytes, encoded with {@code gua-lp.v1}.
+ *
+ * <p>Field order: schema tag; federationLabel; createdAt (int64 epoch ms); hashSuite; threshold (int64);
+ * keys as a list sorted by keyId, each {keyId, alg, publicKey, operatorId}; registries as a set, sorted
+ * here, so the order the JSON carries them in changes nothing and never changes the genesisId.
+ * Signatures are outside these bytes.
+ */
 public final class CanonicalGenesis {
 
     private CanonicalGenesis() {}
@@ -30,10 +37,15 @@ public final class CanonicalGenesis {
         return e.stringSet(genesis.registries()).toByteArray();
     }
 
+    /** {@code genesisId}: SHA-256 of the canonical bytes, lowercase hex. The federation's real identity. */
     public static String id(FederationGenesis genesis) {
         return CanonicalEncoder.sha256Hex(bytes(genesis));
     }
 
+    /**
+     * The human fingerprint: the first 16 hex characters of the genesis id, grouped in fours. It is what an
+     * operator reads aloud or compares between independent channels. The full id is what code compares.
+     */
     public static String fingerprint(String genesisId) {
         if (genesisId == null || genesisId.length() < 16) {
             throw new GovernanceException("a genesis id is 64 hex characters");

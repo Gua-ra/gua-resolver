@@ -40,6 +40,7 @@ class PolicyAdminControllerTest {
                 new SignedRoster.LogCheckpoint("root", entries.length), List.of());
     }
 
+    /** The resolver's policy trust root: the governance key, and nothing else. */
     private static ResolverProperties props() {
         ResolverProperties props = new ResolverProperties();
         props.getPolicy().setRequireSignatures(true);
@@ -51,6 +52,7 @@ class PolicyAdminControllerTest {
         return props;
     }
 
+    /** Stand-in for the offline governance tool: sign a bundle with a given key under a given id. */
     private static RoutingPolicyBundle signedBy(RoutingPolicyBundle bundle, String keyId,
                                                 Ed25519.KeyPairB64 key) {
         ResolverProperties signing = new ResolverProperties();
@@ -124,6 +126,7 @@ class PolicyAdminControllerTest {
 
     @Test
     void refusesToValidateABundleTargetingAHomeserverOutsideTheRoster() {
+        // dev2 is not in the roster: validation rejects it regardless of who signed it.
         assertThatThrownBy(() -> controller(roster(DEV), props())
                 .validate(signedBy(unsignedBundle("dev2"), "governance-a", GOVERNANCE)))
                 .isInstanceOf(RoutingPolicyValidator.RoutingPolicyValidationException.class)
@@ -132,6 +135,7 @@ class PolicyAdminControllerTest {
 
     @Test
     void withNoPolicyTrustRootConfiguredEveryBundleIsUnverified() {
+        // No genesis, no policy.trusted-keys and no authority.trusted-keys: there is no key to verify under.
         ResolverProperties noKeys = new ResolverProperties();
         noKeys.getPolicy().setRequireSignatures(true);
         noKeys.getPolicy().setSignatureThreshold(1);

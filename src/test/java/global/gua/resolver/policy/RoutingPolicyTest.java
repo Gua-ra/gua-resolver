@@ -90,10 +90,10 @@ class RoutingPolicyTest {
     @Test
     void belowThresholdSignaturesAreRejected() {
         Ed25519.KeyPairB64 key = Ed25519.generate();
-        ResolverProperties props = authorityProps(key, 2);
+        ResolverProperties props = authorityProps(key, 2);   // require k=2 distinct valid signatures
 
         RoutingPolicyBundle signed = new RoutingPolicySigner(props).sign(
-                unsignedPolicy("carrier", "+55119", "+551198"));
+                unsignedPolicy("carrier", "+55119", "+551198"));   // carries only one signature
         RoutingPolicyVerifier verifier = new RoutingPolicyVerifier(props);
 
         assertThat(verifier.isVerified(signed)).isFalse();
@@ -116,6 +116,7 @@ class RoutingPolicyTest {
     void zoneWithoutADelegateSignatureIsNotDelegateVerified() {
         RoutingPolicyVerifier verifier = new RoutingPolicyVerifier(authorityProps(Ed25519.generate(), 1));
 
+        // authority-signed only, no delegate signature over the zone's rules
         assertThat(verifier.delegateVerifiedZones(unsignedPolicy("carrier", "+55119", "+551198"))).isEmpty();
     }
 
@@ -126,6 +127,8 @@ class RoutingPolicyTest {
                 unsignedPolicy("carrier", "+55119", "+551198"),
                 "carrier-zone", "delegate-vivo", DELEGATE.privateKeyB64());
 
+        // Whoever assembles the bundle swaps the delegate's rule for a different target, keeping the old
+        // delegate signature. The delegate signature is over the original rules, so the zone no longer verifies.
         RoutingPolicyBundle forged = new RoutingPolicyBundle(delegateSigned.schemaVersion(),
                 delegateSigned.policyId(), delegateSigned.version(), delegateSigned.issuedAt(),
                 delegateSigned.notBefore(), delegateSigned.expiresAt(), delegateSigned.delegationZones(),
@@ -183,6 +186,8 @@ class RoutingPolicyTest {
                                 RoutingPolicyRule.AssignmentPolicy.PORTABLE, true)),
                 new RoutingPolicyBundle.FallbackStrategy("legacy-weighted", true), List.of(), List.of());
 
+        // Both rules share matchValue "staff" but read different OIDC claims, so they are distinct and must
+        // not be rejected as ambiguous.
         assertThatCode(() -> validator.validate(policy, roster())).doesNotThrowAnyException();
     }
 

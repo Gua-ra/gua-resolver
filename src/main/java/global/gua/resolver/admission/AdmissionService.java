@@ -31,6 +31,17 @@ import global.gua.resolver.roster.SignedRoster;
 import global.gua.resolver.roster.TransparencyLog;
 import global.gua.resolver.roster.store.RosterEntryRepository;
 
+/**
+ * The authority's admission control. Admitting a homeserver is the only way a roster entry comes into being,
+ * and every admit, suspend and revoke is appended to the transparency log before the roster is re-signed.
+ * Admission enforces three checks: proof of control over the registered signing key, a domain-ownership
+ * proof, and claim non-overlap.
+ *
+ * <p>An applicant proves possession either by signing its own roster entry (a member block) or, on the
+ * legacy path, by signing its bare server name. The key it registers anchors its attestation chain: from
+ * then on only that key, or a key it signs a rotation to, can change the entry's address, issuer, key or
+ * search policy through {@link #attest}. The authority keeps weight, acceptsNew, claims and status.
+ */
 @Service
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)
 public class AdmissionService {
@@ -60,10 +71,12 @@ public class AdmissionService {
         this.json = json;
     }
 
+    /** Vet and admit a new homeserver; appends ADMIT to the log and re-signs the roster. */
     @Transactional
     public SignedRoster admit(AdmissionRequest req) {
         boolean selfSigned = req.member() != null;
 
+        // Proof that the applicant controls the signing key it is registering.
         if (!selfSigned) {
             if (props.getRoster().isRequireMemberSignature()) {
                 throw new AdmissionException("a member self-signature is required: "
@@ -77,9 +90,11 @@ public class AdmissionService {
                 throw new AdmissionException("key-possession proof invalid for " + req.serverName());
             }
         }
+        // Domain ownership.
         if (!domainVerifier.verify(req.serverName(), req.domainProof())) {
             throw new AdmissionException("domain-ownership proof rejected for " + req.serverName());
         }
+        // Uniqueness and claim non-overlap against the entries already admitted.
         if (entries.existsByServerName(req.serverName())) {
             throw new AdmissionException(req.serverName() + " is already admitted");
         }
@@ -118,6 +133,8 @@ public class AdmissionService {
                     + "this entry until its operator attests it (ADM-007)", req.serverName());
         }
 
+        // Under governance an admission is an intent: the entry waits in PENDING, out of the signed roster,
+        // until a governance-signed membership epoch makes it ACTIVE.
         RosterEntry.Status initial = genesis.governanceRequired()
                 ? RosterEntry.Status.PENDING
                 : RosterEntry.Status.ACTIVE;
@@ -136,6 +153,12 @@ public class AdmissionService {
         return rosterStore.refresh();
     }
 
+    /**
+     * Accept a member's attestation of its own entry: the member-controlled fields are replaced with the
+     * signed values, a {@code MEMBER_ATTEST} leaf commits to the accepted bytes, and a history row keeps the
+     * chain. This is how an already-admitted homeserver adopts a self-signed entry, updates its address, or
+     * rotates its key, without a REVOKE and a new admission.
+     */
     @Transactional
     public SignedRoster attest(String id, MemberAttestationRequest request) {
         if (request == null || request.homeserver() == null || request.member() == null) {
@@ -189,6 +212,9 @@ public class AdmissionService {
         }
         requireNoUnexpectedSignatures(request.member(), rotation);
 
+        // Conditional on the entry still holding the sequence this attestation was verified against: the
+        // read above and this write are not serialised against a concurrent attest, and the loser of that
+        // race must not overwrite the winner with a lower sequence.
         int updated = entries.updateMember(id, attested, request.member(), result.entryHash(),
                 prior.sequence());
         if (updated == 0) {
@@ -203,6 +229,11 @@ public class AdmissionService {
         return rosterStore.refresh();
     }
 
+    /**
+     * Search discoverability is part of the signed roster, so it is validated at the admission gate:
+     * GROUP visibility without any group would silently hide the homeserver from everyone, and groups on
+     * non-GROUP visibility would be dead config.
+     */
     private static Homeserver.SearchVisibility parseSearchVisibility(AdmissionRequest req) {
         String raw = req.searchVisibility();
         Homeserver.SearchVisibility visibility;
@@ -231,6 +262,13 @@ public class AdmissionService {
         }
     }
 
+    /**
+     * Suspend (temporarily) or revoke (permanently) an admitted homeserver.
+     *
+     * <p>With governance required this records intent only and changes nothing that is served, so the
+     * operational key cannot take a member out of service on its own. The change takes effect when a
+     * membership epoch carries it.
+     */
     @Transactional
     public SignedRoster setStatus(String id, RosterEntry.Status status) {
         entries.findById(id).orElseThrow(() -> new AdmissionException("no such homeserver: " + id));
@@ -239,6 +277,8 @@ public class AdmissionService {
         }
         if (genesis.governanceRequired()) {
             entries.setPendingStatus(id, status);
+            // Logged even though nothing served changes, so an auditor can see a request that governance never
+            // ratified. The leaf commits to the request; the epoch that carries it commits to the change.
             transparencyLog.append(TransparencyLog.STATUS_INTENT, id,
                     MerkleTree.sha256Hex(id + ":" + status + ":intent"));
             log.info("Recorded intent to set homeserver {} status -> {}. It stays as it is until a "
@@ -251,6 +291,7 @@ public class AdmissionService {
         return rosterStore.refresh();
     }
 
+    /** Commit to the accepted entry: one MEMBER_ATTEST leaf, one history row, both at the acceptance time. */
     private void recordAttestation(RosterEntry entry, String entryHash, Instant acceptedAt) {
         SignedRoster.LogCheckpoint head = transparencyLog.append(TransparencyLog.MEMBER_ATTEST,
                 entry.homeserver().id(), entryHash, acceptedAt);
@@ -260,6 +301,7 @@ public class AdmissionService {
                 acceptedAt, head.size() - 1);
     }
 
+    /** What this authority accepted last for that homeserver: the chain the next entry has to continue. */
     private static MemberEntryVerifier.Prior priorOf(RosterEntry stored) {
         MemberAttestation member = stored.member();
         if (member == null) {
@@ -275,7 +317,11 @@ public class AdmissionService {
                 member.sequence(), hash);
     }
 
-    /** Signatures sit outside the canonical bytes, so an unexpected one is unsigned material. */
+    /**
+     * Only the entry's own key signs it, plus the previous key on a rotation. Signatures sit outside the
+     * canonical bytes, so anything else carried here is unsigned material the authority would be storing and
+     * serving on the member's behalf.
+     */
     private static void requireNoUnexpectedSignatures(MemberAttestation member, boolean rotation) {
         int allowed = rotation ? 2 : 1;
         if (member.signatures().size() > allowed) {

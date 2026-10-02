@@ -9,7 +9,20 @@ import java.util.Locale;
 
 import jakarta.servlet.http.HttpServletRequest;
 
-/** Keys on getRemoteAddr() only: after RemoteIpValve, X-Forwarded-For holds only caller-supplied entries. */
+/**
+ * Derives the per-client rate-limit key for {@code POST /resolve} from the request's remote address, and
+ * from nothing else.
+ *
+ * <p>{@code server.forward-headers-strategy=native} installs Tomcat's {@code RemoteIpValve} ahead of every
+ * filter. The valve skips the internal proxy hops, sets the remote address to the client address the public
+ * edge appended, and leaves only the caller-supplied entries in {@code X-Forwarded-For}. So this class reads
+ * {@link HttpServletRequest#getRemoteAddr()} and never the header. A request that arrives without a chain
+ * (a port-forward, an in-cluster caller) is keyed by its socket peer.
+ *
+ * <p>IPv6 clients are keyed by their /64: a single subscriber is routinely handed a whole /64, and keying on
+ * the full address would hand an attacker 2^64 free buckets. IPv4-mapped IPv6 literals key by the embedded
+ * IPv4 address so a dual-stack listener does not fold every IPv4 client into one key.
+ */
 public final class ClientKey {
 
     static final String UNKNOWN = "unknown";
@@ -39,12 +52,13 @@ public final class ClientKey {
         }
     }
 
+    /** Strip a port suffix, then key IPv6 by /64 (or embedded IPv4); anything else is used verbatim. */
     static String normalize(String address) {
         String a = address;
-        if (a.startsWith("[")) {
+        if (a.startsWith("[")) {  // "[v6]" or "[v6]:port"
             int end = a.indexOf(']');
             a = end > 0 ? a.substring(1, end) : a.substring(1);
-        } else if (a.indexOf(':') >= 0 && a.indexOf(':') == a.lastIndexOf(':')) {
+        } else if (a.indexOf(':') >= 0 && a.indexOf(':') == a.lastIndexOf(':')) {  // "v4:port"
             a = a.substring(0, a.indexOf(':'));
         }
         if (a.indexOf(':') >= 0) {
@@ -56,6 +70,7 @@ public final class ClientKey {
         return a.toLowerCase(Locale.ROOT);
     }
 
+    /** The /64 prefix of an IPv6 literal, the embedded IPv4 of a mapped address, or null when unparseable. */
     static String ipv6Key(String literal) {
         String s = literal;
         int zone = s.indexOf('%');
@@ -92,6 +107,7 @@ public final class ClientKey {
         return out;
     }
 
+    /** Colon-separated 16-bit hex groups; a trailing dotted quad (mapped forms) expands to two groups. */
     private static int[] parseGroups(String s) {
         if (s.isEmpty()) {
             return new int[0];

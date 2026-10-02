@@ -34,9 +34,9 @@ class PolicyTransparencyTest {
 
         RoutingPolicyBundle v1 = bundle("prod-policy", 1);
         listener.onPolicyAdopted(v1);
-        listener.onPolicyAdopted(v1);
+        listener.onPolicyAdopted(v1);   // same content -> must not append again (idempotent)
         SignedRoster.LogCheckpoint afterV1 = log.head();
-        listener.onPolicyAdopted(bundle("prod-policy", 2));
+        listener.onPolicyAdopted(bundle("prod-policy", 2));   // new version -> appends
         SignedRoster.LogCheckpoint afterV2 = log.head();
 
         assertThat(log.eventsOfType(PolicyTransparencyListener.EVENT_TYPE).size())

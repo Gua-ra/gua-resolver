@@ -15,6 +15,11 @@ import global.gua.resolver.admission.AdmissionRequest;
 import global.gua.resolver.admission.AdmissionService;
 import global.gua.resolver.crypto.Ed25519;
 
+/**
+ * Builders for placement-record tests. Every key here is minted in memory for the test that uses it and
+ * nothing real is ever signed with one. The accountIds are derived from a test seed, so they are stable and
+ * readable in failures while carrying nothing that could belong to an account.
+ */
 final class PlacementFixtures {
 
     /** Inside the 400-day cap, so the window is never what a test is refused for. */
@@ -38,6 +43,7 @@ final class PlacementFixtures {
         return accountId(AccountId.CLASS_BOOTSTRAP, seed);
     }
 
+    /** A well-formed record whose origin matches the id's class and whose window holds now. */
     static PlacementRecord record(String accountId, String homeserverId, Instant issuedAt) {
         PlacementRecord.Origin origin = PlacementRecord.Origin.of(AccountId.decode(accountId)[1]);
         return new PlacementRecord(PlacementRecordCodec.VERSION, PlacementRecordCodec.GENERATION,
@@ -56,6 +62,7 @@ final class PlacementFixtures {
         return Ed25519.sign(Ed25519.privateKey(key.privateKeyB64()), canonical);
     }
 
+    /** The transport envelope as JSON: the canonical bytes base64url, the detached signature base64. */
     static String envelope(byte[] canonical, Ed25519.KeyPairB64 key) {
         return envelope(recordB64(canonical), sign(canonical, key));
     }
@@ -64,6 +71,7 @@ final class PlacementFixtures {
         return "{\"record\":\"" + recordB64 + "\",\"signature\":\"" + signatureB64 + "\"}";
     }
 
+    /** Admit a homeserver on the legacy path: a possession proof over its own server name. */
     static void admit(AdmissionService admission, String id, String serverName, Ed25519.KeyPairB64 key) {
         String proof = Ed25519.sign(Ed25519.privateKey(key.privateKeyB64()),
                 serverName.getBytes(StandardCharsets.UTF_8));

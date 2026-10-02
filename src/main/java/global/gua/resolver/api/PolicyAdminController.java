@@ -18,6 +18,12 @@ import global.gua.resolver.policy.RoutingPolicyValidator;
 import global.gua.resolver.policy.RoutingPolicyVerifier;
 import global.gua.resolver.roster.RosterStore;
 
+/**
+ * Authority admin surface for routing policy: validation only. Bundles are signed offline, never by this
+ * process. This endpoint does the part that needs the live roster: checking that every target is an active
+ * member, that each rule sits inside its delegation zone, and that the delegate signatures present will
+ * actually route.
+ */
 @RestController
 @RequestMapping("/authority")
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)
@@ -36,6 +42,10 @@ public class PolicyAdminController {
         this.rosterStore = rosterStore;
     }
 
+    /**
+     * Validate a bundle against the current signed roster and report what the resolver would do with it.
+     * Nothing is signed and nothing is adopted.
+     */
     @PostMapping("/policy/validate")
     public ValidatedPolicyResponse validate(@RequestBody RoutingPolicyBundle bundle) {
         validator.validate(bundle, rosterStore.current());
@@ -54,6 +64,12 @@ public class PolicyAdminController {
         return new ProblemResponse("policy_invalid", e.getMessage());
     }
 
+    /**
+     * @param structureValid      the bundle passed structural and federation-boundary validation
+     * @param signaturesVerified  it carries enough valid signatures under this resolver's policy trust root,
+     *                            which is the governance key set once a genesis is loaded
+     * @param delegateVerifiedZones the zones whose rules will actually route
+     */
     public record ValidatedPolicyResponse(boolean structureValid, boolean signaturesVerified,
                                           Set<String> delegateVerifiedZones) {}
 

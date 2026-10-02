@@ -23,7 +23,16 @@ import global.gua.resolver.roster.MemberAttestation;
 import global.gua.resolver.roster.MemberSignature;
 import global.gua.resolver.roster.RosterEntry;
 
-/** Attestation timestamps are stored as UTC LocalDateTime because they are signed values. */
+/**
+ * Persistence for admitted homeservers: the roster the node signs and serves in AUTHORITY mode. Claim
+ * predicates are stored as JSON. Mirrors never touch it (they pull the signed snapshot).
+ *
+ * <p>An entry also carries the member's accepted self-signature: the attestation columns, the genesis key
+ * the operator was admitted with, and one {@code roster_member_history} row per accepted attestation. The
+ * attestation timestamps are stored as UTC {@link LocalDateTime}, not through the JVM's default zone,
+ * because they are signed values: a zone change or a daylight-saving fold must not be able to move them and
+ * invalidate the signature.
+ */
 @Repository
 public class RosterEntryRepository {
 
@@ -53,10 +62,19 @@ public class RosterEntryRepository {
                 readMember(rs));
     };
 
+    /** One accepted attestation, kept so the sequence chain and each rotation stay auditable. */
     public record MemberHistoryRow(String homeserverId, long sequence, String keyId, String signingKey,
                                    String entryJson, String entryHash, List<MemberSignature> signatures,
                                    Instant acceptedAt, Long logLeafIndex) {}
 
+    /**
+     * What a governance epoch needs to see about an entry: its current status, any status change recorded
+     * as intent but not yet ratified, the hash of the member's own signed entry, and the placement
+     * attributes the epoch takes over.
+     *
+     * @param pendingStatus  a requested status awaiting a governance epoch, or null
+     * @param registryEpoch  the epoch that set the current status, or null when it predates governance
+     */
     public record GovernanceRow(String homeserverId, RosterEntry.Status status,
                                 RosterEntry.Status pendingStatus, String memberEntryHash, int weight,
                                 boolean acceptsNew, List<ClaimPredicate> claims, Long registryEpoch) {}
@@ -80,10 +98,18 @@ public class RosterEntryRepository {
         return c == null ? 0 : c;
     }
 
+    /** Insert an entry whose genesis key is its current signing key and whose possession proof is not kept. */
     public void insert(RosterEntry e) {
         insert(e, e.homeserver().signingKey(), null, null);
     }
 
+    /**
+     * @param genesisSigningKey the key the operator was admitted with, retained as the anchor of its
+     *                          attestation chain
+     * @param genesisKeyProof   the legacy possession signature over {@code server_name}, or null when the
+     *                          applicant proved possession by signing its own entry instead
+     * @param memberEntryHash   SHA-256 of the accepted entry's canonical bytes, or null when unattested
+     */
     public void insert(RosterEntry e, String genesisSigningKey, String genesisKeyProof,
                        String memberEntryHash) {
         Homeserver h = e.homeserver();
@@ -113,7 +139,7 @@ public class RosterEntryRepository {
         jdbc.update("UPDATE roster_entry SET status = ? WHERE id = ?", status.name(), id);
     }
 
-    /** Ordered so the built content is byte-stable. */
+    /** Every entry as a governance epoch sees it, ordered so the built content is byte-stable. */
     public List<GovernanceRow> governanceRows() {
         return jdbc.query("SELECT * FROM roster_entry ORDER BY id", (rs, n) -> {
             String pending = rs.getString("pending_status");
@@ -129,10 +155,19 @@ public class RosterEntryRepository {
         });
     }
 
+    /**
+     * Record a requested status without changing the served one. This is what "intent only" means under
+     * governance: the operational key can ask, and only an epoch can act, so the operational key alone
+     * cannot take a member out of service.
+     */
     public void setPendingStatus(String id, RosterEntry.Status status) {
         jdbc.update("UPDATE roster_entry SET pending_status = ? WHERE id = ?", status.name(), id);
     }
 
+    /**
+     * Apply one member of an accepted governance epoch: the status and the placement attributes the epoch
+     * carries, the epoch that set them, and the intent cleared because it has now been ratified or refused.
+     */
     public int applyGovernedStatus(String id, RosterEntry.Status status, int weight, boolean acceptsNew,
                                    List<ClaimPredicate> claims, long epoch) {
         return jdbc.update("""
@@ -143,7 +178,20 @@ public class RosterEntryRepository {
                 """, status.name(), weight, acceptsNew, writeClaims(claims), epoch, id);
     }
 
-    /** Conditional on expectedSequence: zero rows updated means a concurrent attestation won. */
+    /**
+     * Replace the member-controlled columns with the accepted, signed values and record the attestation.
+     * Only the fields the member signs are written here; weight, acceptsNew, claims and status stay as the
+     * authority holds them.
+     *
+     * <p>The write is conditional on the entry still carrying {@code expectedSequence}. A plain
+     * read-check-write does not serialise at READ COMMITTED: two concurrent attestations could both commit
+     * and leave the lower sequence last. Zero rows updated means another attestation won, so this one is
+     * refused.
+     *
+     * @param expectedSequence the accepted sequence the attestation was verified against; 0 for an entry
+     *                         that carries no member block yet
+     * @return rows updated: 1 when accepted, 0 when another attestation won the race
+     */
     public int updateMember(String id, Homeserver attested, MemberAttestation member, String entryHash,
                             long expectedSequence) {
         return jdbc.update("""
@@ -189,6 +237,7 @@ public class RosterEntryRepository {
                 homeserverId);
     }
 
+    /** The canonical hash stored with the current attestation, for a drift check against the live entry. */
     public Optional<String> memberEntryHash(String id) {
         return jdbc.query("SELECT member_entry_hash FROM roster_entry WHERE id = ?",
                         (rs, n) -> rs.getString("member_entry_hash"), id)

@@ -23,7 +23,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** The deployed shape: a policy bundle signed by the operational key, no genesis, governance not required. */
+/**
+ * The shape a deployed environment runs, booted as a whole application: a routing policy bundle signed with
+ * the operational key, no federation genesis, and governance not required. It must start and it must serve.
+ * A verifier's trust root is chosen at startup, so only a startup-time test can hold it.
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
 @DirtiesContext
@@ -58,6 +62,7 @@ class DeployedPolicyTrustRootStartupTest {
 
     @Test
     void theConfigurationUnderTestIsTheUngovernedOneWithNoPolicyTrustRootOfItsOwn() {
+        // If either of these drifts, the rest of this class stops testing the deployed shape.
         assertThat(props.getGovernance().isRequired()).isFalse();
         assertThat(props.getPolicy().getTrustedKeys()).isEmpty();
         assertThat(props.getGenesis().getFile()).isNullOrEmpty();

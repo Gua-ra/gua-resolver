@@ -19,6 +19,10 @@ import global.gua.resolver.roster.JdbcTransparencyLog;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * The placement state is anchored by a periodic checkpoint, never by a leaf per record: at most one leaf per
+ * interval, and only when the Merkle root over the records changed.
+ */
 @SpringBootTest(properties = "gua.resolver.placement.enabled=true")
 @DirtiesContext
 class PlacementCheckpointTest {
@@ -58,11 +62,13 @@ class PlacementCheckpointTest {
         int afterFirst = transparencyLog.eventsOfType(PlacementCheckpointService.EVENT_TYPE).size();
         assertThat(afterFirst).isEqualTo(loggedBefore + 1);
 
+        // Re-publishing an unchanged state appends nothing: idempotent per root.
         service.publish();
         service.publish();
         assertThat(transparencyLog.eventsOfType(PlacementCheckpointService.EVENT_TYPE))
                 .hasSize(afterFirst);
 
+        // A new record changes the root, and that is what earns exactly one more leaf.
         String rootBefore = signed.checkpoint().merkleRoot();
         store.insert(record("checkpoint-b"));
         PlacementCheckpoint.Signed next = service.publish();

@@ -6,6 +6,18 @@ import java.util.List;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+/**
+ * All {@code gua.resolver.*} configuration. A resolver runs in one of two modes:
+ * <ul>
+ *   <li><b>AUTHORITY</b>: the node that admits homeservers, appends to the transparency log, and
+ *       threshold-signs the published roster with its signing key. A mode of the process, not a governance
+ *       role: governance keys live in a federation genesis outside this process.</li>
+ *   <li><b>MIRROR</b>: pulls the signed roster from an upstream authority node, verifies threshold
+ *       signatures and log consistency, and serves a read-only copy. A mirror has no remote policy source,
+ *       does not relay the log or checkpoint endpoints, and needs the shared directory pepper.</li>
+ * </ul>
+ * Both modes verify against the same published {@code authority.trusted-keys} and {@code threshold}.
+ */
 @ConfigurationProperties(prefix = "gua.resolver")
 public class ResolverProperties {
 
@@ -40,10 +52,15 @@ public class ResolverProperties {
     public Placement getPlacement() { return placement; }
     public DevHomeserver getDevHomeserver() { return devHomeserver; }
 
+    /** The published authority key set (verify) and this node's signing key (authority mode). */
     public static class Authority {
+        /** Minimum number of valid authority signatures required for a roster to be trusted (k of n). */
         private int threshold = 1;
+        /** The published authority public keys (n). Every verifier checks against these. */
         private List<TrustedKey> trustedKeys = new ArrayList<>();
+        /** This node's authority signing key id (must be one of trustedKeys); AUTHORITY mode only. */
         private String signingKeyId;
+        /** This node's authority Ed25519 private key, base64 PKCS#8; AUTHORITY mode only. */
         private String signingPrivateKey;
 
         public int getThreshold() { return threshold; }
@@ -57,7 +74,9 @@ public class ResolverProperties {
     }
 
     public static class TrustedKey {
+        /** Authority key id (stable label). */
         private String id;
+        /** Ed25519 public key, base64 X.509. */
         private String publicKey;
 
         public String getId() { return id; }
@@ -67,10 +86,22 @@ public class ResolverProperties {
     }
 
     public static class Mirror {
+        /** Upstream authority base URL whose /roster and /roster/log this mirror pulls. */
         private String upstreamUrl;
+        /** How often the mirror re-pulls and re-verifies. */
         private Duration refreshInterval = Duration.ofMinutes(5);
+        /** Optional local file where a mirror stores the last verified roster for cold-start resilience. */
         private String cacheFile;
+        /**
+         * Hard timeout for a single upstream directory lookup, so a stalled authority cannot hang a mirror
+         * request thread (and, in aggregate, exhaust its HTTP thread pool).
+         */
         private Duration lookupTimeout = Duration.ofSeconds(3);
+        /**
+         * How long a mirror may serve a previously verified positive directory result if the authority is
+         * unreachable (returning-user login stays up during a brief authority outage). Negative results are
+         * never served stale. Zero disables stale serving (strict fail-closed).
+         */
         private Duration directoryCacheTtl = Duration.ofMinutes(10);
 
         public String getUpstreamUrl() { return upstreamUrl; }
@@ -85,9 +116,14 @@ public class ResolverProperties {
         public void setDirectoryCacheTtl(Duration directoryCacheTtl) { this.directoryCacheTtl = directoryCacheTtl; }
     }
 
-    /** HTTP Basic credentials for {@code /authority/**}. */
+    /**
+     * Authentication for the {@code /authority/**} admin surface (admission, status changes). Fails closed:
+     * with no {@code password-hash} configured there are no admin users, so admin endpoints stay denied.
+     */
     public static class Admin {
+        /** Admin username for HTTP Basic auth on {@code /authority/**}. */
         private String username = "admin";
+        /** BCrypt hash of the admin password. Empty means no admin user exists (admin endpoints denied). */
         private String passwordHash = "";
 
         public String getUsername() { return username; }
@@ -97,7 +133,12 @@ public class ResolverProperties {
     }
 
     public static class Directory {
+        /**
+         * Shared secret pepper for the phone HMAC. Must be set, and identical across the fleet and
+         * identity-service. Not rotatable as built, and required on every mirror.
+         */
         private String pepper;
+        /** Mirrors should fail closed on authority lookup errors unless a deployment explicitly opts out. */
         private boolean failOpenOnLookupError = false;
 
         public String getPepper() { return pepper; }
@@ -108,14 +149,30 @@ public class ResolverProperties {
         }
     }
 
+    /**
+     * Optional signed routing-policy bundle. This is deliberately separate from the roster: the roster says
+     * which homeservers are trusted; the routing policy says which delegated scope may place which user
+     * contexts on which trusted homeserver.
+     */
     public static class Policy {
+        /** Feature flag. When false, placement uses legacy roster claims and deterministic fallback only. */
         private boolean enabled = false;
+        /** JSON policy bundle path. */
         private String file;
+        /** Whether file-backed policy bundles must carry enough valid signatures before use. */
         private boolean requireSignatures = true;
+        /** Minimum valid signatures required for a policy bundle. */
         private int signatureThreshold = 1;
+        /**
+         * Trusted policy-signing keys while {@code governance.required} is off; empty falls back to
+         * authority.trusted-keys. With it on, bundles verify only under the genesis governance keys.
+         */
         private List<TrustedKey> trustedKeys = new ArrayList<>();
+        /** This node's optional policy signing key id, for offline/bootstrap signing helpers. */
         private String signingKeyId;
+        /** This node's optional Ed25519 private key, base64 PKCS#8, for signing policy bundles. */
         private String signingPrivateKey;
+        /** File refresh interval for policy-serving nodes. */
         private Duration refreshInterval = Duration.ofMinutes(1);
 
         public boolean isEnabled() { return enabled; }
@@ -136,13 +193,27 @@ public class ResolverProperties {
         public void setRefreshInterval(Duration refreshInterval) { this.refreshInterval = refreshInterval; }
     }
 
+    /** Trusted issuers for signed routing-claims envelopes from MAS / identity-service. */
     public static class Claims {
+        /** Expected audience inside a signed routing-claims envelope. */
         private String audience = "gua-resolver";
+        /** Allowed clock skew when checking issued/expires timestamps. */
         private Duration maxClockSkew = Duration.ofMinutes(2);
+        /** Maximum accepted claims lifetime: a short-lived routing proof, not a bearer token. */
         private Duration maxLifetime = Duration.ofMinutes(5);
+        /** Require a unique nonce and persist it so routing claims cannot be replayed across resolver nodes. */
         private boolean replayProtectionEnabled = true;
+        /**
+         * Require the envelope's {@code subject} to be present and equal the request phone, so a captured
+         * envelope cannot be replayed against a different number.
+         */
         private boolean requireSubjectBinding = true;
+        /** How often expired nonces are removed from the replay table. */
         private Duration replayCleanupInterval = Duration.ofMinutes(10);
+        /**
+         * Trusted envelope signing keys. With {@code governance.required} on, an empty list rejects every
+         * envelope. With it off, empty falls back to the policy keys, then the authority keys.
+         */
         private List<TrustedKey> trustedKeys = new ArrayList<>();
 
         public String getAudience() { return audience; }
@@ -167,16 +238,27 @@ public class ResolverProperties {
         public void setTrustedKeys(List<TrustedKey> trustedKeys) { this.trustedKeys = trustedKeys; }
     }
 
+    /**
+     * Abuse controls on {@code POST /resolve}: a token bucket per client key, a global ceiling per process,
+     * and the switch that gates the decision trace.
+     */
     public static class Abuse {
+        /** Master switch for the /resolve rate limits (the rollback lever). Does not affect traceEnabled. */
         private boolean enabled = true;
+        /** Tokens each client bucket gains per clientRefreshPeriod. */
         private int clientLimitForPeriod = 20;
         private Duration clientRefreshPeriod = Duration.ofMinutes(1);
+        /** Capacity of a client bucket: the burst a fresh client may spend at once. */
         private int clientBurst = 20;
+        /** Tokens the global bucket gains per globalRefreshPeriod. */
         private int globalLimitForPeriod = 200;
         private Duration globalRefreshPeriod = Duration.ofSeconds(1);
         private int globalBurst = 200;
+        /** Upper bound on distinct client buckets held in memory; least recently used are evicted past it. */
         private long maxTrackedClients = 10_000;
+        /** Idle time after which a client bucket is dropped. */
         private Duration clientExpiry = Duration.ofMinutes(5);
+        /** Whether {@code "trace": true} returns the decision trace. Off unless a deployment opts in. */
         private boolean traceEnabled = false;
 
         public boolean isEnabled() { return enabled; }
@@ -201,8 +283,16 @@ public class ResolverProperties {
         public void setTraceEnabled(boolean v) { this.traceEnabled = v; }
     }
 
+    /**
+     * Member self-signed roster entries. The flag is a cutover, not a feature switch: with it on, an ACTIVE
+     * entry that carries no valid member self-signature is excluded from the signed roster, from placement
+     * and from existing-account resolution, so every ACTIVE member must be attested before it is turned on.
+     * Turning it back off restores tolerance without a code rollout.
+     */
     public static class Roster {
+        /** Whether an ACTIVE entry without a valid member self-signature is excluded from the roster. */
         private boolean requireMemberSignature = false;
+        /** Longest validity window a member entry may claim between notBefore and notAfter. */
         private Duration memberMaxLifetime = Duration.ofDays(400);
 
         public boolean isRequireMemberSignature() { return requireMemberSignature; }
@@ -211,10 +301,26 @@ public class ResolverProperties {
         public void setMemberMaxLifetime(Duration v) { this.memberMaxLifetime = v; }
     }
 
+    /**
+     * The pinned federation genesis. The file is public and committed; the pin is {@code expected-id}, so
+     * swapping the file for another validly signed genesis fails at startup instead of silently changing the
+     * federation's trust root. {@code expected-chain-head} pins how far the key transition chain has run, so
+     * a truncated transitions file fails at startup too rather than downgrading the key set. Leave
+     * {@code file} unset to run without governance, which is the default.
+     */
     public static class Genesis {
+        /** Path to the genesis JSON, mounted from the committed public ConfigMap. */
         private String file;
+        /** Path to the governance transitions JSON array, in chain order. Unset when there are none. */
         private String transitionsFile;
+        /** The genesis id this resolver is pinned to; a mismatch is a startup failure. */
         private String expectedId;
+        /**
+         * The governance key chain head this resolver is pinned to: the genesis id while no transition has
+         * been applied, the hash of the last applied transition after that. It is what a truncated or
+         * missing transitions file runs into, since the chain checks alone accept a shortened chain and
+         * would put a rotated-out key back in force.
+         */
         private String expectedChainHead;
 
         public String getFile() { return file; }
@@ -227,6 +333,13 @@ public class ResolverProperties {
         public void setExpectedChainHead(String head) { this.expectedChainHead = head; }
     }
 
+    /**
+     * Whether governance signatures are required for membership changes. This is a cutover, not a feature
+     * switch. With it off the operational key admits and changes status directly. With it on, an admission
+     * lands PENDING and a suspend or revoke records intent only: nothing changes an entry's served status
+     * except a governance-signed membership epoch. Turning it back off restores the direct path without a
+     * code rollout.
+     */
     public static class Governance {
         private boolean required = false;
 
@@ -234,14 +347,32 @@ public class ResolverProperties {
         public void setRequired(boolean required) { this.required = required; }
     }
 
+    /**
+     * Placement records. Two flags, both off by default, so the custody path and the ingest path roll out
+     * separately and either rolls back without a code change: with {@code enabled} off no placement bean
+     * exists, no path is mapped, no scheduled job runs and the table is never read or written; with
+     * {@code enabled} on and {@code ingest-enabled} off the reads serve what is already held and a presented
+     * record is refused. No flag here serves routing from these records.
+     */
     public static class Placement {
+        /** Placement-record custody: the store, the reads, the checkpoint and the auditor. */
         private boolean enabled = false;
+        /** Whether {@code POST /placement/records} accepts records. Independent of the reads. */
         private boolean ingestEnabled = false;
+        /**
+         * How often the authority signs and (only on a changed root) logs a placement checkpoint. Each
+         * logged leaf moves new-account fallback placement, so this is deliberately long.
+         */
         private Duration checkpointInterval = Duration.ofHours(1);
+        /** How often the auditor checks whether the roster moved and, if it did, re-verifies every record. */
         private Duration auditInterval = Duration.ofMinutes(5);
+        /** How often the per-homeserver record gauge is recomputed. */
         private Duration metricsInterval = Duration.ofMinutes(1);
+        /** Longest validity window a record may claim between notBefore and notAfter. */
         private Duration maxValidity = Duration.ofDays(400);
+        /** Page size for the reconciliation listing when the caller names none. */
         private int defaultPageSize = 100;
+        /** Upper bound on a caller-requested page size. */
         private int maxPageSize = 500;
 
         public boolean isEnabled() { return enabled; }
@@ -262,13 +393,14 @@ public class ResolverProperties {
         public void setMaxPageSize(int v) { this.maxPageSize = v; }
     }
 
+    /** The single homeserver the authority seeds its roster with on first boot of an empty database. */
     public static class DevHomeserver {
         private String id = "dev";
         private String serverName = "gua.local";
         private String baseUrl = "https://matrix.gua.local";
         private String masIssuer = "https://account.gua.local";
         private String region = "dev";
-        private String signingKey = "";
+        private String signingKey = "";  // the homeserver's Ed25519 public key (membership credential)
 
         public String getId() { return id; }
         public void setId(String id) { this.id = id; }

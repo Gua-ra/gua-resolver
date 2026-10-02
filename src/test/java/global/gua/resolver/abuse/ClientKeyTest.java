@@ -5,6 +5,11 @@ import org.springframework.mock.web.MockHttpServletRequest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Key derivation from the remote address. Every address below is from the documentation ranges reserved by
+ * RFC 5737 (192.0.2/24, 198.51.100/24, 203.0.113/24) and RFC 3849 (2001:db8::/32). The forwarded chain is
+ * resolved by Tomcat's RemoteIpValve before this class runs; {@link ClientKeyThroughTomcatTest} covers that.
+ */
 class ClientKeyTest {
 
     @Test
@@ -49,8 +54,10 @@ class ClientKeyTest {
         assertThat(ClientKey.normalize("2001:0db8:0001:0002:aaaa:bbbb:cccc:dddd")).isEqualTo("2001:db8:1:2::/64");
         assertThat(ClientKey.normalize("2001:DB8:1:2:ffff::1")).isEqualTo("2001:db8:1:2::/64");
         assertThat(ClientKey.normalize("2001:db8:1:2::9%eth0")).isEqualTo("2001:db8:1:2::/64");
+        // a neighbouring /64 is a different client
         assertThat(ClientKey.normalize("2001:db8:1:3::9")).isEqualTo("2001:db8:1:3::/64");
         assertThat(ClientKey.normalize("::1")).isEqualTo("0:0:0:0::/64");
+        // the form Tomcat reports the IPv6 loopback peer in
         assertThat(ClientKey.of("0:0:0:0:0:0:0:1")).isEqualTo("0:0:0:0::/64");
     }
 
@@ -64,9 +71,9 @@ class ClientKeyTest {
 
     @Test
     void unparseableIpv6LookingTokensAreUsedVerbatimNotDroppedOrCollapsed() {
-        assertThat(ClientKey.normalize("2001:db8::1::2")).isEqualTo("2001:db8::1::2");
-        assertThat(ClientKey.normalize("2001:db8:zz::1")).isEqualTo("2001:db8:zz::1");
-        assertThat(ClientKey.normalize("1:2:3:4:5:6:7:8:9")).isEqualTo("1:2:3:4:5:6:7:8:9");
+        assertThat(ClientKey.normalize("2001:db8::1::2")).isEqualTo("2001:db8::1::2");       // two "::"
+        assertThat(ClientKey.normalize("2001:db8:zz::1")).isEqualTo("2001:db8:zz::1");       // non-hex
+        assertThat(ClientKey.normalize("1:2:3:4:5:6:7:8:9")).isEqualTo("1:2:3:4:5:6:7:8:9"); // nine groups
         assertThat(ClientKey.normalize("::ffff:203.0.113.999")).isEqualTo("::ffff:203.0.113.999");
     }
 

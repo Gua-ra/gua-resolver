@@ -5,7 +5,14 @@ import java.util.Arrays;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
-/** Only HOMESERVERS has a code path; the content of the other registries must stay empty. */
+/**
+ * The four registries fixed under the governance root. They are versioned separately, each with its own
+ * epoch chain, so a verifier rotation is not a membership epoch and neither drags the other forward.
+ *
+ * <p>The constant's wire name is its canonical name: it is what the genesis enumerates and what a
+ * {@code gua-registry-epoch.v1} object carries in its canonical bytes. Only {@link #HOMESERVERS} has a code
+ * path; the content of the other three must stay empty.
+ */
 public enum Registry {
 
     HOMESERVERS("HomeserverRegistry"),
@@ -19,7 +26,7 @@ public enum Registry {
         this.wireName = wireName;
     }
 
-    /** The wire name is the canonical name carried in signed bytes. */
+    /** The canonical name: what the genesis lists and what the canonical epoch bytes carry. */
     @JsonValue
     public String wireName() {
         return wireName;
@@ -33,6 +40,7 @@ public enum Registry {
                 .orElseThrow(() -> new GovernanceException("unknown registry: " + wireName));
     }
 
+    /** The four canonical names, in the order a v1 genesis enumerates them. */
     public static java.util.List<String> allWireNames() {
         return Arrays.stream(values()).map(Registry::wireName).toList();
     }

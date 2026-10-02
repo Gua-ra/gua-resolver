@@ -43,7 +43,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Fails the build if the resolution path references the placement-record package or table. */
+/**
+ * Nothing is served from placement records, and wiring the table into the resolution path fails the build.
+ *
+ * <p>Checked three ways: no class on the resolution path mentions the placement-record package or the table
+ * name anywhere in its bytecode; {@code /resolve} answers byte for byte the same with records stored as
+ * without them; and there is no serve-from-records flag. The class set is derived from the packages rather
+ * than listed, and the table name is checked as a string so a raw JDBC query is caught too.
+ *
+ * <p>The behavioural check holds while no checkpoint leaf has been published: a {@code PLACEMENT_CHECKPOINT}
+ * leaf moves the roster version, which {@code WeightedFallbackRule} seeds on. Ingest itself appends no leaf.
+ */
 @SpringBootTest(properties = {
         "gua.resolver.placement.enabled=true",
         "gua.resolver.placement.ingest-enabled=true"
@@ -54,15 +64,19 @@ class PlacementRecordsAreNotServedTest {
 
     private static final String PLACEMENT_RECORD_PACKAGE = "global.gua.resolver.placement.record";
 
+    /** The packages that together make up the resolution path. */
     private static final List<String> RESOLUTION_PATH_PACKAGES = List.of(
             "global.gua.resolver.service",
             "global.gua.resolver.placement",
             "global.gua.resolver.directory");
 
+    /** The one class outside those packages that fronts the path. */
     private static final String RESOLUTION_CONTROLLER = ResolveController.class.getName();
 
+    /** The record package as it is spelled in a constant pool. */
     private static final String RECORD_PACKAGE_MARKER = "global/gua/resolver/placement/record";
 
+    /** The table, as it would be spelled by code that queried it without naming a type. */
     private static final String RECORD_TABLE_MARKER = "placement_record";
 
     private static final Ed25519.KeyPairB64 KEY = Ed25519.generate();
@@ -90,6 +104,8 @@ class PlacementRecordsAreNotServedTest {
     void noClassOnTheResolutionPathMentionsPlacementRecordsAtAll() throws Exception {
         Map<String, byte[]> scanned = resolutionPathBytecode();
 
+        // Derived from the packages, not listed. These are the essential members of that set; if the scan
+        // ever stops finding them it is the scan that broke, not the property that got safer.
         assertThat(scanned.keySet()).contains(
                 DefaultResolutionService.class.getName(),
                 PlacementEngine.class.getName(),
@@ -111,6 +127,8 @@ class PlacementRecordsAreNotServedTest {
 
     @Test
     void theGuardDetectsAReferenceWhereThereIsOne() throws Exception {
+        // A detector that can never fire would let the test above pass for the wrong reason. The store is the
+        // known positive: it is typed on the record package and it names the table in its SQL.
         String store = new String(bytecodeOf(JdbcPlacementRecordStore.class), StandardCharsets.ISO_8859_1);
 
         assertThat(store).contains(RECORD_PACKAGE_MARKER);
@@ -159,6 +177,10 @@ class PlacementRecordsAreNotServedTest {
                 .andReturn().getResponse().getContentAsString();
     }
 
+    /**
+     * Every compiled class in the packages that make up the resolution path, plus the controller that fronts
+     * it, keyed by class name. The record package is skipped: it is allowed to be itself.
+     */
     private static Map<String, byte[]> resolutionPathBytecode() throws Exception {
         Path root = Path.of(DefaultResolutionService.class.getProtectionDomain()
                 .getCodeSource().getLocation().toURI());

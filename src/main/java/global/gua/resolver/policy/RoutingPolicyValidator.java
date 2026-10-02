@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 import global.gua.resolver.roster.RosterEntry;
 import global.gua.resolver.roster.SignedRoster;
 
+/** Structural and federation-boundary validation for routing-policy bundles. */
 @Component
 public class RoutingPolicyValidator {
 
@@ -118,6 +119,9 @@ public class RoutingPolicyValidator {
             if (!withinZone(rule, zone)) {
                 throw invalid("rule " + rule.id() + " match is outside delegation zone " + zone.id());
             }
+            // Two rules are "the same match" only if their full match criteria coincide. For OIDC_CLAIM that
+            // includes the issuer and claim name, not just the value, so rules that differ only by issuer/claim
+            // are not wrongly flagged ambiguous (and rules that genuinely coincide still are).
             String matchKey = rule.matchType() == RoutingPolicyRule.MatchType.OIDC_CLAIM
                     ? String.join(":", rule.matchType().name(), normalize(rule.oidcIssuer()),
                             normalize(rule.oidcClaim()), normalize(rule.matchValue()))

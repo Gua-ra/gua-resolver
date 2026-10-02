@@ -22,7 +22,15 @@ import global.gua.resolver.roster.SignedRoster;
 import global.gua.resolver.roster.TransparencyLog;
 import global.gua.resolver.roster.store.RosterEntryRepository;
 
-/** An epoch ratifies: the resolver rebuilds the pending membership and refuses any other content hash. */
+/**
+ * The HomeserverRegistry epoch path: it builds the membership the governance keys are asked to sign, accepts
+ * a signed epoch, applies it, and commits it to the transparency log.
+ *
+ * <p>An epoch ratifies, it does not originate. The resolver rebuilds the pending membership from its own
+ * state and refuses an epoch whose content hash is anything else. So governance cannot invent a status the
+ * resolver never proposed, and the operational key cannot change a status without governance signing the
+ * result: the operational key proposes, governance ratifies or refuses.
+ */
 @Service
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)
 public class RegistryService {
@@ -47,12 +55,19 @@ public class RegistryService {
         this.json = json;
     }
 
+    /** The unsigned epoch an operator signs offline: what the resolver expects the next epoch to say. */
     public record PendingEpoch(String genesisId, Registry registry, long epoch, String previousEpochHash,
                                String contentHash, HomeserverRegistryContent content) {}
 
+    /** An accepted epoch as served: the signed object, its hash, and the content it commits to. */
     public record PublishedEpoch(RegistryEpoch epoch, String epochHash, HomeserverRegistryContent content,
                                  Instant acceptedAt, Long logLeafIndex) {}
 
+    /**
+     * Build the membership the next epoch would carry. An entry admitted under governance is proposed
+     * ACTIVE; an entry with a recorded status intent is proposed at that status; everything else keeps the
+     * status it has, so an epoch is always a complete statement of membership rather than a delta.
+     */
     public PendingEpoch pending() {
         GovernanceKeySet keys = genesis.requireKeySet();
         List<RegistryMember> members = new ArrayList<>();
@@ -86,6 +101,11 @@ public class RegistryService {
         return epochs.find(registry, epoch).map(this::published);
     }
 
+    /**
+     * Verify a governance-signed epoch and apply it. Every check is a refusal, never a repair: an epoch that
+     * does not continue the chain, does not match the membership the resolver built, or does not carry
+     * enough distinct operators' signatures changes nothing.
+     */
     @Transactional
     public SignedRoster commit(RegistryEpoch submitted, HomeserverRegistryContent content) {
         GovernanceKeySet keys = genesis.requireKeySet();
@@ -109,6 +129,8 @@ public class RegistryService {
             throw new GovernanceException("the epoch's contentHash does not match the content sent with it");
         }
 
+        // The resolver rebuilds the membership itself and refuses anything else: a signature over a hash
+        // the resolver cannot reproduce from its own state is a signature over something it cannot mean.
         PendingEpoch expected = pending();
         if (submitted.epoch() != expected.epoch()) {
             throw new GovernanceException("expected epoch " + expected.epoch() + ", found "
@@ -153,7 +175,11 @@ public class RegistryService {
         return rosterStore.refresh();
     }
 
-    /** Re-checked here because an epoch applies claims as well as statuses. */
+    /**
+     * The claim non-overlap invariant, re-checked over the membership this epoch would make real. An epoch
+     * applies claims as well as statuses, so it is the last point at which two homeservers could end up
+     * claiming the same accounts. An epoch that would leave two members overlapping is refused.
+     */
     private static void requireNoOverlappingClaims(HomeserverRegistryContent content) {
         List<RegistryMember> holdingClaims = content.members().stream()
                 .filter(m -> m.status() != RosterEntry.Status.REVOKED).toList();

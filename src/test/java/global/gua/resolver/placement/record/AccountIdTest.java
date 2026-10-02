@@ -61,11 +61,11 @@ class AccountIdTest {
         assertThat(AccountId.isCanonical(null)).isFalse();
         assertThat(AccountId.isCanonical("")).isFalse();
         assertThat(AccountId.isCanonical(id.toUpperCase(java.util.Locale.ROOT))).isFalse();
-        assertThat(AccountId.isCanonical(id.substring(1))).isFalse();
-        assertThat(AccountId.isCanonical(id + "a")).isFalse();
-        assertThat(AccountId.isCanonical(id.substring(0, id.length() - 1))).isFalse();
-        assertThat(AccountId.isCanonical("ga0" + id.substring(3))).isFalse();
-        assertThat(AccountId.isCanonical(id.substring(0, 3) + "1" + id.substring(4))).isFalse();
+        assertThat(AccountId.isCanonical(id.substring(1))).isFalse();                    // no prefix
+        assertThat(AccountId.isCanonical(id + "a")).isFalse();                           // too long
+        assertThat(AccountId.isCanonical(id.substring(0, id.length() - 1))).isFalse();   // too short
+        assertThat(AccountId.isCanonical("ga0" + id.substring(3))).isFalse();            // wrong prefix
+        assertThat(AccountId.isCanonical(id.substring(0, 3) + "1" + id.substring(4))).isFalse();  // not base32
     }
 
     @Test

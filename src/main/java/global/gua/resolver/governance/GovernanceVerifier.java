@@ -7,11 +7,23 @@ import java.util.Set;
 
 import global.gua.resolver.crypto.Ed25519;
 
-/** Counts distinct operators with a valid signature, never keys. */
+/**
+ * The governance threshold rule: a governance object is valid when valid signatures over its canonical bytes
+ * come from at least {@code threshold} <b>distinct operators</b>.
+ *
+ * <p>It dedupes on {@code operatorId} and never on {@code keyId}: counting keys would yield a threshold that
+ * one operator holding k keys satisfies alone. The roster verifier keeps its per-key counting for the
+ * operational snapshot, and no governance threshold may borrow it.
+ */
 public final class GovernanceVerifier {
 
     private GovernanceVerifier() {}
 
+    /**
+     * @param operators        distinct operators whose keys produced a valid signature
+     * @param threshold        how many were required
+     * @param countedOperators which operators were counted, for diagnostics
+     */
     public record Outcome(int operators, long threshold, Set<String> countedOperators) {
 
         public boolean valid() {
@@ -19,6 +31,7 @@ public final class GovernanceVerifier {
         }
     }
 
+    /** Count the distinct operators that validly signed {@code canonical}. */
     public static Outcome count(GovernanceKeySet keySet, byte[] canonical,
                                 List<GovernanceSignature> signatures) {
         Set<String> operators = new LinkedHashSet<>();
@@ -38,6 +51,7 @@ public final class GovernanceVerifier {
         return new Outcome(operators.size(), keySet.threshold(), Set.copyOf(operators));
     }
 
+    /** Verify or refuse; {@code what} names the object in the failure, for a diagnosable startup error. */
     public static void require(GovernanceKeySet keySet, byte[] canonical,
                                List<GovernanceSignature> signatures, String what) {
         Outcome outcome = count(keySet, canonical, signatures);

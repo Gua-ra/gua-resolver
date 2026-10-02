@@ -7,6 +7,12 @@ import org.springframework.web.bind.annotation.RestController;
 import global.gua.resolver.directory.DirectoryCheckpoint;
 import global.gua.resolver.directory.DirectoryCheckpointService;
 
+/**
+ * Public, signed directory checkpoint (Merkle root plus size, authority-signed, anchored in the transparency
+ * log). Clients and mirrors read it to learn which directory state the authority node has committed to. It
+ * is an assertion by the signer: no per-entry inclusion proof is served, so an individual mapping cannot be
+ * checked against it. Authority mode only.
+ */
 @RestController
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)
 public class DirectoryCheckpointController {

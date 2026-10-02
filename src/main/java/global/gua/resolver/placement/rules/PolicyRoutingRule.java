@@ -26,6 +26,10 @@ import global.gua.resolver.policy.RoutingPolicyVerifier;
 import global.gua.resolver.roster.RosterEntry;
 import global.gua.resolver.roster.RosterStore;
 
+/**
+ * First-class signed policy routing. This rule is data-driven by a verified policy bundle and only targets
+ * homeservers that are already active in the signed roster.
+ */
 @Component
 @Order(50)
 public class PolicyRoutingRule implements PlacementRule {
@@ -35,7 +39,9 @@ public class PolicyRoutingRule implements PlacementRule {
     private final RoutingPolicyVerifier verifier;
     private final Clock clock = Clock.systemUTC();
 
-    // One immutable holder behind a volatile field, so readers always see a consistent (key, zones) pair.
+    // Cache the delegate-verified zone set per (policyId, version) so signatures are not re-verified per call.
+    // A single immutable holder published through one volatile write, so concurrent request threads always
+    // read a self-consistent (key, zones) snapshot (never a key from one policy with zones from another).
     private record VerifiedZoneCache(String key, Set<String> zones) {}
 
     private volatile VerifiedZoneCache zoneCache = new VerifiedZoneCache(null, Set.of());
@@ -66,6 +72,7 @@ public class PolicyRoutingRule implements PlacementRule {
 
         return (policy.rules() == null ? java.util.List.<RoutingPolicyRule>of() : policy.rules()).stream()
                 .filter(RoutingPolicyRule::isEnabled)
+                // a rule only applies when its zone is delegate-signed and currently within its validity window
                 .filter(rule -> delegateVerified.contains(rule.delegatedZoneId()))
                 .filter(rule -> zoneActive(zones.get(rule.delegatedZoneId()), now))
                 .sorted(Comparator.comparingInt(RoutingPolicyRule::priority)
@@ -78,14 +85,15 @@ public class PolicyRoutingRule implements PlacementRule {
 
     private Set<String> delegateVerifiedZones(RoutingPolicyBundle policy) {
         String key = policy.policyId() + " " + policy.version();
-        VerifiedZoneCache cached = zoneCache;
+        VerifiedZoneCache cached = zoneCache;   // read the snapshot once
         if (!key.equals(cached.key())) {
             cached = new VerifiedZoneCache(key, verifier.delegateVerifiedZones(policy));
-            zoneCache = cached;
+            zoneCache = cached;                 // single atomic publish of (key, zones)
         }
         return cached.zones();
     }
 
+    /** A delegated zone only routes while its signed validity window is open (defence against stale scope). */
     private static boolean zoneActive(DelegationZone zone, Instant now) {
         if (zone == null) {
             return false;

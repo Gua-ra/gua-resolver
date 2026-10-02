@@ -7,24 +7,57 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Arrays;
 
-/** Strict big-endian fixed-layout codec. Malformed input is refused, never repaired. */
+/**
+ * Strict fixed-layout codec for the placement record.
+ *
+ * <pre>
+ * off     len   field
+ * 0       4     magic "GUAP"          ASCII, also the signature domain
+ * 4       1     version 0x01
+ * 5       1     generation 0x01
+ * 6       34    accountId raw         0x01 || class || SHA-256(genesis bytes)
+ * 40      1     origin                0x00 bootstrap | 0x01 genesis; equals the class byte at offset 7
+ * 41      1     n                     homeserverId length, 1 to 64
+ * 42      n     homeserverId          ASCII roster id, never the Matrix domain
+ * 42+n    8     issuedAt              epoch milliseconds, unsigned
+ * 50+n    8     notBefore             epoch milliseconds, unsigned
+ * 58+n    8     notAfter              epoch milliseconds, unsigned
+ * 66+n          end
+ * </pre>
+ *
+ * <p>Big-endian, no delimiters, one length prefix. Every malformed case is refused with its own reason
+ * ({@link PlacementRecordRejection}) and none is repaired.
+ *
+ * <p>The decode is pure: no clock, no database, no roster. Everything that depends on this node's state
+ * lives in {@link PlacementRecordVerifier}.
+ *
+ * <p>{@link #encode} exists for tests and for offline tooling. The ingest path never re-encodes: it hashes,
+ * verifies and stores the bytes it received.
+ */
 public final class PlacementRecordCodec {
 
-    /** Also the signature domain: it separates a record from anything else a roster key signs. */
+    /**
+     * ASCII "GUAP". The magic is the signature domain, which is what keeps a record from being mistaken
+     * for any other object a roster membership key signs: a {@code gua-lp.v1} object opens with a u32 length
+     * whose first byte is 0x00, and admission's bare possession proof signs a server name, which cannot
+     * begin with these four bytes followed by two control bytes.
+     */
     public static final byte[] MAGIC = {'G', 'U', 'A', 'P'};
 
     public static final int VERSION = 0x01;
     public static final int GENERATION = 0x01;
 
+    /** Everything but the homeserver id. */
     public static final int FIXED_LENGTH = 66;
 
     public static final int MAX_HOMESERVER_ID_LENGTH = 64;
 
-    /** The checkpoint leaf delimiter, refused inside a homeserver id. */
+    /** The delimiter the transparency-log checkpoint leaves use, so it cannot appear inside a field. */
     private static final char LEAF_DELIMITER = '|';
 
     private PlacementRecordCodec() {}
 
+    /** Decode and structurally validate the canonical bytes; refuses with one reason per defect. */
     public static PlacementRecord decode(byte[] canonical) {
         if (canonical == null
                 || canonical.length < FIXED_LENGTH + 1
@@ -56,6 +89,8 @@ public final class PlacementRecordCodec {
         if (origin == null) {
             throw new PlacementRecordException(PlacementRecordRejection.UNKNOWN_ORIGIN);
         }
+        // The origin byte is redundant with the class byte on purpose: a record that disagrees with itself is
+        // refused rather than resolved in either direction.
         if (origin.code() != rootClass) {
             throw new PlacementRecordException(PlacementRecordRejection.ORIGIN_CLASS_MISMATCH);
         }
@@ -81,7 +116,10 @@ public final class PlacementRecordCodec {
                 homeserverId, issuedAt, notBefore, notAfter);
     }
 
-    /** For tests and offline signing only: ingest never re-encodes. */
+    /**
+     * The canonical bytes for a record. For tests and offline signing tools only: the resolver signs no
+     * record and re-encodes none, because the bytes that were signed are the bytes it received.
+     */
     public static byte[] encode(PlacementRecord record) {
         byte[] accountIdRaw = AccountId.decode(record.accountId());
         byte[] homeserverId = record.homeserverId().getBytes(StandardCharsets.US_ASCII);
@@ -107,6 +145,8 @@ public final class PlacementRecordCodec {
         char[] chars = new char[idLength];
         for (int i = 0; i < idLength; i++) {
             int b = canonical[42 + i] & 0xFF;
+            // Printable ASCII only, and never the delimiter the checkpoint leaves are built with, so one
+            // leaf string can only be read one way.
             if (b <= 0x20 || b >= 0x7F || b == LEAF_DELIMITER) {
                 throw new PlacementRecordException(PlacementRecordRejection.INVALID_HOMESERVER_ID);
             }
@@ -120,7 +160,8 @@ public final class PlacementRecordCodec {
         for (int i = 0; i < 8; i++) {
             value = (value << 8) | (bytes[offset + i] & 0xFFL);
         }
-        // Epoch milliseconds are unsigned on the wire; a value that reads negative is refused.
+        // Epoch milliseconds are unsigned on the wire; anything that reads negative as a signed long is far
+        // past any representable time and is refused rather than wrapped.
         if (value < 0) {
             throw new PlacementRecordException(PlacementRecordRejection.TIMESTAMP_OUT_OF_RANGE);
         }

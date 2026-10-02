@@ -9,6 +9,13 @@ import java.util.Set;
 import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.crypto.Ed25519;
 
+/**
+ * The governance keys in force: the genesis key set with every valid transition applied, plus the threshold
+ * that applies with them.
+ *
+ * <p>It holds keys and answers lookups; it does not count votes. The counting rule (per operator, never per
+ * key) lives in {@link GovernanceVerifier} alone.
+ */
 public final class GovernanceKeySet {
 
     private final String genesisId;
@@ -47,6 +54,7 @@ public final class GovernanceKeySet {
         return List.copyOf(byKeyId.values());
     }
 
+    /** The distinct operators holding these keys: the population a threshold is counted against. */
     public Set<String> operators() {
         return byKeyId.values().stream().map(GovernanceKey::operatorId)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
@@ -60,7 +68,11 @@ public final class GovernanceKeySet {
         return publicKeys.get(keyId);
     }
 
-    /** Policy bundle verification counts these per key, not per operator. */
+    /**
+     * These keys as a trusted-key list, so the policy bundle verifier can check bundles against the
+     * governance root instead of the operational authority key. Policy bundle verification counts per key,
+     * not per operator; a threshold that has to mean independence goes through {@link GovernanceVerifier}.
+     */
     public List<ResolverProperties.TrustedKey> asTrustedKeys() {
         return byKeyId.values().stream().map(k -> {
             ResolverProperties.TrustedKey trusted = new ResolverProperties.TrustedKey();
@@ -70,6 +82,11 @@ public final class GovernanceKeySet {
         }).toList();
     }
 
+    /**
+     * Structural validation of a key set and the threshold that goes with it. A threshold higher than the
+     * number of distinct operators is refused at load rather than at first use: it can never be satisfied
+     * honestly, and the failure should be a startup error an operator sees.
+     */
     static void validateKeys(List<GovernanceKey> keys, long threshold) {
         if (keys == null || keys.isEmpty()) {
             throw new GovernanceException("a governance key set needs at least one key");

@@ -43,9 +43,9 @@ class RemoteDirectoryStoreTest {
             props.getMirror().setDirectoryCacheTtl(Duration.ofMinutes(10));
             RemoteDirectoryStore store = new RemoteDirectoryStore(props, new PhoneHasher(props), WebClient.builder());
 
-            assertThat(store.homeserverIdForUsername("alice")).contains("carrier");
-            server.stop(0);
-            assertThat(store.homeserverIdForUsername("alice")).contains("carrier");
+            assertThat(store.homeserverIdForUsername("alice")).contains("carrier");   // warms the cache
+            server.stop(0);                                                           // authority goes down
+            assertThat(store.homeserverIdForUsername("alice")).contains("carrier");   // served from stale cache
         } finally {
             server.stop(0);
         }
@@ -57,7 +57,7 @@ class RemoteDirectoryStoreTest {
         server.start();
         ResolverProperties props = props(false);
         props.getMirror().setUpstreamUrl("http://127.0.0.1:" + server.getAddress().getPort());
-        props.getMirror().setDirectoryCacheTtl(Duration.ZERO);
+        props.getMirror().setDirectoryCacheTtl(Duration.ZERO);   // strict fail-closed
         RemoteDirectoryStore store = new RemoteDirectoryStore(props, new PhoneHasher(props), WebClient.builder());
 
         assertThat(store.homeserverIdForUsername("alice")).contains("carrier");

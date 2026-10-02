@@ -24,6 +24,12 @@ import global.gua.resolver.roster.SignedRoster;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Unit tests for the placement pipeline: a carrier claiming its MCCMNC wins, a verified affiliation claim
+ * wins, an unverified one does not, and otherwise the weighted fallback always yields an enabled homeserver.
+ * Pure (no Spring). Signed-policy tests use a permissive verifier so they exercise placement logic; the
+ * delegation cryptography itself is covered in RoutingPolicyTest.
+ */
 class PlacementEngineTest {
 
     private static final Homeserver CARRIER = new Homeserver(
@@ -51,6 +57,7 @@ class PlacementEngineTest {
         return new PlacementEngine(List.of(new WeightedFallbackRule(store), new ClaimRule(store)));
     }
 
+    /** Verifier that treats every zone as delegate-verified (requireSignatures=false), for placement-logic tests. */
     private static RoutingPolicyVerifier permissiveVerifier() {
         ResolverProperties props = new ResolverProperties();
         props.getPolicy().setRequireSignatures(false);
@@ -180,7 +187,7 @@ class PlacementEngineTest {
     @Test
     void expiredDelegationZoneIsNotAppliedEvenForVerifiedClaims() {
         RoutingPolicyBundle policy = institutionPolicy(
-                Instant.now().minusSeconds(7200), Instant.now().minusSeconds(3600));
+                Instant.now().minusSeconds(7200), Instant.now().minusSeconds(3600));   // expired zone window
         RosterStore store = rosterOf(entry(UNI), entry(DEFAULT));
         var engine = new PlacementEngine(List.of(new WeightedFallbackRule(store),
                 new PolicyRoutingRule(provider(policy), store, permissiveVerifier())));
@@ -199,6 +206,7 @@ class PlacementEngineTest {
 
         var ctx = new PlacementContext("+5511987654321", "BR", "72411", "Vivo", null, List.of(), Map.of(), false);
 
+        // The claiming homeserver is not accepting new accounts, so placement falls through to the default.
         assertThat(engine.decide(ctx).id()).isEqualTo("default");
     }
 

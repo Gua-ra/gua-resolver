@@ -20,12 +20,33 @@ import global.gua.resolver.roster.RosterStore;
 import global.gua.resolver.roster.RosterVerifier;
 import global.gua.resolver.roster.SignedRoster;
 
-/** Reference client verifier: reproduces new-account placement from the verified roster and policy. */
+/**
+ * Reference client-side verifier. Resolver placement is a re-evaluation of the same rules over the same
+ * inputs (verified roster, verified policy, context), so a client does not have to trust a resolver's
+ * {@code /resolve} answer: it fetches the signed roster and signed policy, verifies their authority (k-of-n)
+ * and delegate signatures, and reproduces the decision locally. The answer is stable only for a fixed
+ * transparency-log size, because the weighted fallback reseeds on every log leaf. This class reuses the
+ * server's own verification and placement code so the two can never diverge (see
+ * docs/verification/gua-resolver-verification-protocol.md); platform verifiers port the same spec.
+ *
+ * <p>Existing-account (directory) results are not verifiable per mapping: no per-lookup inclusion proof is
+ * served. What a client can check is that the returned homeserver id is currently ACTIVE in the verified
+ * roster.
+ */
 public final class ResolverVerifier {
 
     private final RosterVerifier rosterVerifier;
     private final RoutingPolicyVerifier policyVerifier;
 
+    /**
+     * @param authorityKeys      published authority public keys (n) the client trusts, for the roster
+     * @param authorityThreshold k of n required for a roster authority signature
+     * @param policyKeys         the keys a policy bundle must verify under: the federation's governance keys
+     *                           once a genesis is pinned. There is no fallback to the authority keys, so an
+     *                           empty list verifies nothing rather than accepting bundles signed by the
+     *                           operational roster key
+     * @param policyThreshold    k required for a policy signature
+     */
     public ResolverVerifier(List<ResolverProperties.TrustedKey> authorityKeys, int authorityThreshold,
                             List<ResolverProperties.TrustedKey> policyKeys, int policyThreshold) {
         // The policy verifier gets no authority keys, so an empty policy key list verifies nothing.
@@ -42,14 +63,21 @@ public final class ResolverVerifier {
         this.policyVerifier = new RoutingPolicyVerifier(policyProps);
     }
 
+    /** Verify the roster carries a valid k-of-n authority signature over its canonical bytes; throws if not. */
     public void verifyRoster(SignedRoster roster) {
         rosterVerifier.requireVerified(roster);
     }
 
+    /** Verify the policy's authority threshold signature; throws if not. */
     public void verifyPolicy(RoutingPolicyBundle policy) {
         policyVerifier.requireVerified(policy);
     }
 
+    /**
+     * Independently reproduce the homeserver a new account with this context must be placed on, from verified
+     * artifacts. Verifies the roster (always) and the policy (when present) first, then runs the exact
+     * deterministic placement pipeline the server runs.
+     */
     public Homeserver reproduceNewAccountPlacement(PlacementContext context, SignedRoster roster,
                                                    RoutingPolicyBundle policy) {
         rosterVerifier.requireVerified(roster);
@@ -65,6 +93,10 @@ public final class ResolverVerifier {
         return new PlacementEngine(rules).decide(context);
     }
 
+    /**
+     * True iff a resolver's register answer matches the independently reproduced placement. A mismatch means
+     * the resolver returned a homeserver the verified artifacts do not justify (misrouting).
+     */
     public boolean verifyRegisterDecision(String returnedHomeserverId, PlacementContext context,
                                           SignedRoster roster, RoutingPolicyBundle policy) {
         return reproduceNewAccountPlacement(context, roster, policy).id().equals(returnedHomeserverId);

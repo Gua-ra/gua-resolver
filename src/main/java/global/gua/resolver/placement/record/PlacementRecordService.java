@@ -20,7 +20,26 @@ import global.gua.resolver.roster.MemberEntryJson;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 
-/** Not transactional: each write is a single statement whose WHERE clause carries its condition. */
+/**
+ * The ingest and custody rules for placement records.
+ *
+ * <ul>
+ *   <li>no row for this accountId: insert;</li>
+ *   <li>the same homeserver re-issues with a newer issuedAt: replace;</li>
+ *   <li>the same homeserver re-presents the same bytes: unchanged, so a retry is idempotent, and the
+ *       comparison is on the decoded bytes rather than on their transport spelling;</li>
+ *   <li>the same homeserver presents an older issuedAt: refused, the stored record stands;</li>
+ *   <li>a different homeserver claims an accountId that already has a home: refused with a conflict, logged
+ *       with both homeserver ids and counted. One accountId has one home, and a conflicting record is
+ *       rejected, never migrated.</li>
+ * </ul>
+ *
+ * <p>Deliberately not transactional. Every write is a single statement whose WHERE clause carries the
+ * condition it depends on: the primary key for the insert, the holder and the issuedAt floor for the
+ * replace. On Postgres a transaction would be aborted by the duplicate-key violation it has to catch.
+ *
+ * <p>Nothing here is on the resolution path. The table this writes is never read by {@code /resolve}.
+ */
 @Service
 @ConditionalOnExpression(PlacementFeature.ENABLED)
 public class PlacementRecordService {
@@ -44,6 +63,11 @@ public class PlacementRecordService {
         this.conflicts = Counter.builder("gua.resolver.placement.conflicts").register(metrics);
     }
 
+    /**
+     * Parse, authenticate and store one presented envelope. The body is read through the strict reader, so
+     * an unknown field, a duplicate key or trailing content is refused rather than silently dropped: a
+     * signature must never cover fewer fields than the resolver goes on to store.
+     */
     public Outcome ingest(byte[] body, Instant now) {
         try {
             PlacementRecordEnvelope envelope;
@@ -64,6 +88,7 @@ public class PlacementRecordService {
         }
     }
 
+    /** Refuse an ingest before anything is parsed, when the flag is off. Reads are unaffected. */
     public void requireIngestEnabled(boolean enabled) {
         if (!enabled) {
             PlacementRecordException e =
@@ -101,7 +126,8 @@ public class PlacementRecordService {
 
     private Outcome reconcile(StoredPlacementRecord held, StoredPlacementRecord incoming) {
         if (!held.homeserverId().equals(incoming.homeserverId())) {
-            // accountIds are not identifiers, so the pair is safe to log.
+            // accountIds are not identifiers, so the pair is safe to log and is what an operator needs to
+            // tell a duplicate account from a bad signer.
             log.error("Placement conflict for accountId={}: held by homeserverId={}, claimed by "
                             + "homeserverId={}; keeping the held record",
                     held.accountId(), held.homeserverId(), incoming.homeserverId());
@@ -109,6 +135,8 @@ public class PlacementRecordService {
             throw new PlacementRecordException(PlacementRecordRejection.PLACEMENT_CONFLICT);
         }
         if (held.sameSignedBytesAs(incoming)) {
+            // The same bytes again: a retry, not a re-issue. Compared as bytes, because two spellings of one
+            // signature are one object and refusing the second as stale would punish a correct publisher.
             return Outcome.UNCHANGED;
         }
         if (!incoming.issuedAt().isAfter(held.issuedAt())) {

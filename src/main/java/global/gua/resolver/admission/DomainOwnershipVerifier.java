@@ -4,7 +4,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-/** The default implementation accepts any non-empty proof; a real deployment must override this bean. */
+/**
+ * Verifies that an applicant controls the {@code server_name} it is registering. The default implementation
+ * accepts any non-empty proof token and logs it; a real deployment overrides this bean with a DNS TXT or
+ * well-known HTTP challenge.
+ */
 public interface DomainOwnershipVerifier {
 
     boolean verify(String serverName, String proof);

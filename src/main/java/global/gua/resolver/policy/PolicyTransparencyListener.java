@@ -8,6 +8,12 @@ import org.springframework.stereotype.Component;
 import global.gua.resolver.crypto.MerkleTree;
 import global.gua.resolver.roster.JdbcTransparencyLog;
 
+/**
+ * Appends each adopted routing-policy version to the authority's transparency log as a {@code POLICY_PUBLISH}
+ * leaf (subject = {@code policyId:v<version>}, payload = SHA-256 of the canonical bundle). Because it lands in
+ * the same Merkle log as membership, the published checkpoint and consistency proofs cover policy too, so a
+ * client can detect a policy history rewritten since its own last checkpoint. Authority mode only.
+ */
 @Component
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)
 public class PolicyTransparencyListener implements PolicyPublicationListener {
@@ -29,7 +35,7 @@ public class PolicyTransparencyListener implements PolicyPublicationListener {
         }
         String payloadHash = MerkleTree.sha256Hex(CanonicalRoutingPolicy.bytes(bundle));
         if (transparencyLog.hasLeaf(EVENT_TYPE, payloadHash)) {
-            return;
+            return;   // this exact version and content is already logged (idempotent across restarts)
         }
         String subject = bundle.policyId() + ":v" + bundle.version();
         transparencyLog.append(EVENT_TYPE, subject, payloadHash);

@@ -22,7 +22,15 @@ import global.gua.resolver.roster.RosterStore;
 import global.gua.resolver.roster.SignedRoster;
 import io.micrometer.core.instrument.MeterRegistry;
 
-/** Measures only: a stored record is never rewritten, re-signed or deleted here. */
+/**
+ * Re-verifies every stored record against the current roster after the roster changes, and counts the ones
+ * whose signer is no longer ACTIVE.
+ *
+ * <p>A record is verified at acceptance time against the roster as it was then. When its homeserver is
+ * later suspended, revoked, or loses its member attestation, the record has no active signer behind it.
+ * Nothing routes on these records, so this only measures: a record is never rewritten, re-signed or
+ * deleted here.
+ */
 @Component
 @ConditionalOnExpression(PlacementFeature.ENABLED)
 public class PlacementRecordAuditor {
@@ -51,6 +59,7 @@ public class PlacementRecordAuditor {
     public record AuditResult(long rosterVersion, long records, long orphanedByRoster,
                               long invalidSignature) {}
 
+    /** Sweep when the roster has moved since the last sweep; the common case is to do nothing. */
     @Scheduled(fixedDelayString = "${gua.resolver.placement.audit-interval:PT5M}")
     public synchronized void auditIfRosterChanged() {
         long version = rosterStore.current().version();

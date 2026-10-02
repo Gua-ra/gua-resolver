@@ -26,6 +26,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * A record is verified against the roster as it was at acceptance time, and membership moves afterwards. The
+ * auditor re-verifies every record when the roster changes and counts the ones whose signer is no longer
+ * ACTIVE. It measures and never repairs: an orphaned record keeps its bytes.
+ */
 @SpringBootTest(properties = {
         "gua.resolver.placement.enabled=true",
         "gua.resolver.placement.ingest-enabled=true"
@@ -71,6 +76,7 @@ class PlacementRecordAuditorTest {
 
         admission.setStatus("hs-aud", RosterEntry.Status.SUSPENDED);
 
+        // The roster moved, so the sweep runs on its own trigger rather than needing to be asked.
         auditor.auditIfRosterChanged();
         PlacementRecordAuditor.AuditResult after = auditor.audit();
         assertThat(after.records()).isEqualTo(1);

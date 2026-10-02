@@ -4,6 +4,13 @@ import java.util.List;
 
 import global.gua.resolver.crypto.CanonicalEncoder;
 
+/**
+ * The {@code gua-governance-transition.v1} canonical bytes, encoded with {@code gua-lp.v1}.
+ *
+ * <p>Field order: schema tag; genesisId; index (int64); previousHash; issuedAt (int64 epoch ms);
+ * newThreshold (int64); newKeys as a list sorted by keyId, each {keyId, alg, publicKey, operatorId}.
+ * Signatures are outside these bytes, because a transition carries two sets of them.
+ */
 public final class CanonicalGovernanceTransition {
 
     private CanonicalGovernanceTransition() {}
@@ -30,6 +37,7 @@ public final class CanonicalGovernanceTransition {
         return e.toByteArray();
     }
 
+    /** The hash the next transition in the chain names as its {@code previousHash}. */
     public static String hash(GovernanceTransition transition) {
         return CanonicalEncoder.sha256Hex(bytes(transition));
     }

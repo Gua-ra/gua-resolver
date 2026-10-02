@@ -9,7 +9,11 @@ import org.springframework.stereotype.Component;
 import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.crypto.Ed25519;
 
-/** No fallback to the authority signing key: with no policy key configured this bean signs nothing. */
+/**
+ * Policy-bundle signing, for offline tooling and tests. There is no fallback to the authority signing key:
+ * a bundle is signed outside this process, through the governance tool. A deployed resolver normally
+ * configures no policy signing key at all, so {@link #canSign()} is false and this bean signs nothing.
+ */
 @Component
 public class RoutingPolicySigner {
 
@@ -25,6 +29,7 @@ public class RoutingPolicySigner {
                 : Ed25519.privateKey(configuredPrivateKey);
     }
 
+    /** Add (or replace) this node's authority signature over the canonical bundle. */
     public RoutingPolicyBundle sign(RoutingPolicyBundle unsigned) {
         if (!canSign()) {
             return unsigned;
@@ -42,6 +47,11 @@ public class RoutingPolicySigner {
         return keyId != null && !keyId.isBlank() && signingKey != null;
     }
 
+    /**
+     * Produce a delegate signature over the rules of one zone and add it to the bundle. The delegate holds
+     * {@code delegatePrivateKeyB64}; {@code delegateKeyId} must match the zone's declared delegateKeyId.
+     * Used by authoring tooling and tests; the authority still has to sign the bundle around it.
+     */
     public static RoutingPolicyBundle signZone(RoutingPolicyBundle bundle, String zoneId,
                                                String delegateKeyId, String delegatePrivateKeyB64) {
         PrivateKey delegateKey = Ed25519.privateKey(delegatePrivateKeyB64);

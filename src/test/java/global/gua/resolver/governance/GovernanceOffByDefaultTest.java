@@ -22,6 +22,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * With no genesis configured, governance is off: an admission is ACTIVE immediately, a status change takes
+ * effect immediately, and the well-known endpoint says there is nothing to serve. This is the shipped
+ * default.
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
 @DirtiesContext

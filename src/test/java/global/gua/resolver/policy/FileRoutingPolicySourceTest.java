@@ -39,6 +39,7 @@ class FileRoutingPolicySourceTest {
         FileRoutingPolicySource source = source(file, Clock.systemUTC());
         assertThat(source.current()).map(RoutingPolicyBundle::version).contains(5L);
 
+        // An attacker or stale mirror swaps in a validly signed but older policy; it must be rejected.
         writePolicy(file, 4);
         source.refresh();
 
@@ -55,6 +56,7 @@ class FileRoutingPolicySourceTest {
         FileRoutingPolicySource source = source(file, clock);
         assertThat(source.current()).isPresent();
 
+        // Time advances past the policy's signed expiry; it must degrade to "no policy", not keep applying.
         clock.set(base.plusSeconds(120));
         assertThat(source.current()).isEmpty();
         assertThat(source.status().available()).isFalse();
@@ -65,13 +67,15 @@ class FileRoutingPolicySourceTest {
         Path file = dir.resolve("policy.json");
         Instant base = Instant.now();
         MutableClock clock = new MutableClock(base);
-        writePolicy(file, 5, base.minusSeconds(60), base.plusSeconds(60));
+        writePolicy(file, 5, base.minusSeconds(60), base.plusSeconds(60));   // v5 valid until base+60s
         FileRoutingPolicySource source = source(file, clock);
         assertThat(source.current()).map(RoutingPolicyBundle::version).contains(5L);
 
-        clock.set(base.plusSeconds(120));
+        clock.set(base.plusSeconds(120));                                    // v5 expires
         assertThat(source.current()).isEmpty();
 
+        // An operator recovers by publishing a good, in-window v4; rollback protection must not block it,
+        // because the expired v5 no longer floors the version.
         writePolicy(file, 4, base.minusSeconds(60), base.plusSeconds(3600));
         source.refresh();
         assertThat(source.current()).map(RoutingPolicyBundle::version).contains(4L);

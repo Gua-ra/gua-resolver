@@ -30,7 +30,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** The attest route is under {@code /authority/**}, so it needs the ADMIN role. */
+/**
+ * The attest route over HTTP: it lives under {@code /authority/**}, so it needs the ADMIN role, and its body
+ * is parsed strictly, so nothing outside the member's signature can ride along into the served roster.
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
 @DirtiesContext

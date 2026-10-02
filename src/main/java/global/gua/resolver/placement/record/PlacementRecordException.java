@@ -3,6 +3,11 @@
  */
 package global.gua.resolver.placement.record;
 
+/**
+ * A placement record that was refused, carrying the one reason it was refused for. Thrown by the codec, the
+ * verifier and the storage rules alike, so every refusal reaches the caller and the metrics through one
+ * path. A refused record is never partially accepted and never repaired.
+ */
 public class PlacementRecordException extends RuntimeException {
 
     private final transient PlacementRecordRejection rejection;

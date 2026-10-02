@@ -5,6 +5,17 @@ import org.springframework.stereotype.Component;
 import global.gua.resolver.roster.RosterStore;
 import io.micrometer.core.instrument.MeterRegistry;
 
+/**
+ * Federation-state gauges:
+ * <ul>
+ *   <li>{@code gua_resolver_roster_version}: current signed-roster version;</li>
+ *   <li>{@code gua_resolver_roster_homeservers{status="active"}}: admitted, active homeservers;</li>
+ *   <li>{@code gua_resolver_roster_homeservers{status="unattested"}}: ACTIVE homeservers with no valid
+ *       member self-signature, whether still served or excluded by the transition flag;</li>
+ *   <li>{@code gua_resolver_transparency_log_size}: append-only membership-event count.</li>
+ * </ul>
+ * Gauges read the current roster on scrape, so they always reflect live state.
+ */
 @Component
 public class RosterMetrics {
 
@@ -29,7 +40,7 @@ public class RosterMetrics {
         try {
             return f.get().doubleValue();
         } catch (Exception e) {
-            return Double.NaN;   // reported as no data
+            return Double.NaN;   // surfaced as "no data" rather than a misleading 0
         }
     }
 }

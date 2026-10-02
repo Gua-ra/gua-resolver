@@ -19,7 +19,14 @@ import global.gua.resolver.policy.RoutingPolicySource;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** Boots the application directly: a context that must fail to start cannot be injected. */
+/**
+ * With governance required, a bundle signed by the operational key does not verify, and the service does not
+ * come up. The second test boots the same bundle with {@code gua.resolver.governance.required} set to false,
+ * and it must start: the flag alone decides whether the operational key is a policy trust root.
+ *
+ * <p>These boot the application themselves instead of using {@code @SpringBootTest}, because a context that
+ * must fail to start cannot be an injected one.
+ */
 class GovernanceRequiredRefusesOperationalKeyTest {
 
     private static final GovernanceFixtures.Holder GOVERNANCE =
@@ -44,7 +51,12 @@ class GovernanceRequiredRefusesOperationalKeyTest {
         return file;
     }
 
-    /** Command-line arguments: SpringApplicationBuilder.properties ranks below the test application.yml. */
+    /**
+     * Passed as command-line arguments, not {@code SpringApplicationBuilder.properties}, which lands in
+     * {@code defaultProperties} below the test {@code application.yml}. That yml carries its own
+     * {@code authority.trusted-keys}, so a lower-precedence override is silently ignored and the operational
+     * key minted here would never be the one in force.
+     */
     private static String[] arguments(Path genesis, Path policy, String database, boolean governanceRequired) {
         return new String[] {
                 "--server.port=0",

@@ -9,15 +9,29 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 
+/**
+ * Two-layer token-bucket limiter for {@code POST /resolve}: one bucket per client key, held in a bounded
+ * cache (max size plus idle expiry), and one global ceiling for the whole process. Both are per pod, so with
+ * several replicas the effective per-client rate is replicas times the configured limit.
+ *
+ * <p>The client bucket is charged first, so an abuser is the one that runs dry; the global bucket is checked
+ * second. A request refused by the global bucket has already spent one client token.
+ *
+ * <p>Past {@code max-tracked-clients} active keys the least recently used bucket is dropped and that client
+ * starts over with a full bucket. The global ceiling still bounds the total rate whatever the key churn.
+ */
 public class ResolveRateLimiter {
 
     public enum Scope { CLIENT, GLOBAL }
 
+    /** Outcome for one request. {@code firstHitInWindow} is set on the first refusal per key per window. */
     public record Decision(boolean allowed, Scope scope, long retryAfterSeconds, boolean firstHitInWindow) {
         static final Decision ALLOWED = new Decision(true, null, 0, false);
     }
 
+    /** {@code gua_resolver_resolve_ratelimited_total{scope="client"|"global"}}. */
     public static final String LIMITED_METRIC = "gua.resolver.resolve.ratelimited";
+    /** {@code gua_resolver_resolve_clients_tracked}: distinct client keys currently held. */
     public static final String TRACKED_METRIC = "gua.resolver.resolve.clients.tracked";
 
     private final ResolverProperties.Abuse props;
@@ -66,6 +80,7 @@ public class ResolveRateLimiter {
         return Decision.ALLOWED;
     }
 
+    /** Distinct client keys held right now, after the cache has applied pending evictions. */
     public long trackedClients() {
         clients.cleanUp();
         return clients.estimatedSize();

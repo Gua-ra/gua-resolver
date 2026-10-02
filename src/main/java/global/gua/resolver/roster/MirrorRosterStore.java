@@ -22,6 +22,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.crypto.MerkleTree;
 
+/**
+ * Mirror-mode {@link RosterStore}: pulls the signed roster from an upstream authority, verifies the k-of-n
+ * authority signatures and transparency-log consistency before serving it, then refreshes periodically. A
+ * mirror can never mint roster entries, only relay verified ones.
+ *
+ * <p>It serves the upstream document verbatim at {@code GET /roster} ({@link #served()}), so a client can
+ * still check the upstream signature over exactly those bytes, and routes on its own verified view of it
+ * ({@link #current()}): each entry's member self-signature is checked against the last entry this mirror
+ * accepted for that homeserver, which is what catches an authority that substitutes a member's address or
+ * key, or replays an older entry. Under {@code gua.resolver.roster.require-member-signature} an ACTIVE entry
+ * that fails is dropped from that view.
+ */
 @Component
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "MIRROR")
 public class MirrorRosterStore implements RosterStore {
@@ -95,13 +107,17 @@ public class MirrorRosterStore implements RosterStore {
         }
         SignedRoster pulled = parse(document);
 
+        // 1. Threshold signatures must verify against the published authority key set.
         verifier.requireVerified(pulled);
 
-        // Detects history rewritten since the last accepted checkpoint, not a split view.
+        // 2. Transparency-log consistency: the new checkpoint must be an append-only extension of the last
+        //    one this mirror accepted. It detects a history rewritten since then, not a split view between
+        //    readers.
         if (lastCheckpoint != null && lastCheckpoint.size() > 0) {
             requireConsistentLog(lastCheckpoint, pulled.logCheckpoint());
         }
 
+        // 3. Per-entry member self-signatures, against what this mirror accepted before.
         SignedRoster view = accept(pulled, MemberEntryJson.malformedMemberEntries(json, tree(document)));
         this.lastCheckpoint = pulled.logCheckpoint();
         saveCachedRoster(document);
@@ -124,7 +140,11 @@ public class MirrorRosterStore implements RosterStore {
         return MemberEntryJson.readTree(json, document);
     }
 
-    /** Only a verified entry becomes the prior for the next refresh. */
+    /**
+     * Record the verified view and advance this mirror's per-homeserver state. Only an entry that verified
+     * becomes the prior for the next refresh, so a refused entry can never move the sequence forward or
+     * install a key the previous key did not sign.
+     */
     private SignedRoster accept(SignedRoster pulled, Set<String> malformed) {
         Instant now = Instant.now();
         RosterVerifier.VerifiedView view =
@@ -171,6 +191,7 @@ public class MirrorRosterStore implements RosterStore {
         }
     }
 
+    /** Cache the upstream document verbatim: it is the artifact whose signature covers exactly those bytes. */
     private void saveCachedRoster(String document) {
         if (cacheFile == null) {
             return;

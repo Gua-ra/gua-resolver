@@ -13,6 +13,7 @@ class TokenBucketTest {
 
     @Test
     void burstIsGrantedThenTheNextRequestWaitsForARefill() {
+        // 3 per minute, burst 3: one token every 20 seconds once the burst is spent.
         TokenBucket bucket = new TokenBucket(3, 3, Duration.ofMinutes(1), T0);
         assertThat(bucket.tryAcquire(T0)).isZero();
         assertThat(bucket.tryAcquire(T0)).isZero();
@@ -20,6 +21,7 @@ class TokenBucketTest {
         long wait = bucket.tryAcquire(T0);
         assertThat(wait).isEqualTo(Duration.ofSeconds(20).toNanos());
 
+        // 19s later still nothing; at 20s exactly one token has been earned.
         assertThat(bucket.tryAcquire(T0 + Duration.ofSeconds(19).toNanos())).isPositive();
         assertThat(bucket.tryAcquire(T0 + Duration.ofSeconds(20).toNanos())).isZero();
         assertThat(bucket.tryAcquire(T0 + Duration.ofSeconds(20).toNanos())).isPositive();

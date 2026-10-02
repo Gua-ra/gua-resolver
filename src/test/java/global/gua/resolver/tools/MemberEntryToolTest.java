@@ -21,6 +21,11 @@ import global.gua.resolver.roster.MemberEntryVerifier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * What the tool produces has to be what the resolver accepts, so its output is checked with the same
+ * verifier the resolver runs. Keys are generated in memory and piped through standard input, which is also
+ * the way the runbook tells an operator to handle them.
+ */
 class MemberEntryToolTest {
 
     private static final ObjectMapper JSON = new ObjectMapper().findAndRegisterModules();
@@ -105,6 +110,7 @@ class MemberEntryToolTest {
         java.nio.file.Path fields = write(dir, "rotate.json", fields(next.publicKeyB64(), "hs1-2", 2,
                 ",\"previousKeyId\":\"hs1-1\",\"previousSigningKey\":\"" + previous.publicKeyB64() + "\""));
 
+        // Both keys on standard input: the new key first, as the runbook says.
         Run run = run(next.privateKeyB64() + "\n" + previous.privateKeyB64() + "\n", "rotate",
                 "--fields", fields.toString(), "--private-key-file", "-",
                 "--previous-private-key-file", "-");

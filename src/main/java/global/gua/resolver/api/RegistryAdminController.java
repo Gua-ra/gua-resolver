@@ -22,7 +22,17 @@ import global.gua.resolver.governance.RegistryService;
 import global.gua.resolver.roster.MemberEntryJson;
 import global.gua.resolver.roster.SignedRoster;
 
-/** {@code /authority/**} requires the ADMIN role, enforced in SecurityConfig. */
+/**
+ * The operator's half of the epoch ceremony, under {@code /authority/**} and therefore ADMIN-only.
+ *
+ * <p>{@code GET .../pending} returns the membership this resolver expects the next epoch to carry; the
+ * operator signs it offline with the governance key, which never reaches this process, and posts the result
+ * to {@code POST .../epoch}. The resolver rebuilds the pending membership again at submission and refuses
+ * anything else, so the round trip cannot be used to smuggle in a membership the resolver never proposed.
+ *
+ * <p>The body is parsed strictly, like a member attestation: an unknown field or a duplicate key would be
+ * content outside the signature.
+ */
 @RestController
 @RequestMapping("/authority/registry/homeservers")
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)
@@ -36,11 +46,13 @@ public class RegistryAdminController {
         this.json = json;
     }
 
+    /** The unsigned next epoch: sign this offline, do not compose one by hand. */
     @GetMapping("/pending")
     public RegistryService.PendingEpoch pending() {
         return registry.pending();
     }
 
+    /** Submit the signed epoch together with the content its {@code contentHash} commits to. */
     @PostMapping(path = "/epoch", consumes = MediaType.APPLICATION_JSON_VALUE)
     public SignedRoster submit(@RequestBody byte[] body) {
         JsonNode tree = MemberEntryJson.readTree(json, body);

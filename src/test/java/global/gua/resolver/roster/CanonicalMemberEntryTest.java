@@ -19,6 +19,11 @@ import global.gua.resolver.domain.Homeserver;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * The published golden vectors (docs/specs/gua-lp-v1-vectors.json) are the contract the iOS and Android ports
+ * verify against, so they are recomputed here byte for byte: primitives, member-entry canonical bytes, object
+ * hashes, deterministic Ed25519 signatures, and every case a conforming verifier must refuse.
+ */
 class CanonicalMemberEntryTest {
 
     private static final Path VECTORS = Path.of("docs/specs/gua-lp-v1-vectors.json");

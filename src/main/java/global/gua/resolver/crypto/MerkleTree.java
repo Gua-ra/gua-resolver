@@ -7,7 +7,15 @@ import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 
-/** RFC 6962 Merkle tree. */
+/**
+ * RFC 6962 (Certificate Transparency) Merkle tree hashing, the tamper-evidence primitive behind the
+ * transparency log. Domain-separated so leaf and interior hashes cannot be confused:
+ * {@code leafHash = SHA256(0x00 || data)}, {@code nodeHash = SHA256(0x01 || left || right)}.
+ *
+ * <p>Provides the Merkle Tree Hash (root) and the consistency proof plus verification that lets a mirror
+ * check that a new checkpoint is an append-only extension of one it saw earlier. That detects a history
+ * rewritten relative to that earlier checkpoint; it does not rule out a split view between readers.
+ */
 public final class MerkleTree {
 
     private static final byte[] LEAF_PREFIX = {0x00};
@@ -28,10 +36,12 @@ public final class MerkleTree {
         return HEX.formatHex(sha256().digest(data.getBytes(StandardCharsets.UTF_8)));
     }
 
+    /** Plain SHA-256 (hex) of arbitrary bytes, e.g. a canonical policy-bundle content hash. */
     public static String sha256Hex(byte[] data) {
         return HEX.formatHex(sha256().digest(data));
     }
 
+    /** RFC 6962 leaf hash (hex) for arbitrary leaf data. */
     public static String leafHash(byte[] data) {
         MessageDigest d = sha256();
         d.update(LEAF_PREFIX);
@@ -47,6 +57,10 @@ public final class MerkleTree {
         return d.digest();
     }
 
+    /**
+     * Merkle Tree Hash (RFC 6962 section 2.1) over {@code leafHashes} (each a hex leaf hash). Returns the root
+     * as hex. The empty tree hashes to SHA256 of the empty string.
+     */
     public static String root(List<String> leafHashes) {
         if (leafHashes.isEmpty()) {
             return HEX.formatHex(sha256().digest(new byte[0]));
@@ -58,6 +72,7 @@ public final class MerkleTree {
         return HEX.formatHex(mth(level));
     }
 
+    /** Recursive MTH over already-leaf-hashed nodes, splitting at the largest power of two < n. */
     private static byte[] mth(List<byte[]> nodes) {
         int n = nodes.size();
         if (n == 1) {
@@ -77,6 +92,10 @@ public final class MerkleTree {
         return k;
     }
 
+    /**
+     * RFC 6962 section 2.1.2 consistency proof between a tree of {@code first} leaves and one of
+     * {@code second} leaves (first &le; second). Returns the list of hex node hashes the verifier needs.
+     */
     public static List<String> consistencyProof(List<String> leafHashes, int first, int second) {
         if (first < 0 || second < first || second > leafHashes.size()) {
             throw new IllegalArgumentException("invalid consistency proof range");
@@ -112,6 +131,11 @@ public final class MerkleTree {
         }
     }
 
+    /**
+     * Verify a consistency proof: that {@code newRoot} (of {@code second} leaves) is an append-only
+     * extension of {@code oldRoot} (of {@code first} leaves). This is the check a mirror runs against the
+     * authority node so a history rewritten since {@code oldRoot} is detected.
+     */
     public static boolean verifyConsistency(int first, int second, String oldRoot, String newRoot,
                                             List<String> proof) {
         if (first == 0) {

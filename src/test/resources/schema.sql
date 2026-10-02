@@ -1,4 +1,6 @@
--- Mirrors db/migration by hand; SchemaParityTest compares the two. DROP-first so each context starts clean.
+-- Test schema (H2/PostgreSQL mode), mirrors db/migration by hand. Flyway is disabled in tests; Spring SQL
+-- init runs this. DROP-first so each test context starts clean. SchemaParityTest applies the real migrations
+-- to one database and this script to another and compares the resulting columns.
 DROP TABLE IF EXISTS roster_entry;
 DROP TABLE IF EXISTS roster_member_history;
 DROP TABLE IF EXISTS registry_epoch;

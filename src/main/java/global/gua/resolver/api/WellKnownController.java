@@ -15,7 +15,16 @@ import global.gua.resolver.governance.GovernanceTransition;
 
 import java.util.concurrent.TimeUnit;
 
-/** Served on the resolver origin: the apex {@code /.well-known/*} paths belong to another service. */
+/**
+ * Publishes the pinned federation genesis and its governance key transitions.
+ *
+ * <p>This endpoint is one of several channels, not the trust root: a genesis fetched here is signed by the
+ * keys it enumerates, so it proves nothing until its fingerprint is compared against an independent channel.
+ * It is cacheable and unauthenticated so that comparison is possible.
+ *
+ * <p>It is served on the resolver origin rather than the apex, whose {@code /.well-known/*} paths belong to
+ * a different service.
+ */
 @RestController
 public class WellKnownController {
 
@@ -25,6 +34,14 @@ public class WellKnownController {
         this.genesis = genesis;
     }
 
+    /**
+     * @param genesisId   SHA-256 of the genesis canonical bytes: the federation's identity
+     * @param fingerprint the first 16 hex characters grouped in fours, for comparison by eye
+     * @param chainHead   how far the governance key chain has run: the genesis id while no transition has
+     *                    been applied, the hash of the last applied transition after that. It is the value
+     *                    an operator pins, and the one a reader compares to see that a resolver is not
+     *                    serving from a shortened chain
+     */
     public record FederationDocument(String genesisId, String fingerprint, String chainHead,
                                      FederationGenesis genesis,
                                      List<GovernanceTransition> transitions) {}

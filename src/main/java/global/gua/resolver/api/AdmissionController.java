@@ -29,7 +29,16 @@ import global.gua.resolver.roster.MemberEntryJson;
 import global.gua.resolver.roster.RosterEntry;
 import global.gua.resolver.roster.SignedRoster;
 
-/** {@code /authority/**} requires the ADMIN role, enforced in SecurityConfig. */
+/**
+ * Authority admin surface for federation membership, under {@code /authority/**}, which SecurityConfig
+ * restricts to the ADMIN role. Every call appends to the transparency log and returns the freshly re-signed
+ * roster.
+ *
+ * <p>Bodies that carry a member self-signature are read from the raw bytes through a strict reader rather
+ * than the shared lenient {@code ObjectMapper}: an unknown field, a duplicate key or trailing content is
+ * refused, so a signature can never cover fewer fields than the resolver goes on to store and serve. A
+ * legacy admission body (no member block) is parsed leniently.
+ */
 @RestController
 @RequestMapping("/authority")
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)
@@ -50,6 +59,7 @@ public class AdmissionController {
         return admission.admit(parseAdmission(body));
     }
 
+    /** Accept a member's self-signature over its own entry (first attestation, update, or key rotation). */
     @PostMapping(path = "/roster/{id}/member", consumes = MediaType.APPLICATION_JSON_VALUE)
     public SignedRoster attest(@PathVariable String id, @RequestBody byte[] body) {
         return admission.attest(id, MemberEntryJson.read(json, body, MemberAttestationRequest.class));

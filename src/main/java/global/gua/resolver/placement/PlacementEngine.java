@@ -8,6 +8,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+/**
+ * Runs the registered {@link PlacementRule}s in priority order and returns the first match. The answer is
+ * stable only for a fixed transparency-log size, because the weighted fallback reseeds on every log leaf.
+ * The decision is made once, at account creation (MXIDs are immutable).
+ *
+ * <p>Spring injects every {@link PlacementRule} bean; the claim rules read the signed roster, so adding a
+ * carrier/institution is a roster edit, not a code change.
+ */
 @Component
 public class PlacementEngine {
 
@@ -21,10 +29,15 @@ public class PlacementEngine {
                 this.rules.stream().map(PlacementRule::name).toList());
     }
 
+    /**
+     * @return the homeserver a new account with this context should be created on.
+     * @throws NoPlacementAvailableException if no rule (including the weighted fallback) yields a homeserver.
+     */
     public global.gua.resolver.domain.Homeserver decide(PlacementContext context) {
         return decideWithTrace(context).homeserver();
     }
 
+    /** Same placement decision, with the rule/policy metadata needed for debugging and audit. */
     public PlacementDecision decideWithTrace(PlacementContext context) {
         for (PlacementRule rule : rules) {
             Optional<PlacementDecision> choice = rule.evaluate(context);

@@ -17,6 +17,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * The shared directory has no HTTP write path. A write to {@code POST /directory/entries}, validly signed
+ * with the seeded homeserver's membership credential, must be refused and write nothing. The read paths
+ * ({@code GET /directory/lookup}, {@code POST /resolve}) keep working against rows seeded through the store
+ * interface.
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
 class DirectoryFlowTest {
@@ -43,6 +49,7 @@ class DirectoryFlowTest {
                 {"homeserverId":"dev","e164Phone":"%s","username":"%s","signature":"%s"}
                 """.formatted(phone, username, sig);
 
+        // Nothing was written: neither row exists and the directory's Merkle root is unchanged.
         assertThat(directory.homeserverIdForPhone(phone)).isEmpty();
         assertThat(directory.homeserverIdForUsername(username)).isEmpty();
         DirectoryCheckpoint before = directory.checkpoint();

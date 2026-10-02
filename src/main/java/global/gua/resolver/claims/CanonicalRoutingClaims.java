@@ -8,7 +8,16 @@ import java.util.Objects;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
-/** The bytes a claims issuer signs. Values are escaped so the encoding is injective. */
+/**
+ * Produces the exact bytes a MAS / identity-service issuer signs over a routing-claims envelope (and that the
+ * resolver re-derives to verify the signature). The format is one {@code key=value} line per field, in a
+ * fixed order, prefixed by a version tag.
+ *
+ * <p>It is deliberately <b>injective</b>: {@link #escape} backslash-escapes the structural delimiters
+ * ({@code \n}, {@code |}, {@code =}) inside every value, so two different logical claim sets can never produce
+ * the same bytes. Without that, e.g. {@code {"a":"b|c=d"}} and {@code {"a":"b","c":"d"}} would encode
+ * identically, and one signature would cover a claim set the issuer never asserted.
+ */
 public final class CanonicalRoutingClaims {
 
     private CanonicalRoutingClaims() {}
@@ -27,6 +36,10 @@ public final class CanonicalRoutingClaims {
         return canonical.getBytes(StandardCharsets.UTF_8);
     }
 
+    /**
+     * Affiliations sorted for a stable order, each escaped, joined by {@code |}. Null entries are dropped
+     * (the verifier rejects them upstream; this keeps the signer path from throwing on malformed input).
+     */
     private static String affiliations(List<String> affiliations) {
         if (affiliations == null) {
             return "";
@@ -38,6 +51,7 @@ public final class CanonicalRoutingClaims {
                 .collect(Collectors.joining("|"));
     }
 
+    /** Attributes sorted by key (TreeMap), each {@code key=value} escaped, joined by {@code |}. */
     private static String attributes(Map<String, String> attributes) {
         if (attributes == null) {
             return "";

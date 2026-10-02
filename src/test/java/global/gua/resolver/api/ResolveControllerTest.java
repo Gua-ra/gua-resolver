@@ -13,6 +13,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * Contract test for the resolver front door, against the dev wiring (single homeserver from config, empty
+ * directory). Locks the JSON shape the client apps decode.
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
 class ResolveControllerTest {
@@ -74,12 +78,14 @@ class ResolveControllerTest {
 
     @Test
     void unknownRoutesAreDeniedByDefault() throws Exception {
+        // deny-by-default + HTTP Basic entry point: an anonymous hit on a non-allowlisted route is challenged.
         mockMvc.perform(get("/not-a-real-endpoint"))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
     void authorityAdminEndpointsAreDeniedWithoutAdminCredentials() throws Exception {
+        // No admin password hash is configured in tests, so /authority/** must not be reachable anonymously.
         mockMvc.perform(post("/authority/admission").contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isUnauthorized());
     }

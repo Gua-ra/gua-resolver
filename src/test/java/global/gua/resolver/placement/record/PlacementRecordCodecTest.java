@@ -17,6 +17,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
+/**
+ * The fixed-layout decode. Every malformed case is refused, each with its own reason, and none is repaired.
+ * The decode is pure, so nothing here needs a clock, a roster or a database.
+ */
 class PlacementRecordCodecTest {
 
     private static final String HOMESERVER = "hs-one";
@@ -53,6 +57,9 @@ class PlacementRecordCodecTest {
 
     @Test
     void aRecordCarriesNoIdentifier() {
+        // The whole object is 66 + n bytes of magic, version, generation, an account hash, an origin byte, a
+        // roster id and three timestamps. There is no field a phone, a phone hash or a Matrix user id could
+        // be carried in, and this is the test that fails if one is ever added.
         String accountId = PlacementFixtures.genesisAccountId("codec-fields");
         byte[] canonical = PlacementFixtures.canonical(accountId, HOMESERVER, ISSUED);
 
@@ -114,6 +121,7 @@ class PlacementRecordCodecTest {
                 PlacementRecordRejection.INVALID_HOMESERVER_ID,
                 PlacementRecordRejection.TIMESTAMP_OUT_OF_RANGE,
                 PlacementRecordRejection.WINDOW_NOT_ORDERED);
+        // One reason per defect, not one catch-all: an operator can tell a bad signer from a bad build.
         assertThat(seen).doesNotHaveDuplicates();
     }
 
@@ -122,16 +130,21 @@ class PlacementRecordCodecTest {
         byte[] valid = PlacementFixtures.canonical(
                 PlacementFixtures.genesisAccountId("codec-lengths"), HOMESERVER, ISSUED);
 
+        // One byte short of what the length prefix declares.
         assertThat(reasonFor(Arrays.copyOf(valid, valid.length - 1)))
                 .isEqualTo(PlacementRecordRejection.DECLARED_LENGTH_MISMATCH);
+        // A trailing byte nobody declared, which is the same defect from the other side.
         assertThat(reasonFor(Arrays.copyOf(valid, valid.length + 1)))
                 .isEqualTo(PlacementRecordRejection.DECLARED_LENGTH_MISMATCH);
+        // A declared homeserver-id length above the maximum the layout allows.
         assertThat(reasonFor(mutate(valid, b -> b[41] = 0x41)))
                 .isEqualTo(PlacementRecordRejection.BAD_HOMESERVER_ID_LENGTH);
     }
 
     @Test
     void theCheckpointDelimiterCannotAppearInsideAHomeserverId() {
+        // The transparency-log leaves are A|<accountId>|<homeserverId>|<origin>, and the accountId is fixed
+        // length, so refusing the delimiter here is what leaves one leaf string with one reading.
         byte[] valid = PlacementFixtures.canonical(
                 PlacementFixtures.genesisAccountId("codec-delimiter"), HOMESERVER, ISSUED);
 

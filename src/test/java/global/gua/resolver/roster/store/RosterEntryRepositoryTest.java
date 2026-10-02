@@ -26,6 +26,11 @@ import global.gua.resolver.roster.RosterEntry;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * The attestation columns round-trip through H2 exactly, including across a daylight-saving fold: the
+ * validity window is signed, so a timestamp that comes back an hour out would silently invalidate every
+ * member signature the resolver serves.
+ */
 class RosterEntryRepositoryTest {
 
     private static final Ed25519.KeyPairB64 KEY = Ed25519.generate();
@@ -114,7 +119,7 @@ class RosterEntryRepositoryTest {
                 Homeserver.SearchVisibility.GLOBAL, List.of());
         repository.insert(new RosterEntry(admitted, List.of(), Instant.now(), RosterEntry.Status.ACTIVE));
 
-        Homeserver attested = homeserver(KEY.publicKeyB64());
+        Homeserver attested = homeserver(KEY.publicKeyB64());   // moved baseUrl, GROUP visibility
         MemberAttestation member = attestation(attested, 4, Instant.parse("2026-09-11T00:00:00Z"));
         String hash = CanonicalMemberEntry.hash(attested, member);
         assertThat(repository.updateMember("hs1", attested, member, hash, 0)).isEqualTo(1);
@@ -124,6 +129,7 @@ class RosterEntryRepositoryTest {
         RosterEntry read = repository.findById("hs1").orElseThrow();
         assertThat(read.homeserver().baseUrl()).isEqualTo("https://matrix.hs1.gua.test");
         assertThat(read.homeserver().searchGroups()).containsExactly("edu-br");
+        // The authority keeps these: a member cannot vote itself more placement weight.
         assertThat(read.homeserver().weight()).isEqualTo(7);
         assertThat(read.homeserver().acceptsNew()).isFalse();
         assertThat(read.member().sequence()).isEqualTo(4);
@@ -144,6 +150,7 @@ class RosterEntryRepositoryTest {
         Homeserver admitted = homeserver(KEY.publicKeyB64());
         repository.insert(new RosterEntry(admitted, List.of(), Instant.now(), RosterEntry.Status.ACTIVE));
 
+        // Two attestations verified against the same unattested prior, as two concurrent admins would be.
         Homeserver moved = new Homeserver("hs1", "hs1.gua.test", "https://new.hs1.gua.test",
                 "https://account.hs1.gua.test/", "BR", 1, true, KEY.publicKeyB64(),
                 Homeserver.SearchVisibility.GROUP, List.of("edu-br"));
@@ -153,6 +160,7 @@ class RosterEntryRepositoryTest {
         String loserHash = CanonicalMemberEntry.hash(admitted, loser);
 
         assertThat(repository.updateMember("hs1", moved, winner, winnerHash, 0)).isEqualTo(1);
+        // Same expected prior, lower sequence: the entry moved, so the write must match no row.
         assertThat(repository.updateMember("hs1", admitted, loser, loserHash, 0)).isZero();
 
         RosterEntry read = repository.findById("hs1").orElseThrow();

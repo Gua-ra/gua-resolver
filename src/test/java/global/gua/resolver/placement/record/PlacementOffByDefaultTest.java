@@ -20,6 +20,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * On the shipped defaults the placement feature is absent: no bean, no mapped path, no scheduled job,
+ * nothing read or written. The placement paths are not on the public allowlist either, so they answer the
+ * deny-by-default 401 rather than a 404.
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
 class PlacementOffByDefaultTest {

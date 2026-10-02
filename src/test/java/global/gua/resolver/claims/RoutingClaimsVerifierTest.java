@@ -77,6 +77,7 @@ class RoutingClaimsVerifierTest {
         RoutingClaimsEnvelope signed = RoutingClaimsSigner.sign(unsigned(Map.of("email_domain", "usp.br")),
                 "claims-a", kp.privateKeyB64());
         List<RoutingClaimsEnvelope.ClaimSignature> sigs = new ArrayList<>();
+        // Prepend a bogus signature for the same keyId; the verifier must still find the valid one.
         sigs.add(new RoutingClaimsEnvelope.ClaimSignature("claims-a", "AAAA"));
         sigs.addAll(signed.signatures());
         RoutingClaimsEnvelope reordered = new RoutingClaimsEnvelope(signed.schemaVersion(), signed.issuer(),
@@ -108,7 +109,7 @@ class RoutingClaimsVerifierTest {
         RoutingClaimsEnvelope signed = RoutingClaimsSigner.sign(unsigned(Map.of("email_domain", "usp.br")),
                 "claims-a", kp.privateKeyB64());
         List<RoutingClaimsEnvelope.ClaimSignature> sigs = new ArrayList<>();
-        sigs.add(null);
+        sigs.add(null);   // a JSON null array element in "signatures"
         sigs.addAll(signed.signatures());
         RoutingClaimsEnvelope withNullEntry = new RoutingClaimsEnvelope(signed.schemaVersion(), signed.issuer(),
                 signed.audience(), signed.issuedAt(), signed.expiresAt(), signed.nonce(), signed.subject(),
@@ -205,9 +206,12 @@ class RoutingClaimsVerifierTest {
         ResolverProperties props = props(kp.publicKeyB64());
         new RoutingClaimsVerifier(props, capturing).verify(signed, SUBJECT);
 
+        // The nonce must be retained until expiresAt + clock skew, so an envelope still accepted during the
+        // skew grace window cannot be replayed after an expiresAt-only cleanup would have purged it.
         assertThat(retainedUntil[0]).isEqualTo(signed.expiresAt().plus(props.getClaims().getMaxClockSkew()));
     }
 
+    /** claims.trusted-keys empty, with the signing key present in both of the fallback key sets. */
     private static ResolverProperties propsWithOnlyFallbackKeys(Ed25519.KeyPairB64 kp) {
         ResolverProperties props = new ResolverProperties();
         ResolverProperties.TrustedKey trusted = new ResolverProperties.TrustedKey();
@@ -249,6 +253,8 @@ class RoutingClaimsVerifierTest {
 
     @Test
     void anAbsentEnvelopeIsStillSimplyUnverifiedClaims() {
+        // Fail-closed applies to a presented envelope. A request that carries none is not an error; it just
+        // gets no verified claims, so institution and OIDC rules cannot match.
         RoutingClaimsVerifier.VerifiedRoutingClaims claims =
                 new RoutingClaimsVerifier(new ResolverProperties(), inMemoryReplayStore())
                         .verify(null, SUBJECT);

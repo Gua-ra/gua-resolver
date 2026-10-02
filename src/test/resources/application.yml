@@ -1,6 +1,8 @@
-# The Ed25519 keys below are throwaway test keys.
+# Test profile: in-memory H2 (PostgreSQL compatibility mode), schema via Spring SQL init (Flyway off in
+# tests). The Ed25519 keys below are throwaway test keys, generated solely for the unit/integration tests.
 server:
-  # Repeated from the main profile, which test resources shadow.
+  # Same pin as the shipped profile. Test resources shadow src/main/resources/application.yml on the test
+  # classpath, so it has to be repeated here; ClientKeyThroughTomcatTest asserts that both profiles carry it.
   forward-headers-strategy: native
 
 spring:
@@ -22,7 +24,8 @@ gua:
     directory:
       pepper: test-pepper-do-not-use-in-prod
     abuse:
-      # The contract tests assert the decision trace.
+      # The contract tests assert the decision trace; prod-style config leaves it off. The rate limits keep
+      # their defaults (20 per minute per client) so the tests exercise the shipped values.
       trace-enabled: true
     authority:
       threshold: 1
@@ -37,4 +40,5 @@ gua:
       base-url: https://matrix.gua.local
       mas-issuer: https://account.gua.local
       region: dev
+      # Membership credential: matches the private key DirectoryFlowTest signs with.
       signing-key: MCowBQYDK2VwAyEAg+PkHYfc3kRJjw/Nssh+8NvEHkWK0m1n3FGqP5xVQ5o=

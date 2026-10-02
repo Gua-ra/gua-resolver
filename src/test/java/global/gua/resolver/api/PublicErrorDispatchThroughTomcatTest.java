@@ -17,7 +17,13 @@ import org.springframework.test.context.DynamicPropertySource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Uses a real listener: MockMvc does not perform the ERROR dispatch. */
+/**
+ * What the public endpoints answer when they have nothing to serve, asserted through a real listener.
+ *
+ * <p>MockMvc does not perform the ERROR dispatch. A real container re-dispatches to {@code /error} to render
+ * a 404, Spring Security filters that dispatch as well, and if {@code /error} is not permitted the caller
+ * gets a 401 with an empty body instead. No genesis is configured here on purpose.
+ */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DirtiesContext
 class PublicErrorDispatchThroughTomcatTest {
@@ -59,12 +65,15 @@ class PublicErrorDispatchThroughTomcatTest {
 
     @Test
     void theAdminSurfaceIsStillDeniedThroughTheSameDispatch() {
+        // Permitting the error render must not have permitted anything that produces one.
         assertThat(get("/authority/registry/homeservers/pending").getStatusCode().value())
                 .isEqualTo(HttpStatus.UNAUTHORIZED.value());
     }
 
     @Test
     void anUnmappedPathIsStillDeniedRatherThanDescribed() {
+        // Deny-by-default is unchanged: an unmapped path is refused, not answered with a 404 that would
+        // tell an anonymous caller which paths exist.
         assertThat(get("/authority/whatever").getStatusCode().value())
                 .isEqualTo(HttpStatus.UNAUTHORIZED.value());
         assertThat(get("/not-a-resolver-endpoint").getStatusCode().value())

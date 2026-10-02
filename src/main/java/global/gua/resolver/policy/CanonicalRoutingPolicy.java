@@ -6,6 +6,10 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.StringJoiner;
 
+/**
+ * Deterministic bytes for routing-policy signatures. Signatures themselves are excluded, so mirrors and
+ * clients can reconstruct exactly what authorities signed.
+ */
 public final class CanonicalRoutingPolicy {
 
     private CanonicalRoutingPolicy() {}
@@ -34,6 +38,7 @@ public final class CanonicalRoutingPolicy {
                 .toList();
     }
 
+    /** Deterministic rule order (priority, then id), shared with the per-zone delegate canonical form. */
     static List<RoutingPolicyRule> sortedRules(List<RoutingPolicyRule> rules) {
         return rules == null ? List.of() : rules.stream()
                 .sorted(Comparator.comparingInt(RoutingPolicyRule::priority)

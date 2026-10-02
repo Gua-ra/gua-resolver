@@ -36,6 +36,7 @@ class DirectoryCheckpointTest {
         assertThat(signed.checkpoint().size()).isGreaterThanOrEqualTo(1);
         assertThat(signed.signatures()).isNotEmpty();
 
+        // the authority signature verifies under the configured trusted key
         ResolverProperties.TrustedKey key = props.getAuthority().getTrustedKeys().get(0);
         assertThat(Ed25519.verify(Ed25519.publicKey(key.getPublicKey()),
                 DirectoryCheckpointService.canonicalBytes(signed.checkpoint()),
@@ -44,9 +45,11 @@ class DirectoryCheckpointTest {
         int loggedAfterFirst = log.eventsOfType(DirectoryCheckpointService.EVENT_TYPE).size();
         assertThat(loggedAfterFirst).isEqualTo(loggedBefore + 1);
 
+        // re-publishing the same directory state must not append another leaf (idempotent per root)
         service.publish();
         assertThat(log.eventsOfType(DirectoryCheckpointService.EVENT_TYPE).size()).isEqualTo(loggedAfterFirst);
 
+        // a change to the directory yields a new root and a new logged checkpoint
         String rootBefore = signed.checkpoint().merkleRoot();
         directory.putUsername("checkpoint-alice", "dev");
         DirectoryCheckpoint.Signed next = service.publish();

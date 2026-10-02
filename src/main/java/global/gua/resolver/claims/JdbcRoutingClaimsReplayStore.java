@@ -8,6 +8,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+/** Database-backed replay guard shared by all resolver replicas using the same authority DB. */
 @Component
 public class JdbcRoutingClaimsReplayStore implements RoutingClaimsReplayStore {
 

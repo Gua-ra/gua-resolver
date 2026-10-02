@@ -26,6 +26,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * The governed side of the cutover, booted as a whole application: governance required, a pinned genesis,
+ * and a policy bundle signed by the governance key. It must start and serve, and the trust root in force
+ * must be the governance key set rather than the operational one.
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
 @DirtiesContext
@@ -37,6 +42,7 @@ class GovernanceRequiredStartupTest {
             GovernanceFixtures.singleOperator("gua-startup-test", GOVERNANCE);
     private static final String GENESIS_ID = CanonicalGenesis.id(GENESIS);
 
+    /** Configured and trusted for the roster, and deliberately not what the policy bundle is signed with. */
     private static final Ed25519.KeyPairB64 OPERATIONAL = Ed25519.generate();
     private static final String OPERATIONAL_KEY_ID = "gua-authority-startup";
 

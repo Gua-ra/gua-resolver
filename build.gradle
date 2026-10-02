@@ -26,16 +26,21 @@ repositories {
 
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
-    implementation 'io.micrometer:micrometer-registry-prometheus'
+    implementation 'io.micrometer:micrometer-registry-prometheus'   // /actuator/prometheus scrape endpoint
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-web'
-    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'      // WebClient for roster pull + remote-claim webhooks
     implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.2.0'
     implementation 'io.github.resilience4j:resilience4j-ratelimiter:2.2.0'
+    // Bounded per-client token-bucket state for the /resolve abuse controls (max size + idle expiry); the
+    // version is managed by the Spring Boot BOM.
     implementation 'com.github.ben-manes.caffeine:caffeine'
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.13'
 
+    // Persistent roster, transparency log and the phone-to-homeserver directory. Ed25519 signatures use the
+    // JDK-native provider (java.security, "Ed25519"), so no extra crypto library is needed. JdbcTemplate
+    // (not JPA) keeps the persistence thin and the SQL explicit.
     implementation 'org.springframework.boot:spring-boot-starter-jdbc'
     implementation 'org.flywaydb:flyway-core'
     implementation 'org.flywaydb:flyway-database-postgresql'
@@ -47,7 +52,7 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
-    testImplementation 'com.h2database:h2'
+    testImplementation 'com.h2database:h2'                                     // in-memory DB for store tests
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
@@ -55,6 +60,8 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 
+// Offline member-entry signing for a homeserver operator; see docs/runbooks/member-attestation.md.
+// Keys are piped in, never passed as arguments.
 tasks.register('memberEntryTool', JavaExec) {
     group = 'application'
     description = 'Sign, rotate or verify a gua-member-entry.v1 roster attestation'
@@ -63,6 +70,8 @@ tasks.register('memberEntryTool', JavaExec) {
     standardInput = System.in
 }
 
+// Regenerate the published governance golden vectors. Deliberate: a diff in that file changes a wire
+// contract the client ports verify themselves against (CanonicalGovernanceTest reproduces every value).
 tasks.register('governanceVectors', JavaExec) {
     group = 'documentation'
     description = 'Regenerate docs/specs/gua-governance-v1-vectors.json'
@@ -70,6 +79,8 @@ tasks.register('governanceVectors', JavaExec) {
     mainClass = 'global.gua.resolver.governance.GovernanceVectorsGenerator'
 }
 
+// Offline governance signing, run outside the cluster with a key that never enters a resolver namespace;
+// see docs/runbooks/governance-keys.md. Keys are piped in, never passed as arguments.
 tasks.register('govTool', JavaExec) {
     group = 'application'
     description = 'Create a federation genesis, or sign a membership epoch, policy bundle or key transition'
