@@ -1,15 +1,16 @@
-> **Status: CURRENT IMPLEMENTATION.** This protocol verifies what the resolver serves **today**: the signed roster, the routing policy bundle, the transparency log, and a `/resolve` decision reproduced from those artifacts. It is accurate for the code on `main`. It remains the reference for platform verifiers until the target verification chain ships.
+> **Status: current implementation.** This protocol verifies what the resolver serves today: the signed roster, the routing policy bundle, the transparency log, and a `/resolve` decision reproduced from those artifacts. It is the reference for platform verifiers.
 >
-> It does **not** cover the [federation work that is not built yet](../architecture/planned-federation-work.md). None of the following is implemented or verifiable today:
+> Built, off by default, and not verified by any client:
 >
-> - **client** verification of homeserver self-signed roster entries. The resolver now verifies and logs them and refuses a substituted entry (section 1a), but a client that does not check the member block itself still cannot detect an authority that rewrote a member's address or key;
-> - **binding records** attested by accredited identifier verifiers, so a client cannot yet verify that an identifier legitimately refers to an account;
-> - **placement records** signed by the holding homeserver, so a `/resolve` answer is still a per-request policy evaluation rather than a committed fact;
-> - a pinned **federation genesis** and governance-key chain; the trust roots below are still a configured authority key set;
-> - checkpoints carrying an authenticated **state root** with witness co-signatures; the log checkpoint below proves history, not current state;
-> - **non-membership proofs**, so "no account for this identifier" is an unsigned answer.
+> - **Homeserver-signed roster entries.** The resolver verifies and logs them and refuses a substituted entry (section 1a). Requiring one on every active entry is off by default. A client that does not check the member block itself cannot detect a resolver operator that rewrote a homeserver's address or key.
+> - **Placement records** signed by the holding homeserver. The resolver verifies, stores and serves them when `gua.resolver.placement.*` is on. No routing answer reads one, so a `/resolve` answer is still a policy evaluation on each request.
+> - **A pinned federation genesis and governance key chain.** The resolver loads and publishes them when configured, and they become its trust root for membership and policy once `gua.resolver.governance.required` is on. Until then the trust roots below are the configured authority and policy keys.
 >
-> Do not read this document as describing the target. When the target verification chain is specified, this file will be moved to `history/` and replaced.
+> Not built. See [federation work that is not built yet](../architecture/planned-federation-work.md):
+>
+> - **Binding records** attested by accredited verifiers, so a client cannot verify that an identifier belongs to an account.
+> - Checkpoints carrying a **state root** with witness co-signatures. The log checkpoint below proves history, not current state.
+> - **Proofs of absence**, so "no account for this identifier" is an unsigned answer.
 
 # Gua Resolver Client Verification Protocol
 
@@ -156,6 +157,17 @@ Institution/OIDC placement is granted only for affiliations/attributes that arri
 signature-verified, subject-bound routing-claims envelope. A public caller's self-asserted
 affiliations/attributes are never trusted for privileged routing. The verifier reproduces this: it applies
 institution/OIDC rules only when the context is marked claims-verified.
+
+The resolver accepts an envelope only when all of these hold (`RoutingClaimsVerifier`, pinned by
+`RoutingClaimsVerifierTest`):
+
+- it is signed by a trusted key and names this resolver as its audience;
+- its subject is the phone number in the request (`claims.require-subject-binding`, on by default);
+- it has not expired and its lifetime is at most `claims.max-lifetime` (5 minutes);
+- its nonce has not been seen before. `JdbcRoutingClaimsReplayStore` records each issuer and nonce until the
+  envelope can no longer be accepted (`claims.replay-protection-enabled`, on by default).
+
+A public client can carry such an envelope but cannot create one.
 
 ## Canonical encodings (must match byte for byte)
 

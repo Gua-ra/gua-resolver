@@ -67,7 +67,7 @@ The Matrix ID is also the subject the identity service reports to the auth servi
 A homeserver is Synapse plus its auth service.
 
 - **Synapse** holds the account's rooms, memberships, encrypted messages, device list, public device keys and an encrypted backup of message keys. It cannot read message content.
-- **The auth service** issues and revokes Matrix sessions. Synapse accepts no password of its own and trusts only tokens from its auth service. This is Matrix delegated authentication.
+- **The auth service** issues and revokes Matrix sessions. Synapse accepts no password of its own and trusts only tokens from its auth service.
 
 The auth service holds no credentials either. It sends every sign-in to the identity service over OpenID Connect and creates the Matrix user on first sign-in from the username the identity service reports. So today the homeserver owns the account's data and sessions, and the identity service decides who gets in.
 
@@ -78,8 +78,8 @@ The apps ship with no server address. Before sign-in they ask the resolver which
 The resolver publishes:
 
 - **The roster** (`GET /roster`): every homeserver with its id, Matrix server name, base URL, auth issuer, region and status, signed by the resolver operator's keys.
-- **The routing policy** (`GET /policy/routing`): signed rules that send new accounts to a homeserver by phone prefix, institution domain or sign-on issuer.
-- **A transparency log** (`GET /roster/log`): an append-only Merkle log of every roster and policy change, so a rewritten history can be detected.
+- **The routing policy** (`GET /policy/routing`): signed rules that send new accounts to a homeserver by phone prefix, institution domain or sign-on issuer. Institution and issuer rules apply only when the request carries a routing claim that is signed by a trusted key, bound to that phone number, valid for at most 5 minutes and accepted once. A caller's own word is never enough.
+- **A transparency log** (`GET /roster/log`): a list of every roster and policy change that can only be added to. Each entry is hashed into a tree, so anyone who kept an earlier copy can detect a rewritten history.
 
 It never sees a code, a PIN or a passkey, and never issues a session.
 
@@ -117,10 +117,10 @@ curl -s -XPOST https://resolver.example/resolve \
 
 What to know about this answer:
 
-- **The directory is read-only.** It maps a keyed hash of a phone number to a homeserver id. Nothing writes to it any more, so only numbers registered while homeservers could still write to it have a row.
+- **The directory is read-only.** It maps a hash of a phone number, computed with a secret key, to a homeserver id. It holds a fixed set of older numbers and nothing can add to it.
 - **For every other number the answer is a rule evaluation, not a record.** `exists: false` means "no directory row", not "no account". The app starts sign-in at the returned homeserver either way, and the identity service decides whether this is a returning user or a new one.
 - **Usernames resolve at the identity service**, which maps a username to its Matrix ID. The roster carries each homeserver's search visibility for username search across homeservers.
-- **The endpoint is public.** It needs no session and is rate limited per client and globally, with `429` and `Retry-After` over the limit.
+- **The endpoint is public.** It needs no session. Each client address may ask 20 times a minute, with IPv6 counted per /64, and each resolver pod answers at most 200 requests a second. Over either limit the answer is `429` with `Retry-After` and a fixed body, sent without reading the request body, so a refusal reveals nothing about the number. `exists` stays in the answer because both apps choose between sign-in and signup from it. The settings are `gua.resolver.abuse.*`, and `ResolveAbuseControlsTest` holds the contract.
 
 Signed records of where each account lives exist in code and are switched off. See [account identifiers and placement records](../specs/account-identifiers-and-placement-records.md).
 
@@ -135,7 +135,7 @@ sequenceDiagram
     participant HS as Synapse
     App->>Resolver: POST /resolve (phone)
     Resolver-->>App: homeserver base URL
-    App->>Auth: start OpenID Connect sign-in (PKCE)
+    App->>Auth: start OpenID Connect sign-in
     Auth->>IDS: delegate sign-in
     Note over App,IDS: sign-in page: phone, SMS code, then PIN or passkey
     IDS-->>Auth: authorization code
@@ -156,7 +156,9 @@ sequenceDiagram
 | --- | --- | --- |
 | SMS code | Control of the phone number now | 6 digits, 5 minutes, limited sends per number and per address. Never sufficient alone. |
 | PIN | Knowledge | 6 digits. Repeated, sequential and common PINs are refused. 5 wrong attempts lock it for 15 minutes. |
-| Passkey | Possession of a registered device or credential manager | WebAuthn, verified by the identity service. The relying party is the Gua sign-in domain. |
+| Passkey | Possession of a registered device or credential manager | WebAuthn, verified by the identity service. The relying party ID is the Gua brand domain, and the sign-in host is the allowed origin. |
+
+Two limits on passkey checks: signature counters are not validated, because synced passkeys never increment them, and any authenticator model is accepted, because attestation is not required to be trusted.
 
 A passkey is bound to the **account identifier**, not to the phone number or the Matrix ID. Every account has an identifier, derived from random bytes when the account is created. Nothing else reads it: not routing, not login, not a token. Its format is in [account identifiers and placement records](../specs/account-identifiers-and-placement-records.md).
 
@@ -216,8 +218,8 @@ stateDiagram-v2
 
 ## How a resolver answer can be checked
 
-- The roster carries signatures from the operator's keys and must meet a threshold.
-- Each roster names a checkpoint of the transparency log, and the log proves it only ever grew.
+- The roster carries signatures from the operator's keys, and a set minimum number of them must be valid.
+- Each roster names the size and root hash of the transparency log at that moment, and the log can prove that it only grew since any earlier one.
 - A routing policy bundle is signed, appears in the log, and limits each delegated rule set to the homeservers and scope it was granted.
 - A homeserver can sign its own roster entry, so the operator cannot quietly change its address or key. Built, and optional until every homeserver has signed.
 - Membership changes can require signatures from governance keys held outside the resolver, anchored in a federation root that apps would pin. Built, and switched off.
