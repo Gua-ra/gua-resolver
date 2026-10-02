@@ -171,7 +171,7 @@ Changing what guards an account always needs more than a session:
 
 Messages are end-to-end encrypted with Matrix's encryption. Each device generates its own keys. The homeserver holds public device keys and an encrypted backup of message keys, and can read neither the messages nor the backup.
 
-A new device restores earlier messages from a device that is already signed in, after the two are verified by comparing emoji. Gua never shows a recovery key.
+A new device restores earlier messages from a device that is already signed in, after the two are verified by comparing emoji. Gua never shows a recovery key, and the account PIN is never used to protect message keys, because six digits can be guessed offline.
 
 Without another device, the user resets the encrypted backup. Messages saved only in that backup are lost, messages already on a device are unaffected, and contacts are told that the person's security details changed.
 

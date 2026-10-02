@@ -93,4 +93,10 @@ If the governance keys are lost or compromised beyond what their own rotation ru
 
 ## Account authority and device lifecycle
 
-In development on open pull requests and switched off. See the [short description](gua-identity-and-federation.md#in-development-account-authority) in the architecture guide.
+In development on open pull requests and switched off. See the [short description](gua-identity-and-federation.md#in-development-account-authority) in the architecture guide. The constraints it is built to:
+
+- Control of a phone number never authorizes a change to an account's keys, at any step, in any combination.
+- An account without a key gains one only after a fresh strong proof on the owner's device and a waiting period in which the owner is told and can object. A homeserver or operator cannot do it on the account's behalf.
+- Recovery starts only under rules the account committed to in advance, and competing changes resolve by a fixed order, never by who signs first.
+- Whoever can cancel a recovery is decided in advance and is not just the key that may have been stolen.
+- Losing every committed factor may be final.

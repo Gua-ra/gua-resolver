@@ -35,7 +35,7 @@ Created on the device at signup. It commits the account's first authority key an
 | recovery public key | 32 | raw Ed25519, different from the authority key |
 | entropy | 16 | from a CSPRNG |
 
-Keys stay on the device, in the platform keychain or keystore, and are not synced. Recovery framework `0x01` commits no waiting period in the bytes, and its recovery key sits in the same device store as the authority key. identity-service therefore refuses framework `0x01` unless `identity.genesis.production-issuance` is on, which is for development only.
+Keys stay on the device, in the platform keychain or keystore, and are not synced. The suite byte leaves room for other key types. Recovery framework `0x01` commits no waiting period in the bytes, and its recovery key sits in the same device store as the authority key. identity-service therefore refuses framework `0x01` unless `identity.genesis.production-issuance` is on, which is for development only.
 
 ## Account genesis, bootstrap (22 bytes)
 
@@ -134,3 +134,4 @@ An account that has never completed a sign-in through its homeserver's auth serv
 - A placement record is the homeserver's own assertion. With one operator signing for every homeserver, it adds an audit trail, not an independent check.
 - A key-rooted genesis shows that whoever registered it held the key and was present in the sign-in session. It does not show that the person who received the SMS code owns that key.
 - The resolver checks validity windows against its own clock.
+- A record for a deactivated account is not retracted. How to retract one is undecided.
