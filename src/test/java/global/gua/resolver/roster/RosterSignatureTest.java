@@ -12,7 +12,7 @@ import global.gua.resolver.domain.Homeserver;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Authority-signature trust gate (§5): a roster signed by a trusted key verifies; tampering with an entry
+ * Authority-signature trust gate: a roster signed by a trusted key verifies; tampering with an entry
  * invalidates it; and a k-of-n threshold is enforced (one signature does not satisfy a 2-of-n policy).
  */
 class RosterSignatureTest {

@@ -22,12 +22,11 @@ import global.gua.resolver.crypto.Ed25519;
  */
 final class PlacementFixtures {
 
-    /** Comfortably inside the 400-day cap so the window itself is never what a test is refused for. */
+    /** Inside the 400-day cap, so the window is never what a test is refused for. */
     static final Duration VALIDITY = Duration.ofDays(399);
 
     private PlacementFixtures() {}
 
-    /** A deterministic accountId of the given root class. */
     static String accountId(byte rootClass, String seed) {
         byte[] raw = new byte[AccountId.RAW_LENGTH];
         raw[0] = AccountId.FORMAT_VERSION;
@@ -36,17 +35,15 @@ final class PlacementFixtures {
         return AccountId.encode(raw);
     }
 
-    /** A genesis-rooted accountId. */
     static String genesisAccountId(String seed) {
         return accountId(AccountId.CLASS_GENESIS, seed);
     }
 
-    /** A bootstrap accountId. */
     static String bootstrapAccountId(String seed) {
         return accountId(AccountId.CLASS_BOOTSTRAP, seed);
     }
 
-    /** A well-formed generation-1 record whose origin matches the id's class and whose window holds now. */
+    /** A well-formed record whose origin matches the id's class and whose window holds now. */
     static PlacementRecord record(String accountId, String homeserverId, Instant issuedAt) {
         PlacementRecord.Origin origin = PlacementRecord.Origin.of(AccountId.decode(accountId)[1]);
         return new PlacementRecord(PlacementRecordCodec.VERSION, PlacementRecordCodec.GENERATION,

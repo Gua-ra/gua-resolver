@@ -11,9 +11,9 @@ import global.gua.resolver.governance.Registry;
 import global.gua.resolver.governance.RegistryService;
 
 /**
- * Public distribution of the governance-signed HomeserverRegistry epochs (ADM-001 L10). A client, mirror or
- * auditor fetches an epoch and verifies it back to the pinned genesis without trusting this resolver: the
- * epoch carries its own governance signatures, names the genesis it descends from, and chains to the epoch
+ * Public distribution of the governance-signed HomeserverRegistry epochs. A client, mirror or auditor
+ * fetches an epoch and verifies it back to the pinned genesis without trusting this resolver: the epoch
+ * carries its own governance signatures, names the genesis it descends from, and chains to the epoch
  * before it.
  *
  * <p>Both the epoch and the content it commits to are served, because an epoch alone carries only a content

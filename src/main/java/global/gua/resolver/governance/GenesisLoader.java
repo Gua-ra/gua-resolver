@@ -19,21 +19,18 @@ import global.gua.resolver.roster.MemberEntryJson;
  * Loads the pinned federation genesis at startup, applies the governance key transitions, and exposes the
  * key set in force.
  *
- * <p>Four things are deliberately startup failures rather than runtime degradations. A genesis whose id is
- * not the configured {@code expected-id} is refused, so whoever controls the mount cannot swap the file for
- * another valid genesis: the pin, not the file, is the trust anchor. A genesis whose own keys do not meet its
- * own threshold is refused, because an unverifiable root is worse than none. A chain whose head is not the
- * configured {@code expected-chain-head} is refused, which is what stops a truncated or removed transitions
- * file from quietly reinstating a governance key that was rotated out (ADM-001 O8). And
- * {@code gua.resolver.governance.required=true} with no genesis configured is refused, because that
- * combination promises governance the resolver cannot perform.
+ * <p>Four things are startup failures rather than runtime degradations:
+ * <ul>
+ *   <li>a genesis whose id is not the configured {@code expected-id}, so whoever controls the mount cannot
+ *       swap the file for another valid genesis: the pin, not the file, is the trust anchor;</li>
+ *   <li>a genesis whose own keys do not meet its own threshold;</li>
+ *   <li>a chain whose head is not the configured {@code expected-chain-head}, which stops a truncated or
+ *       removed transitions file from reinstating a governance key that was rotated out;</li>
+ *   <li>{@code gua.resolver.governance.required=true} with no genesis configured.</li>
+ * </ul>
  *
- * <p>With no genesis configured the resolver runs exactly as it did before Phase 2: governance features are
- * off, membership changes take effect directly, and a WARN says so. That is the default.
- *
- * <p>Verifying a genesis here proves only that the keys it enumerates signed it (ADM-001 L10 locks that and
- * explains why). The out-of-band comparison of the published fingerprint is what makes it a root; this class
- * cannot do that part and does not pretend to.
+ * <p>With no genesis configured, governance features are off, membership changes take effect directly, and
+ * a WARN says so. That is the default.
  */
 @Component
 public class GenesisLoader {
@@ -158,11 +155,10 @@ public class GenesisLoader {
     }
 
     /**
-     * The chain-head pin. {@code expected-id} pins the root and nothing else, so a resolver whose
-     * transitions file is truncated or removed starts happily on the genesis key set and puts a governance
-     * key that was rotated out, possibly because it was compromised, back in force. The in-chain checks
-     * cannot catch that: a prefix of a valid chain is itself a valid chain. Pinning the head is what turns a
-     * downgrade of the key set into a startup failure (ADM-001 O8).
+     * The chain-head pin. {@code expected-id} pins the root and nothing else, so without this check a resolver
+     * whose transitions file is truncated or removed would start on the genesis key set and put a rotated-out
+     * governance key back in force. The in-chain checks cannot catch that: a prefix of a valid chain is itself
+     * a valid chain.
      */
     private static void requireExpectedChainHead(String expected, String actual, int applied) {
         if (expected == null || expected.isBlank()) {

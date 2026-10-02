@@ -34,13 +34,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * The ingest and custody rules end to end (migration plan Phase 4, ADM-008 decision 7): insert when the
- * accountId has no home, replace on a newer re-issue by the holder, refuse a claim from anyone else, and
- * serve the stored envelope back exactly as it arrived.
- *
- * <p>The last test is the one that keeps the design honest about the transparency log: accepting records
- * appends no leaf. The roster version is the log size and new-account fallback placement seeds on it, so a
- * leaf per record would move placement decisions on every ingest (ADM-001 L6).
+ * The ingest and custody rules end to end: insert when the accountId has no home, replace on a newer
+ * re-issue by the holder, refuse a claim from anyone else, and serve the stored envelope back exactly as it
+ * arrived. Accepting records appends no transparency-log leaf.
  */
 @SpringBootTest(properties = {
         "gua.resolver.placement.enabled=true",
@@ -160,8 +156,7 @@ class PlacementRecordIngestTest {
         byte[] canonical = PlacementFixtures.canonical(accountId, "hs-one", now());
         String recordB64 = PlacementFixtures.recordB64(canonical);
         String signature = PlacementFixtures.sign(canonical, ONE);
-        // An Ed25519 signature is 64 bytes, so its base64 ends in padding that a decoder treats as optional.
-        // Both spellings are one signature over one set of bytes.
+        // An Ed25519 signature's base64 ends in padding that a decoder treats as optional.
         String unpadded = signature.replace("=", "");
         assertThat(unpadded).isNotEqualTo(signature);
 
@@ -173,7 +168,6 @@ class PlacementRecordIngestTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result").value("unchanged"));
 
-        // And the held copy is still the one that arrived first, byte for byte.
         assertThat(store.find(accountId).orElseThrow().signatureB64()).isEqualTo(signature);
     }
 
@@ -185,7 +179,7 @@ class PlacementRecordIngestTest {
                 .stream().map(c -> c.toLowerCase(Locale.ROOT)).sorted().toList();
 
         // The row is pinned, not only the decoded object: a phone, a phone hash or a Matrix user id added as
-        // a column later would otherwise reach a deployment without failing anything (ADM-001 L4, L15).
+        // a column later would otherwise reach a deployment without failing anything.
         assertThat(columns).containsExactly("account_id", "generation", "homeserver_id", "issued_at",
                 "not_after", "not_before", "origin", "received_at", "record_b64", "signature_b64");
     }
@@ -197,7 +191,7 @@ class PlacementRecordIngestTest {
         present(PlacementFixtures.envelope(held, ONE)).andExpect(status().isCreated());
 
         // A validly signed record from another ACTIVE member: one accountId has one home, so this is a
-        // conflict, never an overwrite and never a migration (ADM-001 L9).
+        // conflict, never an overwrite and never a migration.
         present(PlacementFixtures.envelope(
                 PlacementFixtures.canonical(accountId, "hs-two", now()), TWO))
                 .andExpect(status().isConflict())

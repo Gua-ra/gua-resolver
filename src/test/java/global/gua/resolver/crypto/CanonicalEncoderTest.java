@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class CanonicalEncoderTest {
 
-    /** The byte CanonicalRoster joins entry fields with, assuming values never contain it (ADM-001 L4). */
+    /** The byte CanonicalRoster joins entry fields with, assuming values never contain it. */
     private static final String UNIT_SEPARATOR = Character.toString(0x1F);
 
     private static String hex(CanonicalEncoder e) {
@@ -25,7 +25,7 @@ class CanonicalEncoderTest {
     void stringsAreLengthPrefixedUtf8() {
         assertThat(hex(CanonicalEncoder.raw().string(""))).isEqualTo("00000000");
         assertThat(hex(CanonicalEncoder.raw().string("ab"))).isEqualTo("000000026162");
-        // Two UTF-8 bytes for one character: the prefix counts bytes, not characters.
+        // The prefix counts bytes, not characters.
         assertThat(hex(CanonicalEncoder.raw().string("é"))).isEqualTo("00000002c3a9");
         assertThat(hex(CanonicalEncoder.raw().string("a" + UNIT_SEPARATOR + "b")))
                 .isEqualTo("00000003611f62");

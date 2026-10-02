@@ -10,11 +10,6 @@ import global.gua.resolver.roster.JdbcTransparencyLog;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The authority signs a Merkle checkpoint over the directory and anchors it in the transparency log
- * (idempotent per root), so a client can detect a change against the checkpoint it stored earlier. It does
- * not prevent two clients being served different views (ADM-001 L11, L12).
- */
 @SpringBootTest
 class DirectoryCheckpointTest {
 
@@ -50,7 +45,7 @@ class DirectoryCheckpointTest {
         int loggedAfterFirst = log.eventsOfType(DirectoryCheckpointService.EVENT_TYPE).size();
         assertThat(loggedAfterFirst).isEqualTo(loggedBefore + 1);
 
-        // re-publishing the same directory state must NOT append another leaf (idempotent per root)
+        // re-publishing the same directory state must not append another leaf (idempotent per root)
         service.publish();
         assertThat(log.eventsOfType(DirectoryCheckpointService.EVENT_TYPE).size()).isEqualTo(loggedAfterFirst);
 

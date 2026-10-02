@@ -18,8 +18,7 @@ class CanonicalRoutingClaimsTest {
 
     @Test
     void encodingIsInjectiveAcrossAmbiguousAttributeSplits() {
-        // {"a":"b|c=d"} and {"a":"b","c":"d"} previously canonicalized to the identical string "a=b|c=d",
-        // letting one signature cover a different claim set. They must now produce different signed bytes.
+        // Without escaping both would encode as a=b|c=d.
         byte[] one = CanonicalRoutingClaims.bytes(env(List.of(), Map.of("a", "b|c=d")));
         byte[] two = CanonicalRoutingClaims.bytes(env(List.of(), Map.of("a", "b", "c", "d")));
         assertThat(one).isNotEqualTo(two);

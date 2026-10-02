@@ -24,18 +24,12 @@ import global.gua.resolver.roster.store.RosterEntryRepository;
 
 /**
  * The HomeserverRegistry epoch path: it builds the membership the governance keys are asked to sign, accepts
- * a signed epoch, applies it, and commits it to the transparency log (ADM-001 L10).
+ * a signed epoch, applies it, and commits it to the transparency log.
  *
- * <p><b>An epoch ratifies, it does not originate.</b> The resolver rebuilds the pending membership from its
- * own state and refuses an epoch whose content hash is anything else. So governance cannot invent a status
- * the resolver never proposed, and the operational key cannot change a status without governance signing the
- * result. What each side can do alone is: the operational key proposes, governance ratifies or refuses. That
- * is the separation Phase 2 buys, and it is worth naming precisely, because it is narrower than "governance
- * controls membership".
- *
- * <p>With one operator holding both the operational key and the governance key, this separates processes and
- * custody, not principals (ADM-001 standing rule). It becomes a real control when a second operator holds a
- * governance key.
+ * <p>An epoch ratifies, it does not originate. The resolver rebuilds the pending membership from its own
+ * state and refuses an epoch whose content hash is anything else. So governance cannot invent a status the
+ * resolver never proposed, and the operational key cannot change a status without governance signing the
+ * result: the operational key proposes, governance ratifies or refuses.
  */
 @Service
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)
@@ -158,8 +152,7 @@ public class RegistryService {
         String epochHash = CanonicalRegistryEpoch.hash(submitted);
         Instant acceptedAt = Instant.now().truncatedTo(ChronoUnit.MILLIS);
         for (RegistryMember member : content.members()) {
-            // The cast is safe because validateShape refuses a weight above the 32-bit maximum the roster
-            // column holds, rather than letting one be narrowed silently here.
+            // The cast is safe: validateShape refuses a weight above Integer.MAX_VALUE.
             int updated = entries.applyGovernedStatus(member.homeserverId(), member.status(),
                     (int) member.weight(), member.acceptsNew(), member.claims(), submitted.epoch());
             if (updated == 0) {
@@ -183,11 +176,9 @@ public class RegistryService {
     }
 
     /**
-     * The claim non-overlap invariant, re-checked over the membership this epoch would make real. The
-     * admission gate refuses an applicant whose claims overlap an admitted entry's, but an epoch applies
-     * claims as well as statuses and is the last point at which two homeservers could end up claiming the
-     * same accounts. That would make placement ambiguous and let one operator take another's range, so an
-     * epoch that would leave two members overlapping is refused rather than applied.
+     * The claim non-overlap invariant, re-checked over the membership this epoch would make real. An epoch
+     * applies claims as well as statuses, so it is the last point at which two homeservers could end up
+     * claiming the same accounts. An epoch that would leave two members overlapping is refused.
      */
     private static void requireNoOverlappingClaims(HomeserverRegistryContent content) {
         List<RegistryMember> holdingClaims = content.members().stream()

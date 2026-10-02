@@ -6,14 +6,12 @@ import global.gua.resolver.placement.ClaimPredicate;
 import global.gua.resolver.roster.RosterEntry;
 
 /**
- * One homeserver as the governance keys admit it: its status, the placement attributes the authority used to
- * hold alone, and the hash of the member's own self-signed entry.
+ * One homeserver as the governance keys admit it: its status, its placement attributes, and the hash of the
+ * member's own self-signed entry.
  *
  * <p>{@code memberEntryHash} is what keeps governance from redefining a member. The epoch signs the hash of
  * the entry the member signed, not the member's fields, so governance can admit that exact entry, suspend it
- * or revoke it, and can do nothing else to it (ADM-001 L10: "governance able only to admit or revoke"). It
- * is absent for an entry that has not been attested yet, which is the honest encoding of "governance is
- * admitting a member whose own signature is not yet on file".
+ * or revoke it, and can do nothing else to it. It is absent for an entry that has not been attested yet.
  *
  * @param homeserverId    the federation id
  * @param status          ACTIVE, SUSPENDED or REVOKED; PENDING is an intent, never a governed status
@@ -46,9 +44,8 @@ public record RegistryMember(
         if (weight < 0) {
             throw new GovernanceException("weight must not be negative");
         }
-        // The roster holds weight in a 32-bit column and Homeserver carries an int, so a wider value cannot
-        // be applied as it was signed. Refusing it is the honest answer; narrowing it silently would apply a
-        // weight the operator never signed.
+        // The roster holds weight in a 32-bit column, so a wider value cannot be applied as it was signed.
+        // It is refused rather than narrowed silently.
         if (weight > Integer.MAX_VALUE) {
             throw new GovernanceException("weight " + weight + " exceeds the largest weight the roster can "
                     + "hold (" + Integer.MAX_VALUE + ")");

@@ -30,17 +30,14 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 
 /**
- * The federation front door consumed by the iOS and Android clients BEFORE OIDC login. The client sends a
- * phone number and learns which homeserver to authenticate against; for a phone with no account it learns
- * where to register. Nothing about the phone is verified here: the endpoint is unauthenticated and takes a
- * raw E.164, so today it also answers whether an account exists for any number (ADM-001 L16 names this as
- * the enumeration oracle to close). Interim controls: {@code global.gua.resolver.abuse.ResolveAbuseFilter}
- * rate-limits the endpoint per client and globally, and the decision trace is returned only when
- * {@code gua.resolver.abuse.trace-enabled} is on. This is what replaces the clients' hardcoded
- * {@code GuaDefaultAccountProvider}.
+ * The federation front door the iOS and Android clients call before OIDC login. The client sends a phone
+ * number and learns which homeserver to authenticate against; for a phone with no account it learns where to
+ * register.
  *
- * <p>Read-mostly and cacheable. Designed to run as a mirrorable fleet; both deployed environments run a
- * single node today (ADM-001 O12).
+ * <p>Nothing about the phone is verified here: the endpoint is unauthenticated and takes a raw E.164, so it
+ * also answers whether an account exists for any number. {@code ResolveAbuseFilter} rate-limits it per
+ * client and globally, and the decision trace is returned only when
+ * {@code gua.resolver.abuse.trace-enabled} is on.
  */
 @RestController
 public class ResolveController {
@@ -59,7 +56,7 @@ public class ResolveController {
         this.rosterStore = rosterStore;
         this.routingClaimsVerifier = routingClaimsVerifier;
         this.abuse = props.getAbuse();
-        // gua_resolver_resolve_total{outcome=...}: login (existing account) vs register (new placement).
+        // gua_resolver_resolve_total{outcome=...}: existing (login) vs register (new placement).
         this.resolveExisting = Counter.builder("gua.resolver.resolve").tag("outcome", "existing").register(metrics);
         this.resolveRegister = Counter.builder("gua.resolver.resolve").tag("outcome", "register").register(metrics);
     }
@@ -72,7 +69,7 @@ public class ResolveController {
      */
     @PostMapping("/resolve")
     public ResolveResponse resolve(@Valid @RequestBody ResolveRequest request) {
-        // The roster version the decision is made against; clients pin + verify this exact version.
+        // The roster version the decision is made against; clients pin and verify this exact version.
         long rosterVersion = rosterStore.current().version();
         boolean trace = abuse.isTraceEnabled() && Boolean.TRUE.equals(request.trace());
 
@@ -92,10 +89,9 @@ public class ResolveController {
 
     /**
      * Build the placement context for a new-account decision. Institution/OIDC affiliations and attributes
-     * are trusted ONLY when they arrive in a signature-verified routing-claims envelope bound to this phone;
-     * a public caller's self-asserted {@code affiliations}/{@code attributes} are deliberately dropped (they
-     * were the self-assertion vector). Carrier/geo hints stay, because choosing a carrier homeserver is
-     * self-service, not privilege.
+     * are trusted only when they arrive in a signature-verified routing-claims envelope bound to this phone;
+     * a public caller's self-asserted {@code affiliations}/{@code attributes} are deliberately dropped.
+     * Carrier/geo hints stay, because choosing a carrier homeserver is self-service, not privilege.
      */
     private PlacementContext placementContextFor(ResolveRequest request) {
         RoutingClaimsVerifier.VerifiedRoutingClaims verified =
@@ -107,9 +103,9 @@ public class ResolveController {
     }
 
     /**
-     * The signed, public roster: what mirrors and clients verify (threshold sigs + log checkpoint). A mirror
-     * serves the upstream document verbatim here, so the upstream signature still covers exactly these bytes,
-     * while its own routing uses its verified view of it (ADM-007).
+     * The signed, public roster: what mirrors and clients verify (threshold signatures plus log checkpoint). A
+     * mirror serves the upstream document verbatim here, so the upstream signature still covers exactly these
+     * bytes, while its own routing uses its verified view of it.
      */
     @GetMapping("/roster")
     public Object roster() {
@@ -117,9 +113,8 @@ public class ResolveController {
     }
 
     /**
-     * A phone that isn't valid E.164 is a client error, not a server fault. Map it to 400 so callers
-     * get a clear "fix your input" signal (and a friendly message) instead of an opaque 500. The phone
-     * is never echoed back, only a generic, non-PII message.
+     * A phone that is not valid E.164 is a client error, not a server fault: answers 400 with a generic
+     * message. The phone is never echoed back.
      */
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
@@ -145,9 +140,6 @@ public class ResolveController {
         return new ProblemResponse("no_placement_available", "no homeserver is currently accepting new accounts");
     }
 
-    // --- DTOs -----------------------------------------------------------------------------------
-
-    /** The /resolve request body. A plain data carrier; all logic lives in the controller/service. */
     public record ResolveRequest(
             @NotBlank String phone,
             String country,
@@ -193,6 +185,5 @@ public class ResolveController {
         }
     }
 
-    /** Problem payload for client errors (mirrors the shape used by the other API controllers). */
     public record ProblemResponse(String code, String message) {}
 }

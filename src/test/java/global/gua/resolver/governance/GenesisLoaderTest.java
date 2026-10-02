@@ -15,11 +15,6 @@ import global.gua.resolver.config.ResolverProperties;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * Loading the pinned genesis. The failures here are deliberately startup failures rather than degraded
- * running: an unverifiable or unpinned trust root is worse than none, because everything downstream would
- * still look signed.
- */
 class GenesisLoaderTest {
 
     private static final ObjectMapper JSON = GovernanceFixtures.mapper();
@@ -159,7 +154,6 @@ class GenesisLoaderTest {
         props.getGenesis().setTransitionsFile(transitions.toString());
         GenesisLoader loader = new GenesisLoader(props, JSON);
 
-        // The key set in force is the transition's, and the genesis id is unchanged: the chain moved, the root did not.
         assertThat(loader.requireKeySet().keys()).extracting(GovernanceKey::keyId).containsExactly("gov-2");
         assertThat(loader.genesisId()).isEqualTo(genesisId);
         assertThat(loader.transitions()).hasSize(1);
@@ -222,7 +216,7 @@ class GenesisLoaderTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("refusing to start on a chain that is not the pinned one");
 
-        // Unpinned, the downgrade goes through and the rotated-out key is back in force. That is the hole.
+        // Unpinned, the downgrade goes through and the rotated-out key is back in force.
         props.getGenesis().setExpectedChainHead(null);
         assertThat(new GenesisLoader(props, JSON).requireKeySet().keys())
                 .extracting(GovernanceKey::keyId).containsExactly("gov-1");
@@ -241,8 +235,6 @@ class GenesisLoaderTest {
                         List.of(holder.key()), sorted, List.of()), List.of(holder));
         String genesisId = CanonicalGenesis.id(declared);
 
-        // The canonical bytes encode the registries as a set, so these two files are the same object and a
-        // client that emits them sorted is not serving a different genesis.
         assertThat(CanonicalGenesis.id(reordered)).isEqualTo(genesisId);
         assertThat(load(GovernanceFixtures.write(dir, "reordered.json", reordered), genesisId).configured())
                 .isTrue();

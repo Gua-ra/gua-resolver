@@ -19,9 +19,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * The interim abuse controls end to end through the servlet stack, with prod-style trace configuration and
- * a small per-client budget. Client addresses are RFC 5737 documentation addresses. Runs in its own context
- * (custom properties) and dirties it so the bucket state never leaks into the other MockMvc tests.
+ * The abuse controls end to end through the servlet stack, with prod-style trace configuration and a small
+ * per-client budget. Client addresses are RFC 5737 documentation addresses. Runs in its own context and
+ * dirties it so the bucket state never leaks into the other MockMvc tests.
  */
 @SpringBootTest(properties = {
         "gua.resolver.abuse.client-limit-for-period=3",
@@ -38,10 +38,7 @@ class ResolveAbuseControlsTest {
     @Autowired
     private MockMvc mockMvc;
 
-    /**
-     * MockMvc never runs Tomcat's RemoteIpValve, so this sets the remote address the valve would have left;
-     * the chain itself is covered by ClientKeyThroughTomcatTest against a real listener.
-     */
+    /** MockMvc never runs RemoteIpValve, so this sets the remote address the valve would have left. */
     private static RequestPostProcessor from(String client) {
         return request -> {
             request.setRemoteAddr(client);

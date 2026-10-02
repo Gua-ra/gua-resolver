@@ -8,7 +8,7 @@ import java.util.TreeMap;
  * Everything the placement rules may use to decide where a brand-new account lives. All fields are
  * optional so callers supply only what they have verified; rules abstain when their inputs are absent.
  *
- * @param e164Phone     phone in E.164 (e.g. +5511987654321); the resolver verifies nothing about it (ADM-001 L16)
+ * @param e164Phone     phone in E.164 (e.g. +5511987654321); the resolver verifies nothing about it
  * @param country       ISO country derived from the phone (e.g. BR)
  * @param mccmnc        mobile country+network code derived from the number, if known (carrier identity)
  * @param carrier       human carrier name, if known
@@ -30,7 +30,6 @@ public record PlacementContext(
         Map<String, String> attributes,
         boolean claimsVerified) {
 
-    /** Convenience Optional view of the phone (the record's String accessors cover the rest). */
     public Optional<String> phone() { return Optional.ofNullable(e164Phone); }
 
     public static PlacementContext forPhone(String e164) {
@@ -39,9 +38,9 @@ public record PlacementContext(
 
     /**
      * A stable, deterministic key that seeds the weighted-fallback bucketing hash so all nodes place the same
-     * context identically. This is intentionally a plain (non-injective) bucketing key, NOT a signed/canonical
-     * form: it feeds only a distribution hash, never a signature, so unescaped delimiters here are harmless.
-     * Do not reuse it anywhere a collision would matter; use the escaped {@code Canonical*} encoders instead.
+     * context identically. This is a plain (non-injective) bucketing key, not a signed or canonical form: it
+     * feeds only a distribution hash, never a signature, so unescaped delimiters here are harmless. Do not
+     * reuse it anywhere a collision would matter; use the escaped {@code Canonical*} encoders instead.
      */
     public String canonicalRoutingKey() {
         StringBuilder sb = new StringBuilder();

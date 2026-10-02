@@ -6,10 +6,9 @@ import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.roster.MemberAttestation;
 
 /**
- * A member's attestation of its own roster entry, submitted to
- * {@code POST /authority/roster/{id}/member} (ADM-007). The body carries only what the member signs: the
- * authority keeps weight, acceptsNew, claims and status. It is parsed strictly, so an unknown field is
- * refused rather than silently dropped outside the signature.
+ * A member's attestation of its own roster entry, submitted to {@code POST /authority/roster/{id}/member}.
+ * The body carries only what the member signs: the authority keeps weight, acceptsNew, claims and status.
+ * It is parsed strictly, so an unknown field is refused rather than silently dropped outside the signature.
  *
  * <p>{@code serverName} must equal the stored one: changing it is a new identity, not an update. The signing
  * key must be the stored key, or a new key whose entry is also signed by the stored one (rotation).

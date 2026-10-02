@@ -30,9 +30,8 @@ import global.gua.resolver.roster.SignedRoster;
  * to {@code POST .../epoch}. The resolver rebuilds the pending membership again at submission and refuses
  * anything else, so the round trip cannot be used to smuggle in a membership the resolver never proposed.
  *
- * <p>The body is parsed strictly for the same reason a member attestation is: an unknown field or a
- * duplicate key would be content outside the signature, and a signature must cover everything a consumer
- * goes on to read.
+ * <p>The body is parsed strictly, like a member attestation: an unknown field or a duplicate key would be
+ * content outside the signature.
  */
 @RestController
 @RequestMapping("/authority/registry/homeservers")

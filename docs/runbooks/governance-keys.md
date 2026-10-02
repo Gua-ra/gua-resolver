@@ -1,40 +1,36 @@
 # Governance keys
 
 How the federation genesis is created, where the governance private key lives, and how a membership epoch or
-a policy bundle gets signed. Background: [ADM-001](../decisions/ADM-001-identifier-binding-placement-trust.md)
-L10 (federation genesis) and L8 (thresholds count trust domains, never keys), and the Phase 2 objects section
-of [ADM-007](../decisions/ADM-007-canonical-encoding-and-member-entries.md).
+a policy bundle gets signed. The objects and their verification rules are specified in
+[signed federation objects](../specs/federation-signed-objects.md#governance-objects).
 
 Run this once per environment, dev first. Dev and prod get separate keys and separate genesis objects, and a
 dev key is never used in prod.
 
-## What this buys, stated honestly
+## What separate governance keys guarantee, and what they do not
 
-With one operator, the governance key and the resolver's operational key are held by the same party. Phase 2
+With one operator, the governance key and the resolver's operational key are held by the same party. This setup
 separates **processes and custody**: governance signing happens on a machine outside the cluster, with a key
 the resolver has never held, and the resolver refuses membership changes that carry no governance signature.
-It does not separate **principals**. Every independence guarantee still reduces to compromising Gua, which is
-the ADM-001 standing rule and does not change until a second operator holds a governance key.
+It does not separate **principals**: every independence guarantee still reduces to compromising Gua until a second operator holds a governance key.
 
-So the genesis records `operatorId` on every key and the threshold counts operators rather than keys. At one
-operator the count is 1 however many keys are listed. That is the honest number, and it is what a second key
-holder later turns into a real guarantee. A threshold that counted keys would let one party holding two keys
-claim a 2-of-2 that means nothing, which is the defect ADM-001 L8 names.
+A threshold counts operators, never keys, so the genesis records `operatorId`
+on every key. At one operator the count is 1 however many keys are listed.
 
 ## Custody
 
 - The governance private key is generated on an operator-controlled machine **outside the cluster** and never
   leaves it.
 - It is **never** placed in a Kubernetes Secret in a resolver namespace, never in a ConfigMap, never in a
-  repository, never in CI. The resolver has no configuration field that would hold one, deliberately.
+  repository, never in CI. The resolver has no configuration field that would hold one.
 - It is stored **encrypted at rest** on that machine, with an **offline backup** kept separately from it.
 - Signing is a manual step with the tool below. There is no automated path, and adding one would put the key
   back next to the service it is meant to be independent of.
 - Only the **public** half travels: it is written into the genesis file, which is public and committed.
 - Loss or compromise is handled by creating a **new genesis** and re-pinning it in client builds. There is no
-  in-band recovery and none is claimed; catastrophic key loss stays ADM-001 O13.
+  in-band recovery and none is claimed; what happens after catastrophic key loss is undecided.
 
-A second key holder is not required for Phase 2, and this document does not pretend one exists.
+A second key holder is not required, and this document does not pretend one exists.
 
 ## 1. Generate the governance key
 
@@ -76,8 +72,8 @@ The fields file is public information:
 
 The tool prints the `genesisId` and its fingerprint on standard error. Record both.
 
-A v1 genesis is signed by the keys it enumerates, which ADM-001 L10 locks and explains: verifying it against
-itself proves only that its own keys signed it. That is why the next step is not optional.
+A v1 genesis is signed by the keys it enumerates, so verifying it against itself proves only
+that its own keys signed it. The next step is therefore not optional.
 
 ## 3. Publish the fingerprint through independent channels
 
@@ -88,8 +84,8 @@ The genesis file is public and committed to gua-deploy; the **pin** is what make
 - Record the chain head as `GUA_RESOLVER_GENESIS_EXPECTED_CHAIN_HEAD`. Before the first rotation it is the
   `genesisId` itself. Pinning the root alone leaves a downgrade open: a truncated or deleted transitions file
   is still a well formed chain, so the resolver would start on the genesis key set and put a key that was
-  rotated out, possibly because it was compromised, back in force. The head pin makes that a startup failure
-  (ADM-001 O8). The resolver logs the head it loaded, and `/.well-known/gua-federation` serves it as
+  rotated out, possibly because it was compromised, back in force. The head pin makes that a startup failure.
+  The resolver logs the head it loaded, and `/.well-known/gua-federation` serves it as
   `chainHead`.
 - Publish the fingerprint on the public landing page and in the gua-deploy README, so the value can be
   compared across channels that are not the resolver serving it.
@@ -100,14 +96,11 @@ control is the whole point. A genesis nobody compared out of band is a document,
 
 ## 4. Deploy order
 
-Do not reorder these. Steps 3 and 4 below are the ones that take an environment down if inverted.
-
-The order is load-bearing in a second way, which the steps do not show on their own: **the flag may only be
-turned on against a database that already holds an ACTIVE member.** Step 1 is what puts one there. The
-resolver seeds its configured member only when the database is empty, and it seeds that member `PENDING` when
-the flag is already on. A policy bundle is validated against the roster *before* its signatures are checked,
-and every zone and rule target has to be an ACTIVE member, so a bundle naming a member the roster does not
-serve fails to load and the process exits exactly as a wrongly signed one does.
+Do not reorder these. Steps 3 and 4 take an environment down if inverted, and **the flag may only be turned
+on against a database that already holds an ACTIVE member**, which step 1 provides: the resolver seeds its
+configured member only when the database is empty, seeds it `PENDING` when the flag is already on, and a
+policy bundle is validated against the roster before its signatures are checked, so a bundle naming a member
+the roster does not serve fails to load exactly as a wrongly signed one does.
 
 1. Deploy the resolver with the genesis file mounted, `GUA_RESOLVER_GENESIS_EXPECTED_ID` set, and
    `GUA_RESOLVER_GOVERNANCE_REQUIRED=false`. Verify `/.well-known/gua-federation` serves the expected id and
@@ -152,16 +145,12 @@ and the transparency log, so it is only reasonable in an environment that can af
 
 The flag is the rollback for step 3 as well. The routing-policy and routing-claims trust roots are gated on
 `GUA_RESOLVER_GOVERNANCE_REQUIRED` together with the membership path, so deploying the code changes nothing on
-its own and setting the flag back to false restores the operational key as a policy trust root without a code
-rollout. This is deliberate: an earlier build applied the fail-closed root unconditionally, an environment
-whose bundle was signed with the operational key could not verify its own policy, and the service crash-looped
-on startup. A trust root that narrows on deploy rather than on an operator decision is a change nobody chose
-the timing of.
+its own, and setting the flag back to false restores the operational key as a policy trust root without a
+code rollout. A trust root narrows on an operator decision, never on a deploy.
 
-The one part that is not flag-gated is in-process policy signing, which is gone for good: `POST
-/authority/policy/sign` no longer exists and `RoutingPolicySigner` has no authority-key fallback. Neither is
-on the startup path or any request path, so removing them cannot take an environment down; what it changes is
-an operator step, and section 6 is that step.
+In-process policy signing is not flag-gated and is gone: `POST /authority/policy/sign` no longer exists and
+`RoutingPolicySigner` has no authority-key fallback. Neither was on a startup or request path; what changed is
+the operator step in section 6.
 
 ## 5. Sign a membership epoch
 
@@ -192,7 +181,7 @@ want the epoch to bind its identity.
 
 ## 6. Sign a routing policy bundle
 
-Policy signing left the resolver process in Phase 2. Validate first, against the live roster:
+Policy bundles are signed outside the resolver process. Validate first, against the live roster:
 
 ```sh
 curl --fail-with-body -u "$ADMIN_USER" -X POST "$RESOLVER/authority/policy/validate" \
@@ -200,7 +189,7 @@ curl --fail-with-body -u "$ADMIN_USER" -X POST "$RESOLVER/authority/policy/valid
 ```
 
 The response reports whether the structure is valid, whether the signatures verify under the governance keys
-this resolver trusts, and which zones will actually route. Then sign:
+this resolver trusts, and which zones will route. Then sign:
 
 ```sh
 < governance.key ./gradlew -q --console=plain govTool \
@@ -213,7 +202,7 @@ true before the resolver restarts, because the file policy source refuses to sta
 ## 7. Rotate a governance key
 
 A transition installs a new key set and must satisfy the **outgoing** set's threshold and the **incoming**
-set's. The outgoing signatures authorise the change; the incoming ones prove the new keys are actually held,
+set's. The outgoing signatures authorise the change; the incoming ones prove the new keys are held,
 so governance cannot be handed to a key nobody can use.
 
 Build the transition naming `genesisId`, the next `index`, `previousHash` (the genesis id at index 1, the
@@ -225,8 +214,8 @@ chain at startup and refuses to start on a broken one, on a shortened one, or on
 pinned value. The new head is the transition hash that `transition sign` printed, and the resolver logs the
 head it loaded.
 
-The genesis itself never changes. Losing every key in the current set is not recoverable by transition, and
-the answer is a new genesis and a client re-pin.
+The genesis itself never changes. Losing every key in the current set is not recoverable by transition;
+recovery requires a new genesis and a client re-pin.
 
 ## When something is refused
 

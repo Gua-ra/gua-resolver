@@ -26,14 +26,10 @@ import io.micrometer.core.instrument.MeterRegistry;
  * Re-verifies every stored record against the current roster after the roster changes, and counts the ones
  * whose signer is no longer ACTIVE.
  *
- * <p>A placement record is verified at acceptance time against the roster as it was then. Membership moves:
- * a homeserver is suspended, revoked, or loses its member attestation, and the records it signed are then
- * held by this node with no active signer behind them. Nothing routes on them, so this is not an outage, but
- * it is the number the Phase 4 exit criteria require to be zero, so it has to be measured rather than
- * assumed.
- *
- * <p>It only measures. A record is never rewritten, re-signed or deleted here: custody means the bytes that
- * arrived are the bytes that stay, and retraction is explicitly undefined in this phase.
+ * <p>A record is verified at acceptance time against the roster as it was then. When its homeserver is
+ * later suspended, revoked, or loses its member attestation, the record has no active signer behind it.
+ * Nothing routes on these records, so this only measures: a record is never rewritten, re-signed or
+ * deleted here.
  */
 @Component
 @ConditionalOnExpression(PlacementFeature.ENABLED)
@@ -60,7 +56,6 @@ public class PlacementRecordAuditor {
                 AtomicLong::get);
     }
 
-    /** What one sweep found. */
     public record AuditResult(long rosterVersion, long records, long orphanedByRoster,
                               long invalidSignature) {}
 
@@ -74,7 +69,6 @@ public class PlacementRecordAuditor {
         audit();
     }
 
-    /** Re-verify every stored record against the roster as it is now. */
     public synchronized AuditResult audit() {
         SignedRoster roster = rosterStore.current();
         Map<String, PublicKey> activeKeys = activeKeys(roster);
@@ -118,7 +112,7 @@ public class PlacementRecordAuditor {
             try {
                 keys.put(entry.homeserver().id(), Ed25519.publicKey(entry.homeserver().signingKey()));
             } catch (IllegalArgumentException e) {
-                // An entry whose key cannot be read cannot verify anything; its records count as orphaned.
+                // An entry whose key cannot be read verifies nothing, so its records count as orphaned.
                 log.warn("ACTIVE roster entry {} has no usable Ed25519 signing key", entry.homeserver().id());
             }
         }

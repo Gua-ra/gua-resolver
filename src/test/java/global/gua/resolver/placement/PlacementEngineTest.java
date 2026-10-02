@@ -53,7 +53,7 @@ class PlacementEngineTest {
     }
 
     private static PlacementEngine engineFor(RosterStore store) {
-        // Registered out of priority order on purpose — the engine must sort them.
+        // Registered out of priority order; the engine must sort them.
         return new PlacementEngine(List.of(new WeightedFallbackRule(store), new ClaimRule(store)));
     }
 
@@ -86,7 +86,6 @@ class PlacementEngineTest {
         var uniClaim = new ClaimPredicate(null, null, null, null, "usp.br", null, null, 100);
         var engine = engineFor(rosterOf(entry(UNI, uniClaim), entry(DEFAULT)));
 
-        // claimsVerified=true means the affiliation came from a signature-verified envelope.
         var ctx = new PlacementContext("+5511000000000", "BR", null, null, null, List.of("usp.br"), Map.of(), true);
 
         assertThat(engine.decide(ctx).id()).isEqualTo("uni");
@@ -97,7 +96,6 @@ class PlacementEngineTest {
         var uniClaim = new ClaimPredicate(null, null, null, null, "usp.br", null, null, 100);
         var engine = engineFor(rosterOf(entry(UNI, uniClaim), entry(DEFAULT)));
 
-        // A self-asserted (unverified) affiliation must NOT grant institutional placement; it falls back.
         var ctx = new PlacementContext("+5511000000000", "BR", null, null, null, List.of("usp.br"), Map.of(), false);
 
         assertThat(engine.decideWithTrace(ctx).rule()).isEqualTo("WeightedFallbackRule");
@@ -108,7 +106,6 @@ class PlacementEngineTest {
         var carrierClaim = new ClaimPredicate(null, "72411", null, null, null, null, null, 100);
         var engine = engineFor(rosterOf(entry(CARRIER, carrierClaim), entry(DEFAULT)));
 
-        // A phone whose carrier nobody claims must still be placed (on an acceptsNew homeserver).
         var ctx = new PlacementContext("+15555550100", "US", "31000", "Verizon", null, List.of(), Map.of(), false);
 
         var chosen = engine.decide(ctx);
@@ -198,7 +195,6 @@ class PlacementEngineTest {
         var ctx = new PlacementContext("+5511000000000", "BR", null, null, null,
                 List.of("students.usp.br"), Map.of(), true);
 
-        // Even with verified claims, a rule inside an expired delegation zone must not route.
         assertThat(engine.decideWithTrace(ctx).rule()).isEqualTo("WeightedFallbackRule");
     }
 
@@ -210,7 +206,7 @@ class PlacementEngineTest {
 
         var ctx = new PlacementContext("+5511987654321", "BR", "72411", "Vivo", null, List.of(), Map.of(), false);
 
-        // The claiming homeserver isn't accepting new accounts, so placement falls through to the default.
+        // The claiming homeserver is not accepting new accounts, so placement falls through to the default.
         assertThat(engine.decide(ctx).id()).isEqualTo("default");
     }
 

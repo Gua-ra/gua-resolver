@@ -18,14 +18,13 @@ import global.gua.resolver.crypto.Ed25519;
 
 /**
  * Verifies that a {@link SignedRoster} carries at least {@code k} valid authority signatures (k-of-n
- * threshold, §5) over its canonical bytes, each from a distinct published authority key. This is the
- * "verify-on-read" gate every resolver, authority or mirror, runs before trusting any roster entry. It stops
- * a tampered mirror feed. It stops a single corrupt authority key only when k is at least 2 across distinct
- * operators; the deployed configuration is k=1, n=1 (ADM-001 O12).
+ * threshold) over its canonical bytes, each from a distinct published authority key. Every resolver,
+ * authority or mirror, runs this before trusting any roster entry. It stops a tampered mirror feed. It stops
+ * a single corrupt authority key only when k is at least 2 across distinct operators.
  *
- * <p>It also holds the per-entry gate: {@link #verifiedView} applies the member self-signature rules
- * (ADM-007) to each entry and reports which ACTIVE entries carry no valid one. The authority filters before
- * signing and a mirror filters what it routes on; both use this method so the two can never diverge.
+ * <p>It also holds the per-entry gate: {@link #verifiedView} applies the member self-signature rules to each
+ * entry and reports which ACTIVE entries carry no valid one. The authority filters before signing and a
+ * mirror filters what it routes on; both use this method so the two can never diverge.
  */
 @Component
 public class RosterVerifier {
@@ -89,7 +88,6 @@ public class RosterVerifier {
         return requireMemberSignature;
     }
 
-    /** One entry's member-signature outcome. */
     public record MemberCheck(String homeserverId, boolean active, MemberEntryVerifier.Result result) {}
 
     /**

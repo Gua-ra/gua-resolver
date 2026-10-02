@@ -11,11 +11,10 @@ import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.placement.ClaimPredicate;
 
 /**
- * Deterministic, canonical byte serialization of a roster snapshot — the exact bytes the directory
- * authorities sign and that every verifier (including third-party mirrors) reconstructs to check the
- * signatures. Covers everything EXCEPT the signatures themselves. Entries are sorted by id and all
- * collections are emitted in a fixed order, so the same logical roster always yields identical bytes on
- * any machine/JVM.
+ * Deterministic, canonical byte serialization of a roster snapshot: the exact bytes the authority signs and
+ * that every verifier (including third-party mirrors) reconstructs to check the signatures. Covers
+ * everything except the signatures themselves. Entries are sorted by id and all collections are emitted in
+ * a fixed order, so the same logical roster always yields identical bytes on any machine or JVM.
  */
 public final class CanonicalRoster {
 
@@ -42,7 +41,7 @@ public final class CanonicalRoster {
 
     private static String entry(RosterEntry e) {
         Homeserver h = e.homeserver();
-        StringJoiner j = new StringJoiner("");  // unit separator — can't appear in the fields
+        StringJoiner j = new StringJoiner("");  // unit separator; cannot appear in the fields
         j.add(h.id());
         j.add(h.serverName());
         j.add(h.baseUrl());

@@ -29,10 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * A record is verified against the roster as it was at acceptance time, and membership moves afterwards. The
  * auditor re-verifies every record when the roster changes and counts the ones whose signer is no longer
- * ACTIVE, which is the number the Phase 4 exit criteria require to be zero.
- *
- * <p>It measures and never repairs: an orphaned record keeps its bytes. Retraction is undefined in this
- * phase, and inventing one here would be a placement change nobody signed.
+ * ACTIVE. It measures and never repairs: an orphaned record keeps its bytes.
  */
 @SpringBootTest(properties = {
         "gua.resolver.placement.enabled=true",
@@ -85,7 +82,6 @@ class PlacementRecordAuditorTest {
         assertThat(after.records()).isEqualTo(1);
         assertThat(after.orphanedByRoster()).isEqualTo(1);
 
-        // Custody: the bytes that arrived are the bytes that stay.
         assertThat(store.find(accountId).orElseThrow().recordB64())
                 .isEqualTo(PlacementFixtures.recordB64(canonical));
     }

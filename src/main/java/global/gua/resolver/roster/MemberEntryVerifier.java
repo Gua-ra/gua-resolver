@@ -11,8 +11,8 @@ import global.gua.resolver.crypto.Ed25519;
 import global.gua.resolver.domain.Homeserver;
 
 /**
- * Verifies a member's self-signature over its roster entry (ADM-007, brief rules 1.4). Stateless: the caller
- * passes the acceptance time and, when it has one, the last entry it accepted for the same homeserver id.
+ * Verifies a member's self-signature over its roster entry. Stateless: the caller passes the acceptance
+ * time and, when it has one, the last entry it accepted for the same homeserver id.
  *
  * <ol>
  *   <li>The block names {@code gua-member-entry.v1} and {@code Ed25519}.</li>

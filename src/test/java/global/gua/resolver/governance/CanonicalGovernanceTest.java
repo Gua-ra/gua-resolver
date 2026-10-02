@@ -45,7 +45,7 @@ class CanonicalGovernanceTest {
 
         for (JsonNode signature : vector.path("signatures")) {
             Ed25519.KeyPairB64 pair = key(root, signature.get("keyRef").asText());
-            // Ed25519 is deterministic: re-signing the same bytes reproduces the published signature.
+            // Ed25519 is deterministic: re-signing reproduces the published signature.
             assertThat(Ed25519.sign(Ed25519.privateKey(pair.privateKeyB64()), canonical))
                     .as("%s / %s", name, signature.get("keyId").asText())
                     .isEqualTo(signature.get("signatureB64").asText());

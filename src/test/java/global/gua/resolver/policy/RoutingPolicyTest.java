@@ -128,7 +128,7 @@ class RoutingPolicyTest {
                 "carrier-zone", "delegate-vivo", DELEGATE.privateKeyB64());
 
         // Whoever assembles the bundle swaps the delegate's rule for a different target, keeping the old
-        // delegate signature. The delegate signature is over the ORIGINAL rules, so the zone no longer verifies.
+        // delegate signature. The delegate signature is over the original rules, so the zone no longer verifies.
         RoutingPolicyBundle forged = new RoutingPolicyBundle(delegateSigned.schemaVersion(),
                 delegateSigned.policyId(), delegateSigned.version(), delegateSigned.issuedAt(),
                 delegateSigned.notBefore(), delegateSigned.expiresAt(), delegateSigned.delegationZones(),
@@ -186,9 +186,8 @@ class RoutingPolicyTest {
                                 RoutingPolicyRule.AssignmentPolicy.PORTABLE, true)),
                 new RoutingPolicyBundle.FallbackStrategy("legacy-weighted", true), List.of(), List.of());
 
-        // Both rules share matchValue "staff" but read different OIDC claims, so they are genuinely distinct
-        // and must not be rejected as ambiguous. The pre-fix ambiguity key ignored issuer/claim and collided
-        // them, wrongly failing an otherwise valid institutional policy.
+        // Both rules share matchValue "staff" but read different OIDC claims, so they are distinct and must
+        // not be rejected as ambiguous.
         assertThatCode(() -> validator.validate(policy, roster())).doesNotThrowAnyException();
     }
 

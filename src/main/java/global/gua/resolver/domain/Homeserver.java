@@ -11,7 +11,7 @@ import java.util.List;
  * @param masIssuer        the homeserver's MAS OIDC issuer (for the client's OIDC login)
  * @param region           optional region/tenant tag used by placement policy
  * @param weight           load-spreading weight for weighted placement (>= 0)
- * @param acceptsNew       whether this homeserver currently accepts NEW account placement
+ * @param acceptsNew       whether this homeserver currently accepts new-account placement
  * @param signingKey       the homeserver's Ed25519 public key (base64), anchored to its Matrix signing key
  * @param searchVisibility who may discover this homeserver's users via federated username search; part of
  *                         the signed roster so the policy is authority-attested and client-verifiable

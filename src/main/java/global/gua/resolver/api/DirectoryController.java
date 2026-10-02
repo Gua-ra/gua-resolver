@@ -11,11 +11,9 @@ import global.gua.resolver.directory.DirectoryStore;
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 
 /**
- * The shared directory's lookup surface (§4). The directory has no HTTP write path: the member-written
- * {@code POST /directory/entries} was removed (ADM-001 L1b) because a membership credential proved only
- * membership, never that the writer hosted the account. Rows written before the removal stay and are read
- * here and by {@code /resolve} until placement records replace them. The lookup is rate-limited and keyed
- * by peppered HMAC (mirrors query it; no bulk export exists).
+ * The shared directory's lookup surface. The directory has no HTTP write path; the rows it holds are read
+ * here and by {@code /resolve}. The lookup is rate limited and keyed by peppered HMAC (mirrors query it; no
+ * bulk export exists).
  */
 @RestController
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)

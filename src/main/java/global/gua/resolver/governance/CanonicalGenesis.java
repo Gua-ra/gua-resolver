@@ -5,7 +5,7 @@ import java.util.List;
 import global.gua.resolver.crypto.CanonicalEncoder;
 
 /**
- * The {@code gua-federation-genesis.v1} canonical bytes, encoded with {@code gua-lp.v1} (ADM-007).
+ * The {@code gua-federation-genesis.v1} canonical bytes, encoded with {@code gua-lp.v1}.
  *
  * <p>Field order: schema tag; federationLabel; createdAt (int64 epoch ms); hashSuite; threshold (int64);
  * keys as a list sorted by keyId, each {keyId, alg, publicKey, operatorId}; registries as a set, sorted
@@ -44,9 +44,7 @@ public final class CanonicalGenesis {
 
     /**
      * The human fingerprint: the first 16 hex characters of the genesis id, grouped in fours. It is what an
-     * operator reads aloud or compares between independent channels, so it is short enough to check by eye
-     * and long enough that producing a second genesis with the same one is not a thing anyone can do
-     * casually. The full id is what code compares.
+     * operator reads aloud or compares between independent channels. The full id is what code compares.
      */
     public static String fingerprint(String genesisId) {
         if (genesisId == null || genesisId.length() < 16) {

@@ -6,17 +6,16 @@ package global.gua.resolver.placement.record;
 import java.util.regex.Pattern;
 
 /**
- * The account identifier string and its one canonical spelling (ADM-008 decision 2).
+ * The account identifier string and its one canonical spelling.
  *
  * <p>{@code accountId = "ga1" || base32(0x01 || class || SHA-256(canonical genesis bytes))}, where base32 is
  * RFC 4648, lowercase and unpadded. The 34 raw bytes are 272 bits and 55 base32 characters carry 275, so the
  * last character holds three unused bits: only {@code a}, {@code i}, {@code q} and {@code y} can end a
- * well-formed id. A decoder that ignored that would accept eight spellings of one account, which ADM-001 L4
- * forbids, so a parse is a pattern match followed by a re-encode and compare.
+ * well-formed id. A decoder that ignored that would accept eight spellings of one account, so a parse is a
+ * pattern match followed by a re-encode and compare.
  *
  * <p>The resolver never takes an accountId from a caller as the storage key: it re-derives the string from
- * the raw bytes carried inside the signed record. This class is what makes those two operations the same
- * function.
+ * the raw bytes carried inside the signed record.
  */
 public final class AccountId {
 
@@ -32,10 +31,10 @@ public final class AccountId {
     /** accountId format version, the first raw byte. */
     public static final byte FORMAT_VERSION = 0x01;
 
-    /** Root class 0x00: a bootstrap id, minted for an account that predates account authority (L5). */
+    /** Root class 0x00: a bootstrap id, minted for an account that predates account authority. */
     public static final byte CLASS_BOOTSTRAP = 0x00;
 
-    /** Root class 0x01: a genesis-rooted id, derived from an on-device AccountGenesis (L4). */
+    /** Root class 0x01: a genesis-rooted id, derived from an on-device AccountGenesis. */
     public static final byte CLASS_GENESIS = 0x01;
 
     /** The canonical spelling: 54 free base32 characters and a last one whose low three bits are zero. */

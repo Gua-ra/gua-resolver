@@ -8,9 +8,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import global.gua.resolver.roster.MemberEntryJson;
 
 /**
- * Strict transport parsing for governance objects, on the same rule ADM-007 sets for member entries: a
- * signed sub-object is read through a reader that refuses unknown fields, duplicate keys and trailing
- * content, so a signature can never cover fewer fields than the resolver goes on to act on.
+ * Strict transport parsing for governance objects, on the same rule as member entries: a signed sub-object
+ * is read through a reader that refuses unknown fields, duplicate keys and trailing content, so a signature
+ * can never cover fewer fields than the resolver goes on to act on.
  *
  * <p>It reuses the member-entry strict reader rather than configuring a second one, so the two can never
  * drift into different notions of strict.

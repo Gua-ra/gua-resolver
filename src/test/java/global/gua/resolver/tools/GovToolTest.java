@@ -71,8 +71,6 @@ class GovToolTest {
         assertThat(key.get("alg").asText()).isEqualTo("Ed25519");
 
         String privateKey = Files.readString(keyFile).trim();
-        // The public half published is the public half of the key that was written, and the private half
-        // appears nowhere the operator might copy from.
         assertThat(Ed25519.sign(Ed25519.privateKey(privateKey), "x".getBytes(StandardCharsets.UTF_8)))
                 .isNotBlank();
         assertThat(run.out()).doesNotContain(privateKey);

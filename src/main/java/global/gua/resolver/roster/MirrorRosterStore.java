@@ -23,21 +23,16 @@ import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.crypto.MerkleTree;
 
 /**
- * Mirror-mode {@link RosterStore} (§4): pulls the signed roster from an upstream authority, verifies the
- * k-of-n authority signatures AND transparency-log consistency before serving it, then refreshes
- * periodically. An institution runs this to get a local, low-latency, sovereign copy of the roster
- * WITHOUT being an authority: it can never mint roster entries, only relay verified ones.
+ * Mirror-mode {@link RosterStore}: pulls the signed roster from an upstream authority, verifies the k-of-n
+ * authority signatures and transparency-log consistency before serving it, then refreshes periodically. A
+ * mirror can never mint roster entries, only relay verified ones.
  *
  * <p>It serves the upstream document verbatim at {@code GET /roster} ({@link #served()}), so a client can
  * still check the upstream signature over exactly those bytes, and routes on its own verified view of it
  * ({@link #current()}): each entry's member self-signature is checked against the last entry this mirror
  * accepted for that homeserver, which is what catches an authority that substitutes a member's address or
- * key, or replays an older entry (ADM-007). Under
- * {@code gua.resolver.roster.require-member-signature} an ACTIVE entry that fails is dropped from that view.
- *
- * <p>The directory is deliberately NOT mirrored here; a mirror queries the AUTHORITY-mode node's
- * directory (whose member write endpoint is removed, ADM-001 L1b) row by row; only the public roster is
- * replicated.
+ * key, or replays an older entry. Under {@code gua.resolver.roster.require-member-signature} an ACTIVE entry
+ * that fails is dropped from that view.
  */
 @Component
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "MIRROR")
@@ -116,8 +111,8 @@ public class MirrorRosterStore implements RosterStore {
         verifier.requireVerified(pulled);
 
         // 2. Transparency-log consistency: the new checkpoint must be an append-only extension of the last
-        //    one this mirror accepted. A local check against our own last checkpoint, not gossip: it detects
-        //    a history rewritten since we last looked, not a split view between readers (ADM-001 L12).
+        //    one this mirror accepted. It detects a history rewritten since then, not a split view between
+        //    readers.
         if (lastCheckpoint != null && lastCheckpoint.size() > 0) {
             requireConsistentLog(lastCheckpoint, pulled.logCheckpoint());
         }

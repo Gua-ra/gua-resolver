@@ -9,12 +9,6 @@ import global.gua.resolver.roster.RosterEntry;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * Shape rules for one member of a membership epoch. Both refusals are about the gap between what the
- * canonical bytes can carry and what the resolver can apply: a status that is not a governed status, and a
- * weight wider than the roster column. Refusing is the honest answer, because applying a narrowed weight
- * would apply a value nobody signed.
- */
 class RegistryMemberTest {
 
     private static RegistryMember member(RosterEntry.Status status, long weight) {

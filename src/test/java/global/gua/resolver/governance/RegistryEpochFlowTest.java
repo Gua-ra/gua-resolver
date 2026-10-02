@@ -37,8 +37,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * environment, lives on an operator machine and never reaches the resolver.
  */
 @SpringBootTest
-// Per method, not per class: these tests commit epochs and admit members, so they mutate the very state the
-// next one asserts about. The schema script drops and recreates, so a fresh context is a fresh federation.
+// Per method, not per class: these tests commit epochs and admit members, so they mutate the very state
+// the next one asserts about. The schema script drops and recreates, so a fresh context is a fresh
+// federation.
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class RegistryEpochFlowTest {
 
@@ -90,6 +91,7 @@ class RegistryEpochFlowTest {
         long before = transparencyLog.head().size();
         registry.commit(signPending(List.of(GOVERNANCE)), pending.content());
 
+        // Still ACTIVE and still served: recording the intent is not the act.
         assertThat(entries.findById("dev").orElseThrow().status()).isEqualTo(RosterEntry.Status.ACTIVE);
         assertThat(rosterStore.current().activeEntries()).hasSize(1);
         assertThat(transparencyLog.head().size()).isEqualTo(before + 1);
@@ -177,13 +179,10 @@ class RegistryEpochFlowTest {
         long beforeIntent = transparencyLog.head().size();
         admission.setStatus("dev", RosterEntry.Status.SUSPENDED);
 
-        // The request reaches the log even though nothing served changed, so a suspend governance never
-        // ratifies is still auditable.
         assertThat(transparencyLog.head().size()).isEqualTo(beforeIntent + 1);
         assertThat(transparencyLog.eventsOfType(TransparencyLog.STATUS_INTENT)).singleElement()
                 .satisfies(e -> assertThat(e.homeserverId()).isEqualTo("dev"));
 
-        // Still ACTIVE and still served: recording the intent is not the act.
         assertThat(entries.findById("dev").orElseThrow().status()).isEqualTo(RosterEntry.Status.ACTIVE);
         assertThat(rosterStore.current().activeEntries()).hasSize(1);
         assertThat(registry.pending().content().members()).singleElement()
@@ -243,9 +242,6 @@ class RegistryEpochFlowTest {
 
     @Test
     void aPendingEntryIsNotInTheRosterTheAuthoritySignsAndServes() {
-        // The seeded entry is PENDING, so the served document holds no entries at all: not an entry marked
-        // PENDING, no entry. The signed bytes say nothing about a member governance has not admitted, and
-        // the status never reaches a mirror or a client that would have to parse it.
         assertThat(entries.findById("dev").orElseThrow().status()).isEqualTo(RosterEntry.Status.PENDING);
         assertThat(rosterStore.served().entries()).isEmpty();
 
@@ -288,7 +284,6 @@ class RegistryEpochFlowTest {
         assertThat(entries.findById("hs-a").orElseThrow().status()).isEqualTo(RosterEntry.Status.PENDING);
     }
 
-    /** Admit a homeserver claiming one carrier, through the ordinary gate. */
     private void admitClaiming(String id, String serverName, String mccmnc) {
         Ed25519.KeyPairB64 key = Ed25519.generate();
         String proof = Ed25519.sign(Ed25519.privateKey(key.privateKeyB64()),

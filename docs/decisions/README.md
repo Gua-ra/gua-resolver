@@ -1,32 +1,55 @@
-Architecture decision records for Gua. The entry point is [ADM-001](ADM-001-identifier-binding-placement-trust.md), the frozen decision set for identifier binding, account placement, resolver trust and federation governance. It is normative. Its locked decisions are reopened by concrete evidence, such as a counterexample, a changed requirement or implementation results, not by preference.
-The memos that produced it are preserved under [rationale/](rationale/) with only punctuation normalized. They are the reasoning record. They are not normative.
+# Former decision records
 
-## Accepted follow-up records
+This directory used to hold numbered decision records. They were replaced by documents named for what they describe:
 
-- [ADM-007](ADM-007-canonical-encoding-and-member-entries.md): the `gua-lp.v1` canonical encoding and self-signed member roster entries, extended with the Phase 2 governance objects (`gua-federation-genesis.v1`, `gua-governance-transition.v1`, `gua-registry-epoch.v1`, `gua-homeserver-registry-content.v1`) and the minimal governance key custody rule that unblocked Phase 2. Closes the part of O2 that Phases 1 and 2 need; nothing locked in ADM-001 is reopened.
+- [Gua identity and federation](../architecture/gua-identity-and-federation.md): how the system works today.
+- [Signed federation objects](../specs/federation-signed-objects.md): encoding, homeserver-signed roster entries, governance objects and their verification rules.
+- [Account identifiers and placement records](../specs/account-identifiers-and-placement-records.md): byte formats and acceptance rules.
+- [Federation work that is not built yet](../architecture/planned-federation-work.md): the gaps and the constraints on closing them.
 
+New decisions go into the document they change. Do not add numbered records here.
 
-## Proposed records
+The tables below exist because golden-vector files, applied database migrations, log messages and other repositories still cite the old identifiers. The `decision` field in both vector files in `docs/specs/` names the former ADM-007 path. That path is historical, and its content is now in [signed federation objects](../specs/federation-signed-objects.md).
 
-These are proposals. They are not normative until a decision freezes them, and they do not override ADM-001.
+## Records
 
-- [ADM-002](ADM-002-account-recovery.md): Recovering an account authority key and resetting login factors, with what stays unrecoverable. Status: Proposed.
-- [ADM-003](ADM-003-private-identifier-lookup.md): A routing key that does not put identifiers in replicated state, and the construction choices it needs reviewed. Status: Proposed.
-- [ADM-004](ADM-004-passkey-discovery-and-relying-party.md): How a returning device finds the right homeserver before offering a passkey. Status: Proposed.
-- [ADM-005](ADM-005-federation-state-replication-witnesses-ordering.md): Replication, witnesses, checkpoints and what a second operator changes. Status: Proposed.
-- [ADM-006](ADM-006-matrix-portability.md): What moving an account can and cannot mean, given what Matrix supports today. Status: Proposed.
-- [ADM-008](ADM-008-account-genesis-and-placement-records.md): Account genesis, bootstrap identity and placement record formats. Status: Accepted for implementation.
+| Former identifier | Subject | Now |
+| --- | --- | --- |
+| ADM-001 | Identifier binding, account placement, resolver trust, governance | Rules in force: [signed federation objects](../specs/federation-signed-objects.md). Unbuilt design and its constraints: [planned federation work](../architecture/planned-federation-work.md). Overview: [architecture guide](../architecture/gua-identity-and-federation.md). |
+| ADM-001 rationale memos (base, R1, R2) | The review rounds behind ADM-001 | Removed. In git history. |
+| ADM-002 | Account recovery proposal | Sign-in factor recovery as built: [delayed account recovery](../architecture/gua-identity-and-federation.md#delayed-account-recovery). Recovery of account authority, with the proposed order for competing key changes: [account authority and device lifecycle](../architecture/planned-federation-work.md#account-authority-and-device-lifecycle). |
+| ADM-003 | Private identifier lookup proposal | [Phone numbers that cannot be recovered from stored state](../architecture/planned-federation-work.md#phone-numbers-that-cannot-be-recovered-from-stored-state) |
+| ADM-004 | Passkey discovery and relying party proposal | [Sign-in decided by each homeserver, and passkeys](../architecture/planned-federation-work.md#sign-in-decided-by-each-homeserver-and-passkeys). Passkeys as built: [account security](../architecture/gua-identity-and-federation.md#account-security). |
+| ADM-005 | Replication, witnesses and ordering proposal | [Checkpoints, witnesses and replicas](../architecture/planned-federation-work.md#checkpoints-witnesses-and-replicas) |
+| ADM-006 | Matrix identity portability | [Moving an account to another homeserver](../architecture/planned-federation-work.md#moving-an-account-to-another-homeserver) |
+| ADM-007 | `gua-lp.v1` encoding, homeserver-signed entries, governance objects | [Signed federation objects](../specs/federation-signed-objects.md) |
+| ADM-008 | Account genesis, `accountId`, placement records | [Account identifiers and placement records](../specs/account-identifiers-and-placement-records.md) |
 
-## Implementation status
+## Labels still cited elsewhere
 
-Which ADM-001 decisions the code on `main` has reached. Everything not listed is still target.
-
-- Phase 3 (account genesis, bootstrap ids, attach proof): native accounts are bootstrap-only, and genesis is present but disabled. Every flag defaults off, on the server and in both clients. identity-service on `main` carries the genesis registration, the `gua:` login-hint grammar and the attach-proof verifier. Both clients carry the authority key store and the genesis builder on `develop`, behind their own off-by-default flag, and neither is on `main` yet. No native account holds an account authority key. Decision 6's attach step is not implementable in the deployed flow, an OTP-authorized replacement was reviewed and rejected, and a secure `ADOPT_ROOT` is deferred; see ADM-008, "Implementation status and direction". Framework 0x01 production issuance stays refused until ADM-002 fixes the 0x01 delay bounds and answers its independence question.
-- S6 (no localpart derived from the user id): implemented in identity-service, with a guard test.
-- L1b: implemented (`POST /directory/entries` removed), 2026-09-11. Existing directory rows stay until placement records replace them.
-- L1a: implemented in identity-service (the non-interactive `phone_number` + `otp_code` branch of `GET /oauth2/authorize` removed; an authorization code is only issued by the interactive login flow), 2026-09-11.
-- Phase 1 (member self-signed entries): code on main, flag off; activation pending operator attestation.
-- Phase 2 (governance keys, federation genesis, registry roots): code on main, `gua.resolver.governance.required` off. The resolver loads and serves a pinned `FederationGenesis` at `/.well-known/gua-federation`, accepts governance-signed `HomeserverRegistry` epochs, serves them at `/registry/homeservers/epoch/*`, and commits each to the log as a `MEMBERSHIP_EPOCH` leaf. Governance signing is outside the process: the in-resolver `POST /authority/policy/sign` is replaced by `POST /authority/policy/validate`, and signing moves to the offline tool (`docs/runbooks/governance-keys.md`). The fail-closed policy and claims trust roots are gated on the same flag, so deploying this code changes no trust root on its own. An admission under governance stays out of the signed roster until an epoch admits it, a status request is logged as a `STATUS_INTENT` leaf, and `genesis.expected-chain-head` pins the key chain so a truncated transitions file cannot walk the key set back. Activation per environment is pending the key ceremony.
-- L10: partial. The genesis, the governance key transitions format and the HomeserverRegistry epoch chain exist and the resolver verifies them back to the pinned genesis. `VerifierRegistry` and `WitnessRegistry` are shapes with no code path (Phase 5 and Phase 9), `PolicyRegistry` content is the existing bundle envelope verified under the governance keys rather than a separate epoch object, and clients do not verify the chain yet (Phase 6).
-- L8: fail-closed implemented behind `gua.resolver.governance.required`, 2026-09-11. With the flag on, `RoutingClaimsVerifier` no longer falls back to policy or authority keys and `RoutingPolicyVerifier` verifies under the governance key set alone; with it off, both keep the pre-cutover fallbacks, because an environment's deployed policy bundle is signed with the operational key and narrowing the root under a running environment stopped it starting once already. The client-side `ResolverVerifier` has no fallback in either case. `RoutingPolicySigner` no longer falls back to the authority signing key, unconditionally, since it is on no startup or request path. Governance thresholds count distinct `operatorId`s through `GovernanceVerifier`; the roster and policy verifiers keep their per-key counting for the operational snapshot and must not be reused for a threshold that has to mean independence.
-- L16: interim controls, 2026-09-11. `POST /resolve` is rate-limited per client and globally inside the service (README, "Interim abuse controls") and per source at the ingress (gua-deploy `k8s/services/login-ingress.sh`). It still answers `exists` for any raw E.164 with no account session; the L16 [CODE] sentence predates these controls and is left as written.
+| Label | Rule in one line | Now |
+| --- | --- | --- |
+| ADM-001 standing rule | Two keys held by one operator are one party | [Planned federation work](../architecture/planned-federation-work.md), opening paragraph, and [identifier ownership](../architecture/planned-federation-work.md#identifier-ownership-attested-by-independent-verifiers) |
+| ADM-001 L1a | A sign-in code is issued only by the interactive flow | [How sign-in works](../architecture/gua-identity-and-federation.md#how-sign-in-works) |
+| ADM-001 L1b | Homeservers cannot write the phone directory | [How a phone number is resolved](../architecture/gua-identity-and-federation.md#how-a-phone-number-is-resolved) |
+| ADM-001 L2 | Ownership, placement and sign-in stay separate, with the test for a flow | [Sign-in decided by each homeserver](../architecture/planned-federation-work.md#sign-in-decided-by-each-homeserver-and-passkeys) |
+| ADM-001 L3 | An identifier is an attribute of an account | [Identifier ownership](../architecture/planned-federation-work.md#identifier-ownership-attested-by-independent-verifiers) |
+| ADM-001 L4, O2 | One canonical byte representation per signed object. Account objects hold no identifier | [Rules for every signed object](../specs/federation-signed-objects.md#rules-for-every-signed-object), [account object rules](../specs/account-identifiers-and-placement-records.md#rules) |
+| ADM-001 L5, B1, O9 | Accounts with and without a committed key, and how one gains a key | [Status](../specs/account-identifiers-and-placement-records.md#status), [account authority](../architecture/gua-identity-and-federation.md#in-development-account-authority) |
+| ADM-001 L6 | New accounts registered as one transaction with a committed placement | [New accounts](../architecture/planned-federation-work.md#new-accounts-registered-as-one-checkable-transaction), [placement record](../specs/account-identifiers-and-placement-records.md#placement-record-66--n-bytes) |
+| ADM-001 L7, L8, O3, S5 | Verifier attestation. Thresholds count operators. Trust roots fail closed | [Identifier ownership](../architecture/planned-federation-work.md#identifier-ownership-attested-by-independent-verifiers), [governance rules](../specs/federation-signed-objects.md#rules-governance-verification-depends-on) |
+| ADM-001 L9 | Matrix has no migration that keeps identity | [Moving an account](../architecture/planned-federation-work.md#moving-an-account-to-another-homeserver) |
+| ADM-001 L10, O8, O13 | Federation genesis, key chain, loss of governance keys | [Governance objects](../specs/federation-signed-objects.md#governance-objects), [losing the governance keys](../architecture/planned-federation-work.md#losing-the-governance-keys) |
+| ADM-001 L11, L12, O1, O7, O10, O12, S2, S3 | Checkpoints, witnesses, pinning, replicas | [Checkpoints, witnesses and replicas](../architecture/planned-federation-work.md#checkpoints-witnesses-and-replicas), [apps verifying](../architecture/planned-federation-work.md#apps-verifying-before-they-connect) |
+| ADM-001 L13, O5, O6 | Recovery requirements | [Account authority and device lifecycle](../architecture/planned-federation-work.md#account-authority-and-device-lifecycle). Sign-in factor recovery as built: [changing device or losing access](../architecture/gua-identity-and-federation.md#changing-device-or-losing-access) |
+| ADM-001 L14, L15, L16, O4, S1, S4 | Lookup keys, no raw identifiers in shared state, `/resolve` enumeration | [Phone numbers](../architecture/planned-federation-work.md#phone-numbers-that-cannot-be-recovered-from-stored-state) |
+| ADM-001 O11, S6 | Passkey relying party. Sign-in subject migration | [Sign-in decided by each homeserver](../architecture/planned-federation-work.md#sign-in-decided-by-each-homeserver-and-passkeys) |
+| ADM-002 D1, Q6 | Recovery framework `0x01` is not issued in production | [Account genesis, key-rooted](../specs/account-identifiers-and-placement-records.md#account-genesis-key-rooted-87-bytes) |
+| ADM-002 D2, D3 | Order for competing key changes. Operators never reassign an account | [Account authority and device lifecycle](../architecture/planned-federation-work.md#account-authority-and-device-lifecycle) |
+| ADM-004 D6 | A random 64-byte passkey user handle | Superseded. The passkey user handle is the `accountId`: [status](../specs/account-identifiers-and-placement-records.md#status) |
+| ADM-007 items 1 to 6 | Encoding and homeserver-signed entries | [Signed federation objects](../specs/federation-signed-objects.md#the-gua-lpv1-encoding) |
+| ADM-007 items 7 to 13, "Phase 2 objects" | Governance objects, thresholds, custody, the governance switch, the chain head pin | [Governance objects](../specs/federation-signed-objects.md#governance-objects). Custody: [governance keys runbook](../runbooks/governance-keys.md#custody) |
+| ADM-008 decisions 1 to 5 | Byte layouts, `accountId`, registration proof, recovery framework, authority key | [Account identifiers](../specs/account-identifiers-and-placement-records.md#rules) |
+| ADM-008 decision 6 | Attach handle and attach proof | [Attaching it to a new account](../specs/account-identifiers-and-placement-records.md#attaching-it-to-a-new-account) |
+| ADM-008 decisions 7 to 9 | Placement records and comparison mode | [Placement record](../specs/account-identifiers-and-placement-records.md#placement-record-66--n-bytes), [migration plan](../migrations/gua-resolver-migration-plan.md#phase-4-placement-records-for-existing-accounts) |
+| ADM-008 decision 10 | An `accountId` never appears in a sign-in claim | [Rules](../specs/account-identifiers-and-placement-records.md#rules) |

@@ -89,8 +89,7 @@ class WellKnownControllerTest {
 
     @Test
     void theDocumentSaysHowFarTheGovernanceKeyChainHasRun() throws Exception {
-        // With no transition applied the head is the genesis id. It is published so an operator can pin it
-        // and a reader can tell a full chain from a shortened one.
+        // With no transition applied the head is the genesis id.
         mockMvc.perform(get("/.well-known/gua-federation"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.chainHead").value(GENESIS_ID))

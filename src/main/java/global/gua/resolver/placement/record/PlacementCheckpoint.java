@@ -15,7 +15,7 @@ import global.gua.resolver.roster.SignedRoster;
  * <p>The root depends only on the records, not on the time, so the same state always produces the same root.
  * That is what lets the checkpoint be anchored once per changed root instead of once per record. It is an
  * assertion by the signer, not a proof that the state is correct, and no per-record inclusion proof is
- * served (ADM-001 L11).
+ * served.
  */
 public record PlacementCheckpoint(String merkleRoot, long size, Instant issuedAt) {
 

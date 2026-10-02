@@ -13,10 +13,8 @@ import global.gua.resolver.crypto.Ed25519;
  * The governance keys in force: the genesis key set with every valid transition applied, plus the threshold
  * that applies with them.
  *
- * <p>It holds keys and answers lookups; it does not count votes. The counting rule lives in
- * {@link GovernanceVerifier} precisely because it is the part ADM-001 L8 constrains, and keeping it in one
- * place is what stops a future caller from reaching for
- * {@code RosterVerifier.countValidSignatures} and reintroducing per-key counting.
+ * <p>It holds keys and answers lookups; it does not count votes. The counting rule (per operator, never per
+ * key) lives in {@link GovernanceVerifier} alone.
  */
 public final class GovernanceKeySet {
 
@@ -72,10 +70,8 @@ public final class GovernanceKeySet {
 
     /**
      * These keys as a trusted-key list, so the policy bundle verifier can check bundles against the
-     * governance root instead of against the operational authority key. Policy bundles keep the shipped
-     * envelope and its per-key counting in v1; that is tolerable only because it is a single-operator key
-     * set today and because no independence claim rests on it. A threshold that has to mean independence
-     * goes through {@link GovernanceVerifier}.
+     * governance root instead of the operational authority key. Policy bundle verification counts per key,
+     * not per operator; a threshold that has to mean independence goes through {@link GovernanceVerifier}.
      */
     public List<ResolverProperties.TrustedKey> asTrustedKeys() {
         return byKeyId.values().stream().map(k -> {
@@ -89,8 +85,7 @@ public final class GovernanceKeySet {
     /**
      * Structural validation of a key set and the threshold that goes with it. A threshold higher than the
      * number of distinct operators is refused at load rather than at first use: it can never be satisfied
-     * honestly, and the failure should be a startup error an operator sees, not a governance act that
-     * silently cannot happen.
+     * honestly, and the failure should be a startup error an operator sees.
      */
     static void validateKeys(List<GovernanceKey> keys, long threshold) {
         if (keys == null || keys.isEmpty()) {

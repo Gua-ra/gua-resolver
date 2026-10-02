@@ -59,11 +59,6 @@ final class StartupPolicyFixtures {
      * A bundle with no zones and no rules. It still has to load and verify, so it isolates the trust root
      * from the roster: with governance required the seeded member waits in PENDING, so a bundle that targeted
      * it would fail validation for a reason that has nothing to do with which key signed it.
-     *
-     * <p>That reason is itself a way this configuration fails to start, so it is not left untested here: it
-     * is the subject of {@link GovernedStartupNeedsAnActiveMemberTest}, which uses {@link #routingTo} under
-     * governance on purpose. Isolation is why this bundle exists, not an assumption that the other path is
-     * safe.
      */
     static RoutingPolicyBundle ruleless() {
         Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
@@ -80,7 +75,6 @@ final class StartupPolicyFixtures {
         return new RoutingPolicySigner(signing).sign(bundle);
     }
 
-    /** Write the bundle where a deployment would mount it, and return the path. */
     static Path write(RoutingPolicyBundle bundle, String prefix) throws Exception {
         Path file = Files.createTempDirectory(prefix).resolve("routing-policy.json");
         Files.writeString(file, mapper().writeValueAsString(bundle));

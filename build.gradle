@@ -38,10 +38,9 @@ dependencies {
     implementation 'com.github.ben-manes.caffeine:caffeine'
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.13'
 
-    // Persistent roster + transparency log + the phone->homeserver directory (its member write endpoint is
-    // removed, ADM-001 L1b; existing rows stay until placement records replace them).
-    // Ed25519 authority/roster signatures use the JDK-native provider (java.security, "Ed25519"); no extra
-    // crypto lib is needed. JdbcTemplate (not JPA) keeps the persistence thin + the SQL explicit.
+    // Persistent roster, transparency log and the phone-to-homeserver directory. Ed25519 signatures use the
+    // JDK-native provider (java.security, "Ed25519"), so no extra crypto library is needed. JdbcTemplate
+    // (not JPA) keeps the persistence thin and the SQL explicit.
     implementation 'org.springframework.boot:spring-boot-starter-jdbc'
     implementation 'org.flywaydb:flyway-core'
     implementation 'org.flywaydb:flyway-database-postgresql'
@@ -61,8 +60,8 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 
-// Offline member-entry signing for a homeserver operator (ADM-007); see
-// docs/runbooks/member-attestation.md. Keys are piped in, never passed as arguments.
+// Offline member-entry signing for a homeserver operator; see docs/runbooks/member-attestation.md.
+// Keys are piped in, never passed as arguments.
 tasks.register('memberEntryTool', JavaExec) {
     group = 'application'
     description = 'Sign, rotate or verify a gua-member-entry.v1 roster attestation'
@@ -80,8 +79,8 @@ tasks.register('governanceVectors', JavaExec) {
     mainClass = 'global.gua.resolver.governance.GovernanceVectorsGenerator'
 }
 
-// Offline governance signing, run OUTSIDE the cluster with a key that never enters a resolver namespace
-// (ADM-001 L10, S5); see docs/runbooks/governance-keys.md. Keys are piped in, never passed as arguments.
+// Offline governance signing, run outside the cluster with a key that never enters a resolver namespace;
+// see docs/runbooks/governance-keys.md. Keys are piped in, never passed as arguments.
 tasks.register('govTool', JavaExec) {
     group = 'application'
     description = 'Create a federation genesis, or sign a membership epoch, policy bundle or key transition'

@@ -53,7 +53,6 @@ class RoutingClaimsVerifierTest {
         RoutingClaimsEnvelope signed = RoutingClaimsSigner.sign(unsigned(Map.of("email_domain", "usp.br")),
                 "claims-a", kp.privateKeyB64());
 
-        // A valid envelope issued for SUBJECT must not be usable against a different phone.
         assertThatThrownBy(() -> verifier(kp.publicKeyB64()).verify(signed, "+15555550100"))
                 .isInstanceOf(RoutingClaimsVerifier.InvalidRoutingClaimsException.class)
                 .hasMessageContaining("subject does not match");
@@ -77,8 +76,8 @@ class RoutingClaimsVerifierTest {
         Ed25519.KeyPairB64 kp = Ed25519.generate();
         RoutingClaimsEnvelope signed = RoutingClaimsSigner.sign(unsigned(Map.of("email_domain", "usp.br")),
                 "claims-a", kp.privateKeyB64());
-        // Prepend a bogus signature for the SAME keyId; the verifier must still find the valid one.
         List<RoutingClaimsEnvelope.ClaimSignature> sigs = new ArrayList<>();
+        // Prepend a bogus signature for the same keyId; the verifier must still find the valid one.
         sigs.add(new RoutingClaimsEnvelope.ClaimSignature("claims-a", "AAAA"));
         sigs.addAll(signed.signatures());
         RoutingClaimsEnvelope reordered = new RoutingClaimsEnvelope(signed.schemaVersion(), signed.issuer(),
@@ -176,8 +175,7 @@ class RoutingClaimsVerifierTest {
     @Test
     void aNullAffiliationEntryIsRejectedAsInvalidNotAsServerError() {
         Ed25519.KeyPairB64 kp = Ed25519.generate();
-        // A crafted null element in "affiliations" must be a clean 400 (invalid), never a 500 from an NPE
-        // while canonicalizing/sorting the list. Arrays.asList (unlike List.of) permits a null element.
+        // Arrays.asList permits a null element; List.of does not.
         RoutingClaimsEnvelope withNullAffiliation = new RoutingClaimsEnvelope(RoutingClaimsEnvelope.SCHEMA_VERSION,
                 "https://account.gua.test", "gua-resolver", Instant.now().minusSeconds(10),
                 Instant.now().plusSeconds(200), "nonce", SUBJECT, Arrays.asList("students.usp.br", null),
@@ -209,11 +207,11 @@ class RoutingClaimsVerifierTest {
         new RoutingClaimsVerifier(props, capturing).verify(signed, SUBJECT);
 
         // The nonce must be retained until expiresAt + clock skew, so an envelope still accepted during the
-        // skew grace window cannot be replayed after a naive expiresAt-only cleanup would have purged it.
+        // skew grace window cannot be replayed after an expiresAt-only cleanup would have purged it.
         assertThat(retainedUntil[0]).isEqualTo(signed.expiresAt().plus(props.getClaims().getMaxClockSkew()));
     }
 
-    /** claims.trusted-keys empty, with the signing key present in BOTH of the fallback key sets. */
+    /** claims.trusted-keys empty, with the signing key present in both of the fallback key sets. */
     private static ResolverProperties propsWithOnlyFallbackKeys(Ed25519.KeyPairB64 kp) {
         ResolverProperties props = new ResolverProperties();
         ResolverProperties.TrustedKey trusted = new ResolverProperties.TrustedKey();
@@ -230,9 +228,6 @@ class RoutingClaimsVerifierTest {
         RoutingClaimsEnvelope signed = RoutingClaimsSigner.sign(unsigned(Map.of("email_domain", "usp.br")),
                 "claims-a", kp.privateKeyB64());
 
-        // The policy AND authority key sets both contain the very key that signed this envelope. Falling back
-        // to them is what let the roster-signing key mint institutional placement claims. ADM-001 L8: no
-        // fallback, ever, once governance is required.
         ResolverProperties props = propsWithOnlyFallbackKeys(kp);
         props.getGovernance().setRequired(true);
 
@@ -249,10 +244,6 @@ class RoutingClaimsVerifierTest {
         RoutingClaimsEnvelope signed = RoutingClaimsSigner.sign(unsigned(Map.of("email_domain", "usp.br")),
                 "claims-a", kp.privateKeyB64());
 
-        // The same configuration with the flag off: the pre-cutover chain is preserved deliberately. An
-        // environment that has not run the key ceremony keeps whatever claims behaviour it has today, and the
-        // narrowing happens when the operator flips the flag, not when this code is deployed. If this test
-        // ever has to change, the cutover has stopped being a flag flip.
         RoutingClaimsVerifier verifier =
                 new RoutingClaimsVerifier(propsWithOnlyFallbackKeys(kp), inMemoryReplayStore());
 

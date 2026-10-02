@@ -15,7 +15,7 @@ import global.gua.resolver.roster.RosterStore;
  * Resolution front-door logic: existing-account lookups hit the shared, persistent, peppered-HMAC
  * {@link DirectoryStore}; new accounts run the {@link PlacementEngine} over the verified roster. The
  * homeserver id from the directory is resolved to its full advertised endpoint via the current roster, so
- * a stale directory row can never point a client at a suspended/revoked homeserver. See §3–§4 + §6.
+ * a stale directory row can never point a client at a suspended or revoked homeserver.
  */
 @Service
 public class DefaultResolutionService implements ResolutionService {

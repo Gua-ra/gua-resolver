@@ -36,8 +36,10 @@ public final class CanonicalRoutingClaims {
         return canonical.getBytes(StandardCharsets.UTF_8);
     }
 
-    /** Affiliations sorted for a stable order, each escaped, joined by {@code |}. Null entries are dropped
-     *  (the verifier rejects them upstream; this keeps the signer path from NPE-ing on malformed input). */
+    /**
+     * Affiliations sorted for a stable order, each escaped, joined by {@code |}. Null entries are dropped
+     * (the verifier rejects them upstream; this keeps the signer path from throwing on malformed input).
+     */
     private static String affiliations(List<String> affiliations) {
         if (affiliations == null) {
             return "";

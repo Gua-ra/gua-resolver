@@ -83,7 +83,6 @@ class MemberAttestationControllerTest {
 
     @Test
     void anAcceptedAttestationAppearsInTheServedRoster() throws Exception {
-        // Before: the seeded entry carries no member block at all, so the JSON is what clients see today.
         mockMvc.perform(get("/roster"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.entries[0].member").doesNotExist());
