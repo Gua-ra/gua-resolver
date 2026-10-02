@@ -59,11 +59,11 @@ Each key has a `GUA_RESOLVER_*` environment override, listed in `src/main/resour
 
 ## Documentation
 
-- [Architecture guide](docs/architecture/gua-identity-and-federation.md)
-- [Decision records](docs/decisions/README.md) and their [identifier index](docs/decisions/IDENTIFIERS.md)
+- [Architecture guide](docs/architecture/gua-identity-and-federation.md), and [what is not built yet](docs/architecture/planned-federation-work.md)
+- Specifications: [signed federation objects](docs/specs/federation-signed-objects.md), [account identifiers and placement records](docs/specs/account-identifiers-and-placement-records.md). Test vectors sit beside them in `docs/specs/`.
 - [Verification protocol](docs/verification/gua-resolver-verification-protocol.md)
 - [Migration plan](docs/migrations/gua-resolver-migration-plan.md)
 - Runbooks: [governance keys](docs/runbooks/governance-keys.md), [member attestation](docs/runbooks/member-attestation.md)
-- Test vectors: `docs/specs/`
+- [Where the former decision records went](docs/decisions/README.md)
 
 Stack: Java 21, Spring Boot 3.5.6.

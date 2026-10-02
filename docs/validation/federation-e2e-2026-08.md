@@ -1,8 +1,8 @@
 > **Status: HISTORICAL VALIDATION/DESIGN.** This document records an end-to-end federation test carried out in August 2026 on a two-homeserver development testbed. It validated the signed roster, delegated routing policy, and cross-homeserver messaging **as the architecture stood at that date**. It is preserved as evidence of that.
 >
-> It is **not normative** for the current design of placement or identifier binding. The routing model it exercised has since been superseded by [ADM-001](../decisions/ADM-001-identifier-binding-placement-trust.md). In that model, policy alone determined where a new account was created. No placement record was committed. In particular, the account this test placed on the second homeserver is recorded in identity-service as living on the first. That is one of the observations that motivated ADM-001's separation of allocation from committed placement.
+> It is **not normative** for the current design of placement or identifier binding. The routing model it exercised has since been superseded by the [current design](../architecture/planned-federation-work.md). In that model, policy alone determined where a new account was created. No placement record was committed. In particular, the account this test placed on the second homeserver is recorded in identity-service as living on the first. That is one of the observations behind separating where a new account is proposed from where an account is recorded as living.
 >
-> Read the [architecture guide](../architecture/gua-identity-and-federation.md) for the current target.
+> Read the [architecture guide](../architecture/gua-identity-and-federation.md) for how the system works now.
 
 # Federation e2e validation (dev, 2026-08)
 
