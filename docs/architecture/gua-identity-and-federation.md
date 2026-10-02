@@ -119,6 +119,7 @@ What to know about this answer:
 
 - **The directory is read-only.** It maps a hash of a phone number, computed with a secret key, to a homeserver id. It holds a fixed set of older numbers and nothing can add to it.
 - **For every other number the answer is a rule evaluation, not a record.** `exists: false` means "no directory row", not "no account". The app starts sign-in at the returned homeserver either way, and the identity service decides whether this is a returning user or a new one.
+- **The weighted pick is repeatable, not permanent.** Every resolver gives the same answer for the same number while the transparency log has the same size. The pick is reseeded when the log grows. The choice is used once, when the account is created, and a Matrix ID never changes afterwards.
 - **Usernames resolve at the identity service**, which maps a username to its Matrix ID. The roster carries each homeserver's search visibility for username search across homeservers.
 - **The endpoint is public.** It needs no session. Each client address may ask 20 times a minute, with IPv6 counted per /64, and each resolver pod answers at most 200 requests a second. Over either limit the answer is `429` with `Retry-After` and a fixed body, sent without reading the request body, so a refusal reveals nothing about the number. `exists` stays in the answer because both apps choose between sign-in and signup from it. The settings are `gua.resolver.abuse.*`, and `ResolveAbuseControlsTest` holds the contract.
 
