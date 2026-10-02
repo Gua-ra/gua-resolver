@@ -1,7 +1,8 @@
 # Member attestation
 
 How a homeserver operator signs its own roster entry, and how the resolver is switched over to requiring
-that signature. Background: [ADM-007](../decisions/ADM-007-canonical-encoding-and-member-entries.md); the
+that signature. The entry format is in
+[signed federation objects](../specs/federation-signed-objects.md#homeserver-roster-entry-signed-by-the-homeserver); the
 verification rules a client would apply are section 1a of the
 [verification protocol](../verification/gua-resolver-verification-protocol.md).
 

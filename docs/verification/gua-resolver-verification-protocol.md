@@ -1,12 +1,12 @@
 > **Status: CURRENT IMPLEMENTATION.** This protocol verifies what the resolver serves **today**: the signed roster, the routing policy bundle, the transparency log, and a `/resolve` decision reproduced from those artifacts. It is accurate for the code on `main`. It remains the reference for platform verifiers until the target verification chain ships.
 >
-> It does **not** yet cover the guarantees added by [ADM-001](../decisions/ADM-001-identifier-binding-placement-trust.md). ADM-001 is the normative target. None of the following is implemented or verifiable today:
+> It does **not** cover the [federation work that is not built yet](../architecture/planned-federation-work.md). None of the following is implemented or verifiable today:
 >
-> - **client** verification of homeserver self-signed roster entries (L10). The resolver now verifies and logs them and refuses a substituted entry (section 1a), but a client that does not check the member block itself still cannot detect an authority that rewrote a member's address or key;
-> - **binding records** attested by accredited identifier verifiers (L7, L8), so a client cannot yet verify that an identifier legitimately refers to an account;
-> - **placement records** signed by the holding homeserver (L6), so a `/resolve` answer is still a per-request policy evaluation rather than a committed fact;
-> - a pinned **federation genesis** and governance-key chain (L10); the trust roots below are still a configured authority key set;
-> - checkpoints carrying an authenticated **state root** with witness co-signatures (L11, L12); the log checkpoint below proves history, not current state;
+> - **client** verification of homeserver self-signed roster entries. The resolver now verifies and logs them and refuses a substituted entry (section 1a), but a client that does not check the member block itself still cannot detect an authority that rewrote a member's address or key;
+> - **binding records** attested by accredited identifier verifiers, so a client cannot yet verify that an identifier legitimately refers to an account;
+> - **placement records** signed by the holding homeserver, so a `/resolve` answer is still a per-request policy evaluation rather than a committed fact;
+> - a pinned **federation genesis** and governance-key chain; the trust roots below are still a configured authority key set;
+> - checkpoints carrying an authenticated **state root** with witness co-signatures; the log checkpoint below proves history, not current state;
 > - **non-membership proofs**, so "no account for this identifier" is an unsigned answer.
 >
 > Do not read this document as describing the target. When the target verification chain is specified, this file will be moved to `history/` and replaced.
@@ -26,17 +26,17 @@ A verifier is configured out of band with:
 - the published **authority public keys** (n) and the **authority threshold** `k`;
 - the **policy-signing keys** + threshold. These are the federation's governance keys once a genesis is
   pinned. A verifier has no fallback to the authority keys: an unset list verifies nothing rather than
-  silently accepting a bundle signed by the operational roster key (ADM-001 L8). This is unconditional in
+  silently accepting a bundle signed by the operational roster key. This is unconditional in
   the reference verifier and in every port. Do not copy the server here: the resolver keeps that fallback
   until `gua.resolver.governance.required` is turned on, because it has a deployed bundle signed with the
   operational key to keep serving, and a client has no such thing to preserve.
 - optionally the pinned **federation genesis**, published at `GET /.well-known/gua-federation` on the
   resolver origin as `{genesisId, fingerprint, chainHead, genesis, transitions[]}`, where `chainHead` says
   how far the governance key chain has run: the genesis id with no transition applied, the hash of the last
-  applied transition after that. It is signed by the keys it enumerates (ADM-001 L10 locks that), so
+  applied transition after that. It is signed by the keys it enumerates, so
   fetching it proves nothing on its own: it is a trust root only once its fingerprint has been compared
   against an independent channel and pinned. Clients pin it per environment as data; **no client enforces
-  the chain yet**, which is Phase 6.
+  the chain yet**.
 
 These are the only inputs the verifier trusts. Everything else is fetched and verified against them.
 
@@ -72,12 +72,12 @@ These are the only inputs the verifier trusts. Everything else is fetched and ve
    authority key, one vote per key. Require at least `k`.
 3. Verify transparency-log consistency: the `logCheckpoint` must be an append-only extension of the last one
    the client saw (`verifyConsistency`). This detects a history rewritten since this client's own last
-   checkpoint; it does not by itself rule out a split view between clients (ADM-001 L11, L12).
+   checkpoint; it does not by itself rule out a split view between clients.
 
 ## 1a. Verify a member self-signature
 
 An entry may carry a `member` block: the homeserver's own signature over the fields it controls
-([ADM-007](../decisions/ADM-007-canonical-encoding-and-member-entries.md)). It is additive JSON, absent on
+([signed federation objects](../specs/federation-signed-objects.md)). It is additive JSON, absent on
 entries that have not been attested, and outside `CanonicalRoster`, so step 1 above is unchanged either way.
 
 1. Parse the `member` block strictly. Unknown fields, duplicate keys and trailing content are refused rather
@@ -93,11 +93,11 @@ entries that have not been attested, and outside `CanonicalRoster`, so step 1 ab
    `homeserver.signingKey`. A substituted `baseUrl`, `masIssuer`, `signingKey` or search policy fails here.
 4. Require the acceptance time to lie in `[notBefore, notAfter]`, and the window to be no longer than the
    published maximum entry lifetime (400 days). The authoritative acceptance time is the one sequenced in the
-   `MEMBER_ATTEST` leaf; your own clock is a staleness guard, not the decision (ADM-001 L11).
+   `MEMBER_ATTEST` leaf; your own clock is a staleness guard, not the decision.
 5. If you already hold an accepted entry for that homeserver id: the sequence must not go backwards, one
    sequence must name one entry, and a changed `signingKey` must also be signed by the previous `keyId` under
    the previous key, with a new key id. With no prior state, step 3 plus the authority signature and log
-   inclusion are what you have; identity-change semantics are ADM-001 O10 and not decided.
+   inclusion are what you have; what a client does about a changed identity is not decided.
 6. A failure refuses that entry. It is dropped from the verified view and counted, never partially accepted.
 
 The log commits to each accepted entry: a `MEMBER_ATTEST` leaf whose payload hash is the SHA-256 of the same
@@ -121,7 +121,7 @@ environments that have not finished attesting.
    require a `delegateSignatures` entry for that zone that is Ed25519-valid under the zone's
    `delegatePublicKey`. A rule is trusted only if its zone is BOTH authority-attested and delegate-signed, so
    a delegate controls its own rules within an authority-granted scope. This constrains delegates, not the
-   authority: the authority attests the delegate key and this protocol pins none (ADM-001 L6).
+   authority: the authority attests the delegate key and this protocol pins none.
 3. **Validity + scope.** A zone applies only while `notBefore <= now < expiresAt`. A rule must target a
    homeserver in its zone's `allowedHomeserverIds` and match within the zone scope (phone prefix / subdomain /
    OIDC issuer). Reject the bundle otherwise. **Not performed by the Java reference verifier today:**
@@ -134,8 +134,7 @@ environments that have not finished attesting.
 
 Placement is a deterministic function of (verified roster, verified policy, context). Note that the weighted
 fallback seeds on the roster version, which is the transparency-log size, so its result moves whenever a
-policy or directory-checkpoint leaf is appended even when membership did not change (ADM-001 L6 records
-this). To verify a `/resolve` answer:
+policy or directory-checkpoint leaf is appended even when membership did not change. To verify a `/resolve` answer:
 
 - **New account (`exists=false`, `registerAt`).** Run the placement pipeline over the verified artifacts and
   confirm it yields the same homeserver id the resolver returned:
@@ -149,8 +148,7 @@ this). To verify a `/resolve` answer:
   phone graph is private), and no per-lookup inclusion proof is served today, so this branch is not
   verifiable in the current implementation. What a client can check is that the returned homeserver id is
   currently ACTIVE in the verified roster. The signed **directory checkpoint** (`GET /directory/checkpoint`)
-  commits the authority node to a directory state as a whole and carries no proof for an individual mapping
-  (ADM-001 L11, O1).
+  commits the authority node to a directory state as a whole and carries no proof for an individual mapping.
 
 ### Verified vs self-asserted claims
 
@@ -166,11 +164,12 @@ institution/OIDC rules only when the context is marked claims-verified.
   All timestamps are epoch milliseconds; all maps/lists are sorted; all bytes are UTF-8.
 - `gua-member-entry.v1` uses `gua-lp.v1`, a length-prefixed encoding with no delimiters at all: `u32`
   big-endian lengths, `int64` big-endian integers, a presence byte for optionals, sets sorted by unsigned
-  UTF-8 byte order. It is the encoding for every signed object added from ADM-007 onwards, and the vectors in
+  UTF-8 byte order. It is the encoding for every newer signed object, specified in
+  [signed federation objects](../specs/federation-signed-objects.md), and the vectors in
   `docs/specs/gua-lp-v1-vectors.json` pin it.
 - Only the routing-claims encoding escapes. `CanonicalRoster` joins fields with a raw `0x1F` that is asserted,
   not enforced, to be absent from values, and collapses null and empty. Port it byte for byte to verify what
-  is served today; do not reuse it as the encoding for any new signed object (ADM-001 L4).
+  is served today; do not reuse it as the encoding for any new signed object.
 
 ## Failure handling
 

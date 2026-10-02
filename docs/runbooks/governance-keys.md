@@ -1,22 +1,20 @@
 # Governance keys
 
 How the federation genesis is created, where the governance private key lives, and how a membership epoch or
-a policy bundle gets signed. Background: [ADM-001](../decisions/ADM-001-identifier-binding-placement-trust.md)
-L10 (federation genesis) and L8 (thresholds count trust domains, never keys), and the Phase 2 objects section
-of [ADM-007](../decisions/ADM-007-canonical-encoding-and-member-entries.md).
+a policy bundle gets signed. The objects and their verification rules are specified in
+[signed federation objects](../specs/federation-signed-objects.md#governance-objects).
 
 Run this once per environment, dev first. Dev and prod get separate keys and separate genesis objects, and a
 dev key is never used in prod.
 
-## What phase 2 guarantees, and what it does not
+## What separate governance keys guarantee, and what they do not
 
-With one operator, the governance key and the resolver's operational key are held by the same party. Phase 2
+With one operator, the governance key and the resolver's operational key are held by the same party. This setup
 separates **processes and custody**: governance signing happens on a machine outside the cluster, with a key
 the resolver has never held, and the resolver refuses membership changes that carry no governance signature.
-It does not separate **principals**: every independence guarantee still reduces to compromising Gua (the
-ADM-001 standing rule) until a second operator holds a governance key.
+It does not separate **principals**: every independence guarantee still reduces to compromising Gua until a second operator holds a governance key.
 
-A threshold counts operators, never keys (ADM-007 item 8, ADM-001 L8), so the genesis records `operatorId`
+A threshold counts operators, never keys, so the genesis records `operatorId`
 on every key. At one operator the count is 1 however many keys are listed.
 
 ## Custody
@@ -30,9 +28,9 @@ on every key. At one operator the count is 1 however many keys are listed.
   back next to the service it is meant to be independent of.
 - Only the **public** half travels: it is written into the genesis file, which is public and committed.
 - Loss or compromise is handled by creating a **new genesis** and re-pinning it in client builds. There is no
-  in-band recovery and none is claimed; catastrophic key loss is an open decision (ADM-001 O13).
+  in-band recovery and none is claimed; what happens after catastrophic key loss is undecided.
 
-A second key holder is not required for Phase 2, and this document does not pretend one exists.
+A second key holder is not required, and this document does not pretend one exists.
 
 ## 1. Generate the governance key
 
@@ -74,7 +72,7 @@ The fields file is public information:
 
 The tool prints the `genesisId` and its fingerprint on standard error. Record both.
 
-A v1 genesis is signed by the keys it enumerates (ADM-001 L10), so verifying it against itself proves only
+A v1 genesis is signed by the keys it enumerates, so verifying it against itself proves only
 that its own keys signed it. The next step is therefore not optional.
 
 ## 3. Publish the fingerprint through independent channels
@@ -86,8 +84,8 @@ The genesis file is public and committed to gua-deploy; the **pin** is what make
 - Record the chain head as `GUA_RESOLVER_GENESIS_EXPECTED_CHAIN_HEAD`. Before the first rotation it is the
   `genesisId` itself. Pinning the root alone leaves a downgrade open: a truncated or deleted transitions file
   is still a well formed chain, so the resolver would start on the genesis key set and put a key that was
-  rotated out, possibly because it was compromised, back in force. The head pin makes that a startup failure
-  (ADM-001 O8). The resolver logs the head it loaded, and `/.well-known/gua-federation` serves it as
+  rotated out, possibly because it was compromised, back in force. The head pin makes that a startup failure.
+  The resolver logs the head it loaded, and `/.well-known/gua-federation` serves it as
   `chainHead`.
 - Publish the fingerprint on the public landing page and in the gua-deploy README, so the value can be
   compared across channels that are not the resolver serving it.
@@ -183,7 +181,7 @@ want the epoch to bind its identity.
 
 ## 6. Sign a routing policy bundle
 
-Policy signing left the resolver process in Phase 2. Validate first, against the live roster:
+Policy bundles are signed outside the resolver process. Validate first, against the live roster:
 
 ```sh
 curl --fail-with-body -u "$ADMIN_USER" -X POST "$RESOLVER/authority/policy/validate" \
@@ -217,7 +215,7 @@ pinned value. The new head is the transition hash that `transition sign` printed
 head it loaded.
 
 The genesis itself never changes. Losing every key in the current set is not recoverable by transition;
-recovery requires a new genesis and a client re-pin (ADM-001 O13).
+recovery requires a new genesis and a client re-pin.
 
 ## When something is refused
 
