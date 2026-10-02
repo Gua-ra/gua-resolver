@@ -12,7 +12,7 @@ Reference implementation: `global.gua.resolver.crypto.CanonicalEncoder`, `roster
 4. Signatures sit outside the canonical bytes.
 5. Keys and signatures are Ed25519.
 
-The older roster, policy and claims encodings (`CanonicalRoster`, `CanonicalRoutingPolicy`, `CanonicalDelegatedRules`, `CanonicalRoutingClaims`) are still verified as served and are described in the verification protocol. `CanonicalRoster` joins fields with a raw `0x1F` byte and encodes null and empty identically, so it is never used for a new object.
+The older roster, policy and claims encodings (`CanonicalRoster`, `CanonicalRoutingPolicy`, `CanonicalDelegatedRules`, `CanonicalRoutingClaims`) are still verified as served and are described in the verification protocol. `CanonicalRoster` joins fields with a raw `0x1F` byte and encodes null and empty identically, so it is never used for a new object. Its `gua-roster.v1` bytes must stay byte-identical so that deployed verifiers keep working. `CanonicalRosterUnchangedTest` enforces that.
 
 ## The `gua-lp.v1` encoding
 
@@ -30,7 +30,7 @@ Length-prefixed, no delimiters, no escaping.
 | set | a list sorted by unsigned UTF-8 byte order. A duplicate is rejected |
 | enum | its canonical name as a string |
 
-Every object starts with its schema tag as a string, followed by its fields in the order given below. No field is omitted.
+Every object starts with its schema tag as a string, followed by its fields in the order given below. No field is omitted. Account objects use a separate fixed layout, and [the two cannot be confused](account-identifiers-and-placement-records.md#rules).
 
 ## Homeserver roster entry signed by the homeserver
 
@@ -83,7 +83,7 @@ Schema tag `gua-federation-genesis.v1`. The root of trust: a threshold and the g
 | 6 | `registries` | set of strings |
 
 - `genesisId` is the SHA-256 of these bytes. The fingerprint people compare is its first 16 hex characters in groups of four.
-- `registries` is a set, so the JSON order of the names never changes the `genesisId`. The four names are fixed: `HomeserverRegistry`, `VerifierRegistry`, `PolicyRegistry`, `WitnessRegistry`. Only `HomeserverRegistry` has a code path. The content of the others must stay empty. Routing policy is the existing `gua-routing-policy.v1` bundle verified under the governance keys, not a registry epoch.
+- `registries` is a set, so the JSON order of the names never changes the `genesisId`. The four names are fixed: `HomeserverRegistry`, `VerifierRegistry`, `PolicyRegistry`, `WitnessRegistry`. Only `HomeserverRegistry` has a code path. The content of the others must stay empty. Routing policy is the existing `gua-routing-policy.v1` bundle verified under the governance keys, not a registry epoch. A policy registry epoch would bind the `genesisId` into the bundle bytes, which needs a new `gua-routing-policy.v2` tag. It must land before the identifier proof policy shares that registry.
 - A genesis is signed by the keys it lists, so fetching it proves nothing. It becomes a trust root only when its fingerprint has been compared over an independent channel and pinned.
 
 ### Governance key change

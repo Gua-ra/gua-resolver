@@ -10,7 +10,7 @@ identity-service is the only OIDC provider and credential store for every homese
 
 ## Phase 0: remove the two live paths
 
-Status: complete, 2026-09-11. Both paths are gone from `main`.
+Status: complete. Both paths are gone from `main`.
 
 **Goal**
 
@@ -18,8 +18,8 @@ Close two unsafe legacy paths.
 
 **Changes**
 
-- Delete the legacy non-interactive `phone_number` + `otp_code` branch of identity-service's `GET /oauth2/authorize`. The endpoint stays for the interactive flow. Done 2026-09-11: the non-interactive branch is gone and an authorization code is issued only by the interactive `/login/**` flow.
-- Delete `POST /directory/entries` and its caller in `ResolverDirectoryClient`. Done 2026-09-11: the endpoint and the identity-service client that called it are both gone.
+- The non-interactive `phone_number` + `otp_code` branch of identity-service's `GET /oauth2/authorize` is deleted. An authorization code is issued only by the interactive `/login/**` flow.
+- `POST /directory/entries` and the identity-service client that called it are deleted.
 
 **Validation**
 
@@ -39,9 +39,10 @@ The authority alone can no longer rewrite roster entries.
 
 **Changes**
 
-- Today: an entry can carry the member's own signature over its endpoint, key and search fields (`gua-member-entry.v1`, encoded with `gua-lp.v1`, never `CanonicalRoster`'s delimiter form); the key an operator is admitted with is retained as the anchor of that chain; a member adopts, moves or re-keys its entry through `POST /authority/roster/{id}/member`, and each accepted attestation is committed to the log as a `MEMBER_ATTEST` leaf.
-- Today: entries with no member signature are still served and counted. The transition flag `gua.resolver.roster.require-member-signature` is off in both environments until every ACTIVE member has been attested (`docs/runbooks/member-attestation.md`).
-- Clients verify the member signature and refuse entries without one. Not started: client enforcement is Phase 6.
+- Today: an entry can carry the homeserver's own signature over its endpoint, key and search fields. The format is `gua-member-entry.v1` in the `gua-lp.v1` encoding.
+- Today: the key an operator is admitted with stays as the first key of its entry chain. A homeserver adopts, moves or re-keys its entry through `POST /authority/roster/{id}/member`. Each accepted entry is logged as a `MEMBER_ATTEST` leaf.
+- Today: entries with no member signature are still served and counted. `gua.resolver.roster.require-member-signature` is off in both environments until every active homeserver has signed its entry. See the [member attestation runbook](../runbooks/member-attestation.md).
+- Not started: clients verifying the member signature and refusing entries without one. That is Phase 6.
 
 **Validation**
 
@@ -63,25 +64,25 @@ Governance signing leaves the resolver process and is anchored in a pinned feder
 
 **Changes**
 
-- Today: the resolver loads a pinned `FederationGenesis` with its threshold set of governance keys, verifies it against the id it is pinned to, applies any governance key transitions, and publishes it at `GET /.well-known/gua-federation`. The four registry roots (`HomeserverRegistry`, `VerifierRegistry`, `PolicyRegistry`, `WitnessRegistry`) are named in it; only `HomeserverRegistry` has a code path.
-- Today: that governance key set, held outside the resolver, signs membership epochs. A signed `HomeserverRegistry` epoch is submitted through `POST /authority/registry/homeservers/epoch`, verified back to the genesis with the threshold counted by `operatorId`, committed to the log as a `MEMBERSHIP_EPOCH` leaf, and served at `GET /registry/homeservers/epoch/current|{n}`.
-- Today: with `gua.resolver.governance.required` on, the resolver's key can no longer admit or change a member's status. An admission lands `PENDING` and stays out of the signed roster entirely until an epoch admits it, and a suspend or revoke records intent only, on the log as a `STATUS_INTENT` leaf; an epoch is what makes either take effect. The flag is off in both environments until the key ceremony has run (`docs/runbooks/governance-keys.md`).
-- Today: `gua.resolver.genesis.expected-chain-head` pins how far the governance key transition chain has run, so a truncated or removed transitions file is a startup failure rather than a silent downgrade to a key set that was rotated out.
-- Today: policy signing has left the process. `POST /authority/policy/sign` is replaced by `POST /authority/policy/validate`, which validates against the live roster and reports whether the bundle verifies under the governance keys; bundles are signed offline with the governance tool.
-- Today: both trust-root changes are gated on `gua.resolver.governance.required`. With it on, `RoutingClaimsVerifier` fails closed on an unset trusted-key list and `RoutingPolicyVerifier` verifies under the governance key set with no fallback to the authority keys. With it off, both keep their pre-cutover behaviour exactly, because an environment's deployed policy bundle is signed with the operational key and narrowing the root under it stops the service starting. `RoutingPolicySigner` has no authority fallback either way: it cannot affect startup or serving, and nothing in the process calls it once signing moved offline.
-- Accreditations are Phase 5, witnesses Phase 9, and a PolicyRegistry epoch object is deferred until `IdentifierProofPolicy` needs it.
-- Clients pin the genesis per environment. Not started: client enforcement is Phase 6, so the chain is data to them, not a gate.
+- Today: the resolver loads a pinned `FederationGenesis` with its governance keys and threshold, checks it against the pinned id, applies any governance key transitions and publishes the result at `GET /.well-known/gua-federation`. The genesis names four registries. Only `HomeserverRegistry` has a code path.
+- Today: the governance keys are held outside the resolver and sign membership epochs. An epoch is submitted through `POST /authority/registry/homeservers/epoch` and verified back to the genesis, with the threshold counted by `operatorId`. It is logged as a `MEMBERSHIP_EPOCH` leaf and served at `GET /registry/homeservers/epoch/current` and `/epoch/{n}`.
+- Today: with `gua.resolver.governance.required` on, the resolver's own key can no longer admit a homeserver or change its status. An admission lands `PENDING` and stays out of the signed roster until an epoch admits it. A suspend or revoke records a `STATUS_INTENT` leaf and takes effect only through an epoch. The flag is off in both environments until the key ceremony has run. See the [governance keys runbook](../runbooks/governance-keys.md).
+- Today: `gua.resolver.genesis.expected-chain-head` pins how far the governance key chain has run. A truncated or missing transitions file fails startup, so a key set that was rotated out cannot come back.
+- Today: policy signing has left the process. `POST /authority/policy/validate` replaces `POST /authority/policy/sign`. It checks a bundle against the live roster and reports whether it verifies under the governance keys. Bundles are signed offline with the governance tool.
+- Today: the same flag gates both trust roots. With it on, `RoutingClaimsVerifier` rejects every envelope when its trusted-key list is unset, and `RoutingPolicyVerifier` verifies under the governance keys with no fallback to the authority keys. With it off, both behave as before. Each environment's deployed policy bundle is signed with the operational key, and narrowing the root under it would stop the service starting. `RoutingPolicySigner` has no authority fallback either way, and nothing in the process calls it.
+- Later: accreditations are Phase 5 and witnesses Phase 9. A `PolicyRegistry` epoch object is deferred, and it must land before `IdentifierProofPolicy` shares that registry. See [federation genesis](../specs/federation-signed-objects.md#federation-genesis).
+- Not started: clients pinning the genesis per environment. Client enforcement is Phase 6, so the chain is data to them, not a gate.
 
 **Validation**
 
-- Governance signatures from the operational key alone are rejected once the flag is on, and the application is booted in both shapes to prove it: the deployed shape (operational-key bundle, no genesis, flag off) starts and serves, the governed shape starts, and the operational-key bundle under the flag fails startup with the signature error rather than being accepted (`src/test/java/global/gua/resolver/startup`).
+- Governance signatures from the operational key alone are rejected once the flag is on. The startup tests boot three shapes (`src/test/java/global/gua/resolver/startup`). The deployed shape, with an operational-key bundle, no genesis and the flag off, starts and serves. The governed shape starts. An operational-key bundle under the flag fails startup with the signature error.
 - Membership and policy verify back to the pinned genesis; a genesis file that does not match the pinned id fails startup.
 - With the flag on, a direct admission cannot become ACTIVE without an epoch, and is not served in any form before one.
 - A transitions file shorter than the pinned chain head fails startup.
 
 **Rollback**
 
-`gua.resolver.governance.required=false` restores the direct admission path AND both verifier fallbacks, without a code rollout: the membership path and the two trust roots are gated on that one flag. Only in-process policy signing is gone for good, and it needs no rollback because it is neither on the startup path nor on any request path. A genesis already pinned in client builds stays; clients do not enforce it before Phase 6.
+`gua.resolver.governance.required=false` restores the direct admission path and both verifier fallbacks without a code rollout. In-process policy signing is gone for good and needs no rollback, because it is on neither the startup path nor a request path. A genesis already pinned in client builds stays. Clients do not enforce it before Phase 6.
 
 **Blocked by**
 
@@ -98,7 +99,7 @@ New accounts get an on-device `AccountGenesis`; every account gets an `accountId
 - Today: every account has an `accountId`. identity-service mints a bootstrap identifier at signup and backfills one for each existing account (`identity.genesis.enabled` and `identity.genesis.bootstrap-backfill.enabled`, both on by default). Passkeys use it as their WebAuthn user handle. Nothing else reads it, and `AccountIdNotReadGuardTest` fails the build if it reaches routing, login or a claim.
 - Today: identity-service accepts an on-device `AccountGenesis` at `POST /account/genesis`, parses the `gua:` login hint and verifies the attach proof. Both apps carry the key store and the genesis builder behind a flag that is off.
 - Today: the attach step cannot run in the deployed flow. The signup profile step runs in a web view with no channel to the key the app holds, so every native account is a bootstrap account. With the server flag on, an app that presented a handle would fail its signup, so the app flags stay off.
-- Today: a returning user's `preferred_username` comes from the stored username, never from the user id, with a guard test.
+- Today: a returning user's `preferred_username` comes from the stored username. When none is stored, the only fallback is the localpart of a well-formed Matrix ID, and anything else is refused (`AccountLocalpartResolver` in identity-service, guarded by `LocalpartDerivationGuardTest`).
 - Not started: giving an existing account a committed key. That is the account authority work, in development on open pull requests.
 
 Formats: [account identifiers and placement records](../specs/account-identifiers-and-placement-records.md).
@@ -132,10 +133,10 @@ Record where each existing account really lives.
 
 All of these must hold. Proposing it is a later phase, not this one.
 
-- Every account has an `account_genesis` row, and the missing-identifier alert has been silent for 14 days.
-- The daily comparison ran for 14 consecutive days in dev and 14 in prod with no disagreeing record, no account linked more than once and no username mismatch. Stale directory rows appear only for allowlisted testbed accounts, and every unlinked account is listed and explained.
-- The resolver reports no placement conflict and no record orphaned by a roster change over that window, and a full re-verification against the current roster passes.
-- Every MAS runs with `on_conflict: fail`, and no account is unlinked.
+- Every account has an `account_genesis` row, and `gua_identity_accounts_without_genesis` has been zero, with its alert silent, for 14 days.
+- The daily comparison ran for 14 consecutive days in dev and 14 in prod. On `gua_identity_placement_shadow_total`, the results `record_disagrees`, `mas_multiple` and `mas_username_mismatch` stayed at zero, `directory_stale` appeared only for allowlisted testbed accounts, and every `mas_none` account is listed and explained.
+- On the resolver, `gua_resolver_placement_conflicts_total` and `gua_resolver_placement_orphaned_by_roster` stayed at zero over that window, and a full re-verification against the current roster passes.
+- Every MAS runs with `on_conflict: fail` (`gua_identity_mas_localpart_on_conflict`), and `mas_none` is zero.
 - New accounts hold a committed key: the apps ship it and the server requires it for native signups, and web signups do the same or stop creating accounts. This waits on account authority.
 
 Comparing inside `/resolve` on each request is not part of this list. It needs Phase 5's binding records. Publishing records in production also waits on a review of what a public mapping from `accountId` to homeserver reveals.
@@ -242,7 +243,7 @@ Defined with the validation.
 
 **Blocked by**
 
-Cryptographic review of the threshold construction, and the choice between RFC 9497 and an updatable construction. See [phone numbers that cannot be recovered from stored state](../architecture/planned-federation-work.md#phone-numbers-that-cannot-be-recovered-from-stored-state).
+Cryptographic review of the threshold construction. The updatable alternative to RFC 9497 is rejected, and the review must confirm that. See [phone numbers that cannot be recovered from stored state](../architecture/planned-federation-work.md#phone-numbers-that-cannot-be-recovered-from-stored-state).
 
 ## Phase 9: independent witnesses
 

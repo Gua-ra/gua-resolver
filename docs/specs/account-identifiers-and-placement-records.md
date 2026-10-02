@@ -13,7 +13,7 @@ Reference implementations: identity-service `account.genesis` (`AccountGenesisCo
 
 ## Rules
 
-1. All objects are fixed-layout, big-endian byte strings with no delimiters. The placement record has one variable field with a one-byte length prefix.
+1. All objects are fixed-layout, big-endian byte strings with no delimiters. The placement record has one variable field with a one-byte length prefix. They cannot be confused with a [`gua-lp.v1`](federation-signed-objects.md#the-gua-lpv1-encoding) object: that opens with a `u32` length whose first byte is `0x00`, and these open with ASCII `GUA`.
 2. A decoder rejects an unknown version, suite or framework, a wrong length, an all-zero key, equal authority and recovery keys, and a key that fails Ed25519 point decoding.
 3. The server hashes and stores the bytes it received. It never re-encodes before hashing.
 4. No object here contains a phone number, a phone hash, a username or a Matrix ID.
@@ -35,7 +35,11 @@ Created on the device at signup. It commits the account's first authority key an
 | recovery public key | 32 | raw Ed25519, different from the authority key |
 | entropy | 16 | from a CSPRNG |
 
-Keys stay on the device, in the platform keychain or keystore, and are not synced. The suite byte leaves room for other key types. Recovery framework `0x01` commits no waiting period in the bytes, and its recovery key sits in the same device store as the authority key. identity-service therefore refuses framework `0x01` unless `identity.genesis.production-issuance` is on, which is for development only.
+Keys stay on the device, in the platform keychain or keystore, and are not synced. The suite byte leaves room for other key types.
+
+The genesis fixes the first recovery authority and the rules under which the recovery policy may later change. It does not freeze the policy for the life of the account.
+
+Recovery framework `0x01` commits no waiting period in the bytes, and its recovery key sits in the same device store as the authority key. identity-service therefore refuses framework `0x01` unless `identity.genesis.production-issuance` is on, which is for development only. Identifiers minted that way are disposable: there is no path from a framework `0x01` identifier to a later framework.
 
 ## Account genesis, bootstrap (22 bytes)
 
@@ -92,7 +96,7 @@ with the committed authority key. The server:
 
 - verifies the signature against the key in the stored genesis and derives the `accountId` itself, reading none from the request;
 - verifies inside the transaction that creates the account;
-- issues the challenge once per profile step, never accepts it from the client as a lookup key, and burns it only on a successful attach.
+- issues the challenge once per profile step, never accepts it from the client as a lookup key, and burns it only on a successful attach. The challenge expires with the login session, which never outlives the 30 minute handle.
 
 A handle that fails to attach fails the signup. There is no silent fallback to a bootstrap account. A malformed hint, an unknown or repeated key, and a missing, expired or invalid proof fail the same way. A signup with no handle gets a bootstrap account, which is a normal account and not an error. The reserved hint value `passkey` keeps its own meaning. The `gua:` grammar applies only to hints with that prefix.
 
@@ -133,5 +137,6 @@ An account that has never completed a sign-in through its homeserver's auth serv
 
 - A placement record is the homeserver's own assertion. With one operator signing for every homeserver, it adds an audit trail, not an independent check.
 - A key-rooted genesis shows that whoever registered it held the key and was present in the sign-in session. It does not show that the person who received the SMS code owns that key.
+- The registration proof carries no freshness. Anyone who captures a registration request can send it again while it is pending. `AccountGenesisService.register` then replaces the attach handle and restarts its expiry, so the handle the real app holds stops working and its signup fails.
 - The resolver checks validity windows against its own clock.
 - A record for a deactivated account is not retracted. How to retract one is undecided.
