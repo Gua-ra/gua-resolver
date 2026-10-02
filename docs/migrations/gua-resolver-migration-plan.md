@@ -1,7 +1,6 @@
-# Migration to ADM-001
+# Resolver migration plan
 
-> **Status: target architecture, governed by [ADM-001](../decisions/ADM-001-identifier-binding-placement-trust.md).**
-> The path from `main` to the frozen target, superseding the [July 2026 plan](history/gua-resolver-migration-plan-2026-07.md) (phases 0 to 3 done).
+> The path from `main` to the design in [federation work that is not built yet](../architecture/planned-federation-work.md). It supersedes the [July 2026 plan](history/gua-resolver-migration-plan-2026-07.md), whose phases 0 to 3 are done.
 
 "Today:" marks current `main` behaviour.
 
@@ -11,7 +10,7 @@ identity-service is the only OIDC provider and credential store for every homese
 
 ## Phase 0: remove the two live paths
 
-Status: complete, 2026-09-11. Both paths are gone from `main`; see the implementation status in [../decisions/README.md](../decisions/README.md).
+Status: complete, 2026-09-11. Both paths are gone from `main`.
 
 **Goal**
 
@@ -54,7 +53,7 @@ A transition flag tolerates missing self-signatures; remove it afterwards.
 
 **Blocked by**
 
-O2 (canonical self-signed entry encoding), L4. Decided for roster, member and governance objects in [ADM-007](../decisions/ADM-007-canonical-encoding-and-member-entries.md), which unblocked this phase.
+Was blocked on the encoding of a self-signed entry. That is now specified in [signed federation objects](../specs/federation-signed-objects.md).
 
 ## Phase 2: separate governance keys
 
@@ -86,7 +85,7 @@ Governance signing leaves the resolver process and is anchored in a pinned feder
 
 **Blocked by**
 
-Was blocked by S5. Unblocked by the minimal custody rule in [ADM-007](../decisions/ADM-007-canonical-encoding-and-member-entries.md) "Phase 2 objects" (key held off-cluster, encrypted at rest, offline backup, never a Kubernetes Secret in a resolver namespace, manual signing, `k = 1` at one operator stated plainly). S5 itself stays open: nothing here makes the governance key set a genuinely separate trust domain.
+Was blocked on governance key custody. Unblocked by the minimum custody rule in the [governance keys runbook](../runbooks/governance-keys.md#custody) (key held off-cluster, encrypted at rest, offline backup, never a Kubernetes Secret in a resolver namespace, manual signing, `k = 1` at one operator stated plainly). Whether a governance key set can be run by a genuinely separate party stays open.
 
 ## Phase 3: `AccountGenesis` and `accountId`
 
@@ -96,21 +95,25 @@ New accounts get an on-device `AccountGenesis`; every account gets an `accountId
 
 **Changes**
 
-- Today: `routeExistingUser` derives `preferredUsername` from `localpartOf(userId)`. Re-keying `user_id` to a value containing a colon, with `on_conflict: add` live, merges every returning user onto one account.
-- New first-party accounts generate an `AccountGenesis` on device and register its `accountId`, never in a field MAS derives a localpart from.
-- Existing accounts get a bootstrap `accountId`, marked so auditors can tell them apart; adoption comes later.
+- Today: every account has an `accountId`. identity-service mints a bootstrap identifier at signup and backfills one for each existing account (`identity.genesis.enabled` and `identity.genesis.bootstrap-backfill.enabled`, both on by default). Passkeys use it as their WebAuthn user handle. Nothing else reads it, and `AccountIdNotReadGuardTest` fails the build if it reaches routing, login or a claim.
+- Today: identity-service accepts an on-device `AccountGenesis` at `POST /account/genesis`, parses the `gua:` login hint and verifies the attach proof. Both apps carry the key store and the genesis builder behind a flag that is off.
+- Today: the attach step cannot run in the deployed flow. The signup profile step runs in a web view with no channel to the key the app holds, so every native account is a bootstrap account. With the server flag on, an app that presented a handle would fail its signup, so the app flags stay off.
+- Today: a returning user's `preferred_username` comes from the stored username, never from the user id, with a guard test.
+- Not started: giving an existing account a committed key. That is the account authority work, in development on open pull requests.
+
+Formats: [account identifiers and placement records](../specs/account-identifiers-and-placement-records.md).
 
 **Validation**
 
-- `accountId` is populated; nothing reads it yet.
+- `accountId` is populated; only passkeys read it.
 
 **Rollback**
 
-Drop the column.
+Turn the flags off. The `account_genesis` table stays, because an identifier is permanent.
 
 **Blocked by**
 
-Severing that derivation in `routeExistingUser` (the S6 trap) and auditing every other localpart derivation.
+Nothing for bootstrap identifiers. Accounts with a committed key wait on account authority. Issuing recovery framework `0x01` in production stays refused (`identity.genesis.production-issuance`).
 
 ## Phase 4: placement records for existing accounts
 
@@ -122,8 +125,20 @@ Record where each existing account really lives.
 
 - Today: the directory's `homeserver_id` reads `default` for every account, including one a federation test proved lives elsewhere.
 - Only each MAS's `upstream_oauth_links` table records true placement.
-- Each holding homeserver signs a generation-1 placement record for its accounts.
-- Comparison mode: answer from policy as today, log where the record disagrees, serve nothing from records yet.
+- Today: the resolver verifies, stores and serves generation-1 placement records and commits them to the log as `PLACEMENT_CHECKPOINT` leaves (`gua.resolver.placement.*`). identity-service signs and publishes a record for each account with exactly one MAS link, and compares records against those links daily (`identity.placement.*`). Every one of these flags is off by default.
+- Comparison mode: answer from policy as today, log where the record disagrees, serve nothing from records. No flag makes routing read a record.
+
+**Before routing may read a placement record**
+
+All of these must hold. Proposing it is a later phase, not this one.
+
+- Every account has an `account_genesis` row, and the missing-identifier alert has been silent for 14 days.
+- The daily comparison ran for 14 consecutive days in dev and 14 in prod with no disagreeing record, no account linked more than once and no username mismatch. Stale directory rows appear only for allowlisted testbed accounts, and every unlinked account is listed and explained.
+- The resolver reports no placement conflict and no record orphaned by a roster change over that window, and a full re-verification against the current roster passes.
+- Every MAS runs with `on_conflict: fail`, and no account is unlinked.
+- New accounts hold a committed key: the apps ship it and the server requires it for native signups, and web signups do the same or stop creating accounts. This waits on account authority.
+
+Comparing inside `/resolve` on each request is not part of this list. It needs Phase 5's binding records. Publishing records in production also waits on a review of what a public mapping from `accountId` to homeserver reveals.
 
 **Validation**
 
@@ -180,32 +195,32 @@ Turn enforcement off; shadow mode keeps reporting.
 
 **Blocked by**
 
-O10 (pinning semantics), for enforcement only. Phase 2 (pinned genesis).
+The [pinning rules](../architecture/planned-federation-work.md#apps-verifying-before-they-connect), for enforcement only. Phase 2 (pinned genesis).
 
 ## Phase 7: authentication moves to homeservers
 
 **Goal**
 
-Each homeserver authenticates its own users; its own decision record comes first.
+Each homeserver authenticates its own users; its own design comes first.
 
 **Changes**
 
 - Today: MAS keys upstream links on `(provider ULID, subject)` with a unique index and never rewrites a subject.
 - Each MAS gains local authentication, passkeys first. A new subject meaning is a new provider row plus a link association pass, never an in-place update.
 - Customer passkeys can ship through identity-service earlier; this phase moves the ceremony to homeservers.
-- Pre-ceremony homeserver discovery stays an open decision, outside this phase. The Phase 7 decision record settles identity-service's remaining role: federation verifier without login credentials, or retirement.
+- Pre-ceremony homeserver discovery stays an open decision, outside this phase. That design settles identity-service's remaining role: federation verifier without login credentials, or retirement.
 
 **Validation**
 
-- Set in that record.
+- Set in that design.
 
 **Rollback**
 
-Set in that record.
+Set in that design.
 
 **Blocked by**
 
-That record. O11 (passkey discovery and relying party). S6 (OIDC subject migration).
+That design, including the [passkey relying party and the sign-in subject migration](../architecture/planned-federation-work.md#sign-in-decided-by-each-homeserver-and-passkeys).
 
 ## Phase 8: blinded routing keys
 
@@ -227,7 +242,7 @@ Defined with the validation.
 
 **Blocked by**
 
-S1 (cryptographic review of the threshold construction). O4 (RFC 9497 versus an updatable construction).
+Cryptographic review of the threshold construction, and the choice between RFC 9497 and an updatable construction. See [phone numbers that cannot be recovered from stored state](../architecture/planned-federation-work.md#phone-numbers-that-cannot-be-recovered-from-stored-state).
 
 ## Phase 9: independent witnesses
 
@@ -253,6 +268,6 @@ A second witness operator.
 
 ## Deliberately out of scope
 
-- Account recovery: four requirements in the decision record; the mechanism gets its own record.
+- Account recovery. Recovery of sign-in factors is built in identity-service. Recovery of account authority belongs to the account authority work.
 - Matrix identity migration between homeservers: nothing native preserves device keys, cross-signing, membership or history across a move; placement migration is separate.
-- Catastrophic governance-key loss; deferred to its own decision.
+- Catastrophic governance-key loss, which is undecided.
