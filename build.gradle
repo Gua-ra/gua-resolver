@@ -6,7 +6,7 @@ plugins {
 
 group = 'global.gua'
 version = '0.0.1-SNAPSHOT'
-description = 'gua-resolver — federation routing front door (resolution + roster + placement)'
+description = 'gua-resolver: federation routing front door (resolution, roster and placement)'
 
 java {
     toolchain {
