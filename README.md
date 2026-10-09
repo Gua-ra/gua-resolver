@@ -25,14 +25,14 @@ Clients use three endpoints; mirrors and verifiers also read `/roster/log`, `/ro
 
 ### Interim abuse controls
 
-`POST /resolve` takes any raw E.164 with no account session. A number with a directory row and one without get the same response shape: `exists` is always `false`, `homeserver` is always `null`, and `registerAt` names the account's homeserver for a directory row or the placement decision otherwise. The directory lookup and placement both use the trimmed, validated number, and placement runs in both cases so the work per request matches. A directory row whose homeserver is not `ACTIVE` in the roster (suspended, revoked or removed) answers `503` with `{"code":"homeserver_unavailable"}`, counted as `gua_resolver_resolve_total{outcome="homeserver_unavailable"}`, and never falls through to placement. The iOS and Android apps stop on that error. The web client currently falls back to its default server on any resolver error, so a web sign-in for such an account can still start at the wrong homeserver.
+`POST /resolve` takes any raw E.164 with no account session. A number with a directory row and one without get the same response shape: `exists` is always `false`, `homeserver` is always `null`, and `registerAt` names the account's homeserver for a directory row or the placement decision otherwise. The directory lookup and placement both use the trimmed, validated number. Both cases run placement and resolve against one roster snapshot, so the work per request matches. A directory row whose homeserver is not `ACTIVE` in the roster (suspended, revoked or removed) answers `503` with `{"code":"homeserver_unavailable"}`, counted as `gua_resolver_resolve_total{outcome="homeserver_unavailable"}`, and never falls through to placement. The iOS and Android apps stop on that error. The web client currently falls back to its default server on any resolver error, so a web sign-in for such an account can still start at the wrong homeserver.
 
 The answer can still tell a number with an account from one without:
 
 - A directory row whose homeserver differs from the placement anyone can reproduce from the public roster and policy.
 - Any directory row, while caller-supplied fields (`country`, `mccmnc`, `carrier`, `regionHint`) can move the placement for that number. A roster carrier or geo claim does that, and so does a weighted fallback over two or more homeservers that accept new accounts. Varying the fields moves a miss and never a hit.
 - The `503 homeserver_unavailable` for an account on a homeserver that is not `ACTIVE`.
-- While no homeserver accepts new accounts, a miss answers `503 no_placement_available` and a hit answers `200`.
+- While no homeserver accepts new accounts, a miss answers `503 no_placement_available` and a hit answers `200`. Pausing signups by clearing `acceptsNew` across the roster therefore exposes every directory row.
 - `trace.source` wherever the decision trace is enabled, which includes dev.
 
 The endpoint therefore keeps these interim controls, all on by default and configured under `gua.resolver.abuse.*`:

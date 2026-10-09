@@ -32,12 +32,15 @@ import global.gua.resolver.crypto.Ed25519;
 import global.gua.resolver.directory.JdbcDirectoryStore;
 import global.gua.resolver.placement.PlacementContext;
 import global.gua.resolver.roster.RosterEntry;
+import global.gua.resolver.roster.RosterStore;
 import global.gua.resolver.roster.store.RosterEntryRepository;
 import global.gua.resolver.service.ResolutionService;
+import io.micrometer.core.instrument.MeterRegistry;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -45,9 +48,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * {@code POST /resolve} answers a number with an account and one without in the same shape, so the
- * response does not say whether an account exists, and a directory row on a homeserver that is not ACTIVE
- * fails closed instead of steering an existing account into registration elsewhere.
+ * {@code POST /resolve} answers a number with a directory row and one without in the same shape with the
+ * same work, and a directory row on a homeserver that is not ACTIVE fails closed and is never placed.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -70,7 +72,9 @@ class ResolveUniformAnswerTest {
     @Autowired RosterEntryRepository entries;
     @Autowired JdbcDirectoryStore directory;
     @Autowired ObjectMapper json;
+    @Autowired MeterRegistry meters;
     @MockitoSpyBean ResolutionService resolution;
+    @MockitoSpyBean RosterStore rosterStore;
 
     @BeforeEach
     void seed() {
@@ -143,6 +147,14 @@ class ResolveUniformAnswerTest {
         clearInvocations(resolution);
         resolve(MISS, false).andExpect(status().isOk());
         verify(resolution, times(1)).placementDecisionFor(any());
+    }
+
+    @Test
+    void aHitAndAMissReadTheRosterTheSameNumberOfTimes() throws Exception {
+        long hit = rosterReads(HIT_DEV);
+        long miss = rosterReads(MISS);
+
+        assertThat(hit).isPositive().isEqualTo(miss);
     }
 
     @Test
@@ -220,12 +232,26 @@ class ResolveUniformAnswerTest {
     }
 
     private void assertUnavailable(String phone) throws Exception {
+        double before = unavailableCount();
         String body = resolve(phone, true)
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("homeserver_unavailable"))
                 .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
         assertThat(body).doesNotContain("registerAt").doesNotContain("exists").doesNotContain("trace");
         verify(resolution, times(0)).placementDecisionFor(any());
+        assertThat(unavailableCount()).isEqualTo(before + 1);
+    }
+
+    private double unavailableCount() {
+        return meters.get("gua.resolver.resolve").tag("outcome", "homeserver_unavailable").counter().count();
+    }
+
+    private long rosterReads(String phone) throws Exception {
+        clearInvocations(rosterStore);
+        resolve(phone, false).andExpect(status().isOk());
+        return mockingDetails(rosterStore).getInvocations().stream()
+                .filter(invocation -> invocation.getMethod().getName().equals("current"))
+                .count();
     }
 
     private void admitIfAbsent(String id, String serverName) {

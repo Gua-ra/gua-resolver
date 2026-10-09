@@ -26,6 +26,7 @@ import global.gua.resolver.placement.NoPlacementAvailableException;
 import global.gua.resolver.placement.PlacementContext;
 import global.gua.resolver.placement.PlacementDecision;
 import global.gua.resolver.roster.RosterStore;
+import global.gua.resolver.roster.SignedRoster;
 import global.gua.resolver.service.HomeserverUnavailableException;
 import global.gua.resolver.service.ResolutionService;
 import io.micrometer.core.instrument.Counter;
@@ -72,20 +73,21 @@ public class ResolveController {
     /**
      * Resolve a phone to the homeserver the client should authenticate against: the account's homeserver
      * when the directory has one, otherwise the placement target. Both cases return the same shape, and
-     * placement runs on both so the work done matches. A directory row whose homeserver is not ACTIVE
-     * answers 503 and never falls through to placement. The decision trace is honoured only when the
-     * deployment enables it: it names the directory or the matched rule, policy id/version and delegated
-     * zone, which is internals an anonymous caller has no business seeing.
+     * both run placement and read the roster the same number of times so the work done matches. A directory
+     * row whose homeserver is not ACTIVE answers 503 and never falls through to placement. The decision
+     * trace is honoured only when the deployment enables it, because it exposes the directory hit or the
+     * matched rule, policy id/version and delegated zone to anonymous callers.
      */
     @PostMapping("/resolve")
     public ResolveResponse resolve(@Valid @RequestBody ResolveRequest request) {
         // The roster version the decision is made against; clients pin + verify this exact version.
-        long rosterVersion = rosterStore.current().version();
+        SignedRoster roster = rosterStore.current();
+        long rosterVersion = roster.version();
         boolean trace = abuse.isTraceEnabled() && Boolean.TRUE.equals(request.trace());
 
         // Placement must see the number the directory keys on, or padding the phone moves a miss but not a hit.
         String phone = PhoneHasher.normalize(request.phone());
-        Optional<Homeserver> existing = resolution.resolvePhone(phone);
+        Optional<Homeserver> existing = resolution.resolvePhone(phone, roster);
         PlacementDecision decision = placementDecisionFor(request, phone, existing.isPresent());
 
         if (existing.isPresent()) {
@@ -115,11 +117,9 @@ public class ResolveController {
     }
 
     /**
-     * Build the placement context. Institution/OIDC affiliations and attributes
-     * are trusted ONLY when they arrive in a signature-verified routing-claims envelope bound to this phone;
-     * a public caller's self-asserted {@code affiliations}/{@code attributes} are deliberately dropped (they
-     * were the self-assertion vector). Carrier/geo hints stay, because choosing a carrier homeserver is
-     * self-service, not privilege.
+     * Institution/OIDC affiliations and attributes are trusted ONLY from a signature-verified routing-claims
+     * envelope bound to this phone; the top-level self-asserted {@code affiliations}/{@code attributes} are
+     * dropped. Carrier/geo hints stay, because choosing a carrier homeserver is self-service, not privilege.
      */
     private PlacementContext placementContextFor(ResolveRequest request, String phone) {
         RoutingClaimsVerifier.VerifiedRoutingClaims verified =
