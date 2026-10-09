@@ -20,6 +20,7 @@ import global.gua.resolver.claims.RoutingClaimsEnvelope;
 import global.gua.resolver.claims.RoutingClaimsVerifier;
 import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.directory.DirectoryUnavailableException;
+import global.gua.resolver.directory.PhoneHasher;
 import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.placement.NoPlacementAvailableException;
 import global.gua.resolver.placement.PlacementContext;
@@ -82,8 +83,10 @@ public class ResolveController {
         long rosterVersion = rosterStore.current().version();
         boolean trace = abuse.isTraceEnabled() && Boolean.TRUE.equals(request.trace());
 
-        Optional<Homeserver> existing = resolution.resolvePhone(request.phone());
-        PlacementDecision decision = placementDecisionFor(request, existing.isPresent());
+        // Placement must see the number the directory keys on, or padding the phone moves a miss but not a hit.
+        String phone = PhoneHasher.normalize(request.phone());
+        Optional<Homeserver> existing = resolution.resolvePhone(phone);
+        PlacementDecision decision = placementDecisionFor(request, phone, existing.isPresent());
 
         if (existing.isPresent()) {
             resolveExisting.increment();
@@ -100,9 +103,9 @@ public class ResolveController {
      * Placement for this request. With an existing account the result is unused, and a placement failure
      * is ignored so the account can still sign in while no homeserver accepts new accounts.
      */
-    private PlacementDecision placementDecisionFor(ResolveRequest request, boolean accountExists) {
+    private PlacementDecision placementDecisionFor(ResolveRequest request, String phone, boolean accountExists) {
         try {
-            return resolution.placementDecisionFor(placementContextFor(request));
+            return resolution.placementDecisionFor(placementContextFor(request, phone));
         } catch (NoPlacementAvailableException e) {
             if (accountExists) {
                 return null;
@@ -118,12 +121,12 @@ public class ResolveController {
      * were the self-assertion vector). Carrier/geo hints stay, because choosing a carrier homeserver is
      * self-service, not privilege.
      */
-    private PlacementContext placementContextFor(ResolveRequest request) {
+    private PlacementContext placementContextFor(ResolveRequest request, String phone) {
         RoutingClaimsVerifier.VerifiedRoutingClaims verified =
-                routingClaimsVerifier.verify(request.routingClaims(), request.phone());
+                routingClaimsVerifier.verify(request.routingClaims(), phone);
         // The trust flag comes straight from the verification outcome, never from envelope presence.
         return new PlacementContext(
-                request.phone(), request.country(), request.mccmnc(), request.carrier(), request.regionHint(),
+                phone, request.country(), request.mccmnc(), request.carrier(), request.regionHint(),
                 verified.affiliations(), verified.attributes(), verified.verified());
     }
 

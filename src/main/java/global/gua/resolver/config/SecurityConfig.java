@@ -18,10 +18,11 @@ import org.springframework.security.web.SecurityFilterChain;
  * Explicit public allowlist plus deny-by-default. The resolver front door is public by design:
  * {@code /resolve}, {@code /roster*}, {@code /policy/routing*}, health + docs are unauthenticated.
  * {@code /resolve} is rate-limited per client and globally by {@code ResolveAbuseFilter}, registered for
- * that path only and ordered ahead of this chain; it still answers {@code exists} for any raw E.164, so it
- * remains an existence oracle, only no longer a free one (ADM-001 L16 requires layered controls that do not
- * assume an account session). {@code /directory/lookup} is the mirror-facing, rate-limited, peppered-HMAC
- * read; the directory has no write endpoint (ADM-001 L1b). {@code /.well-known/gua-federation} publishes the
+ * that path only and ordered ahead of this chain; its answer has the same shape with and without an account
+ * but can still reveal one, so it remains a rate-limited existence oracle (ADM-001 L16 requires layered
+ * controls that do not assume an account session). {@code /directory/lookup} is the mirror-facing,
+ * rate-limited, peppered-HMAC read; the directory has no write endpoint (ADM-001 L1b).
+ * {@code /.well-known/gua-federation} publishes the
  * pinned federation genesis and {@code /registry/**} the governance-signed registry epochs; both are public
  * by design, because a trust root nobody can fetch and compare out of band is not a trust root (ADM-001
  * L10). {@code /placement/records} is the public, rate-limited placement-record surface: the ingest is

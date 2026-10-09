@@ -37,7 +37,12 @@ public class PhoneHasher {
         return hmacHex("phone:" + normalize(e164));
     }
 
-    private static String normalize(String e164) {
+    /**
+     * The number exactly as {@link #hashPhone} keys it: trimmed and validated E.164.
+     *
+     * @throws IllegalArgumentException when the phone is missing or not E.164
+     */
+    public static String normalize(String e164) {
         if (e164 == null) {
             throw new IllegalArgumentException("phone required");
         }

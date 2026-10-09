@@ -1,14 +1,19 @@
 package global.gua.resolver.api;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -22,8 +27,10 @@ import org.springframework.test.web.servlet.ResultActions;
 
 import global.gua.resolver.admission.AdmissionRequest;
 import global.gua.resolver.admission.AdmissionService;
+import global.gua.resolver.claims.RoutingClaimsEnvelope;
 import global.gua.resolver.crypto.Ed25519;
 import global.gua.resolver.directory.JdbcDirectoryStore;
+import global.gua.resolver.placement.PlacementContext;
 import global.gua.resolver.roster.RosterEntry;
 import global.gua.resolver.roster.store.RosterEntryRepository;
 import global.gua.resolver.service.ResolutionService;
@@ -175,6 +182,32 @@ class ResolveUniformAnswerTest {
         }
     }
 
+    @Test
+    void paddedPhoneIsPlacedAsTheNumberTheDirectoryKeysOn() throws Exception {
+        String canonical = send(Map.of("phone", MISS)).andExpect(status().isOk()).andReturn()
+                .getResponse().getContentAsString(StandardCharsets.UTF_8);
+        String padded = send(Map.of("phone", " \t" + MISS + " ")).andExpect(status().isOk()).andReturn()
+                .getResponse().getContentAsString(StandardCharsets.UTF_8);
+        send(Map.of("phone", " " + HIT_DEV)).andExpect(status().isOk());
+
+        assertThat(padded).isEqualTo(canonical);
+        ArgumentCaptor<PlacementContext> contexts = ArgumentCaptor.forClass(PlacementContext.class);
+        verify(resolution, times(3)).placementDecisionFor(contexts.capture());
+        assertThat(contexts.getAllValues()).extracting(PlacementContext::e164Phone)
+                .containsExactly(MISS, MISS, HIT_DEV);
+    }
+
+    @Test
+    void routingClaimsForAnotherNumberAreRejectedAlikeForAHitAndAMiss() throws Exception {
+        String other = "+5511900009999";
+        assertThat(rejectedClaims(HIT_DEV, other)).isEqualTo(rejectedClaims(MISS, other));
+    }
+
+    @Test
+    void unsignedRoutingClaimsAreRejectedAlikeForAHitAndAMiss() throws Exception {
+        assertThat(rejectedClaims(HIT_DEV, HIT_DEV)).isEqualTo(rejectedClaims(MISS, MISS));
+    }
+
     private void assertUnavailableWithStatus(String id, RosterEntry.Status status, String phone) throws Exception {
         admitIfAbsent(id, id + ".gua.test");
         directory.putPhone(phone, id);
@@ -207,10 +240,30 @@ class ResolveUniformAnswerTest {
                 "dns-txt-proof-token", List.of(), null, null));
     }
 
+    private String rejectedClaims(String phone, String subject) throws Exception {
+        Instant now = Instant.now();
+        Map<String, Object> envelope = new LinkedHashMap<>();
+        envelope.put("schemaVersion", RoutingClaimsEnvelope.SCHEMA_VERSION);
+        envelope.put("issuer", "issuer.gua.test");
+        envelope.put("audience", "gua-resolver");
+        envelope.put("issuedAt", now.minusSeconds(30).toString());
+        envelope.put("expiresAt", now.plusSeconds(120).toString());
+        envelope.put("nonce", UUID.randomUUID().toString());
+        envelope.put("subject", subject);
+        envelope.put("affiliations", List.of("usp.br"));
+        envelope.put("signatures", List.of(Map.of("keyId", "unknown", "signatureB64", "AAAA")));
+        return send(Map.of("phone", phone, "routingClaims", envelope))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("invalid_routing_claims"))
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+    }
+
     private ResultActions resolve(String phone, boolean trace) throws Exception {
-        String body = trace
-                ? "{\"phone\":\"" + phone + "\",\"trace\":true}"
-                : "{\"phone\":\"" + phone + "\"}";
+        return send(trace ? Map.of("phone", phone, "trace", true) : Map.of("phone", phone));
+    }
+
+    private ResultActions send(Map<String, Object> fields) throws Exception {
+        String body = json.writeValueAsString(fields);
         // A fresh client address per request keeps the per-client rate limit out of these assertions.
         String client = "192.0.2." + (CLIENTS.incrementAndGet() % 250 + 1);
         return mockMvc.perform(post("/resolve").contentType(MediaType.APPLICATION_JSON).content(body)

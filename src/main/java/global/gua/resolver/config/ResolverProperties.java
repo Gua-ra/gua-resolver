@@ -234,8 +234,9 @@ public class ResolverProperties {
 
     /**
      * Interim abuse controls on {@code POST /resolve} (ADM-001 L16): a token bucket per client key, a global
-     * ceiling per process, and the switch that gates the decision trace. Interim because the uniform answer
-     * still reveals an account whose homeserver differs from the placement anyone can reproduce.
+     * ceiling per process, and the switch that gates the decision trace. Interim because the answer still
+     * reveals an account whenever caller-supplied fields can move the placement for its number, when its
+     * homeserver differs from the reproducible placement or is not ACTIVE, and while nothing accepts new accounts.
      */
     public static class Abuse {
         /** Master switch for the /resolve rate limits (the rollback lever). Does not affect traceEnabled. */
