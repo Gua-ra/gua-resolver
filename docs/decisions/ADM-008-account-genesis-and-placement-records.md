@@ -158,7 +158,7 @@ The flags are inert only as a set. Turn the server flag and a client flag on tog
 
 Shadow-mode exit criterion 5, the clients shipping genesis with `require-for-native` on, is therefore not reachable yet.
 
-Both clients decide whether a submission is a signup, and so whether to register a genesis, from the resolver's `exists`. Since 2026-10-08 `POST /resolve` always answers `exists=false`, so with a client flag on every returning sign-in would register a genesis, and a failed registration would block the sign-in. The client flags therefore also stay off until the clients take the signup decision from a signal that follows phone verification.
+Both clients decide whether a submission is a signup, and so whether to register a genesis, from the resolver's `exists`. `POST /resolve` always answers `exists=false`, so with a client flag on every returning sign-in would register a genesis, and a failed registration would block the sign-in. The client flags therefore also stay off until the clients take the signup decision from a signal that follows phone verification.
 
 **4. A secure `ADOPT_ROOT` is deferred** to a dedicated account-authority lifecycle iteration. It is not being designed here. ADM-001 O9 stays open, and nothing in this section narrows it.
 
