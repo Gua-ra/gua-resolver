@@ -110,8 +110,8 @@ gua:
       client-expiry: ${GUA_RESOLVER_ABUSE_CLIENT_EXPIRY:PT5M}
       # Whether "trace": true in a /resolve request returns the decision trace (matched rule, policy
       # id/version, delegated zone, roster version). Off unless a deployment opts in: the trace exposes
-      # policy internals to anonymous callers. The dev testbed runbook relies on it, so the dev deployment
-      # has to set it to true.
+      # policy internals to anonymous callers, and its source says whether the number has a directory row.
+      # The dev testbed runbook relies on it, so the dev deployment has to set it to true.
       trace-enabled: ${GUA_RESOLVER_ABUSE_TRACE_ENABLED:false}
     policy:
       enabled: ${GUA_RESOLVER_POLICY_ENABLED:false}

@@ -88,8 +88,8 @@ class DirectoryFlowTest {
             mockMvc.perform(post("/resolve").contentType(MediaType.APPLICATION_JSON)
                             .content("{\"phone\":\"" + phone + "\"}"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.exists").value(true))
-                    .andExpect(jsonPath("$.homeserver.serverName").value("gua.local"));
+                    .andExpect(jsonPath("$.exists").value(false))
+                    .andExpect(jsonPath("$.registerAt.serverName").value("gua.local"));
         } finally {
             directory.removePhone(phone);
         }

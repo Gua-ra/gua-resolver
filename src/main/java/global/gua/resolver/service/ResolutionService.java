@@ -5,6 +5,7 @@ import java.util.Optional;
 import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.placement.PlacementContext;
 import global.gua.resolver.placement.PlacementDecision;
+import global.gua.resolver.roster.SignedRoster;
 
 /**
  * The read front-door logic: given a phone (or username), where does / should the account live? Nothing
@@ -16,8 +17,13 @@ import global.gua.resolver.placement.PlacementDecision;
  */
 public interface ResolutionService {
 
-    /** Where an EXISTING account for this phone lives, if any. Empty = no account yet (→ register). */
-    Optional<Homeserver> resolvePhone(String e164Phone);
+    /**
+     * Where an EXISTING account for this phone lives in {@code roster}, if any. Empty = no account yet
+     * (→ register). Reads no other roster snapshot, so a hit and a miss cost the same roster reads.
+     *
+     * @throws HomeserverUnavailableException when the account's homeserver is not ACTIVE in {@code roster}
+     */
+    Optional<Homeserver> resolvePhone(String e164Phone, SignedRoster roster);
 
     /** Where an EXISTING global username lives, if any (the federation locate-by-handle lookup). */
     Optional<Homeserver> resolveUsername(String username);

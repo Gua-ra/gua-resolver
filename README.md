@@ -17,7 +17,7 @@ The resolver serves and verifies routing information. It does not authenticate a
 
 Clients use three endpoints; mirrors and verifiers also read `/roster/log`, `/roster/log/consistency`, `/policy/log`, `/policy/routing/status`, `/directory/lookup` and `/directory/checkpoint`.
 
-**`POST /resolve`.** A phone number goes in. A homeserver to log in to or register at comes out. Today the resolver reads the phone directory first and evaluates the routing policy against the roster only for a phone with no account.
+**`POST /resolve`.** A phone number goes in. A homeserver to sign in or register at comes out. The resolver reads the phone directory and evaluates the routing policy against the roster on every request; a directory row decides the answer when there is one.
 
 **`GET /roster`.** The signed list of federated homeservers, recorded in a transparency log. Each roster carries `k`-of-`n` authority signatures and a Merkle log checkpoint. Mirrors can serve it. An entry can also carry the member's own signature over the fields that homeserver controls, so the authority alone can no longer rewrite a member's address or key; the resolver verifies it before serving and records each accepted one in the log.
 
@@ -25,15 +25,25 @@ Clients use three endpoints; mirrors and verifiers also read `/roster/log`, `/ro
 
 ### Interim abuse controls
 
-`POST /resolve` answers `exists` for any raw E.164 with no account session, which ADM-001 L16 names as the enumeration oracle to close. Until the client verification phase changes the response, the endpoint carries these interim controls, all on by default and configured under `gua.resolver.abuse.*`:
+`POST /resolve` takes any raw E.164 with no account session. A number with a directory row and one without get the same response shape: `exists` is always `false`, `homeserver` is always `null`, and `registerAt` names the account's homeserver for a directory row or the placement decision otherwise. The directory lookup and placement both use the trimmed, validated number. Both cases run placement, and a directory row is resolved against the roster snapshot the request already loaded, so the work per request matches. A directory row whose homeserver is not `ACTIVE` in the roster (suspended, revoked or removed) answers `503` with `{"code":"homeserver_unavailable"}`, counted as `gua_resolver_resolve_total{outcome="homeserver_unavailable"}`, and never falls through to placement. The iOS and Android apps stop on that error. The web client currently falls back to its default server on any resolver error, so a web sign-in for such an account can still start at the wrong homeserver.
+
+The answer can still tell a number with an account from one without:
+
+- A directory row whose homeserver differs from the placement anyone can reproduce from the public roster and policy.
+- Any directory row, while caller-supplied fields (`country`, `mccmnc`, `carrier`, `regionHint`) can move the placement for that number. A roster carrier or geo claim does that, and so does a weighted fallback over two or more homeservers that accept new accounts. Varying the fields moves a miss and never a hit.
+- The `503 homeserver_unavailable` for an account on a homeserver that is not `ACTIVE`.
+- While no homeserver accepts new accounts, a miss answers `503 no_placement_available` and a hit answers `200`. Pausing signups by clearing `acceptsNew` across the roster therefore exposes every directory row.
+- `trace.source` wherever the decision trace is enabled, which includes dev.
+
+The endpoint therefore keeps these interim controls, all on by default and configured under `gua.resolver.abuse.*`:
 
 - **Per-client rate limit.** A token bucket per client, keyed by the request's remote address as Tomcat reports it once `RemoteIpValve` has resolved the forwarded chain (`server.forward-headers-strategy=native`, pinned in `application.yml`). The pod receives `X-Forwarded-For` as caller-supplied entries, then the client address the public edge appended, then the internal hop the in-cluster ingress appended; the valve skips the internal hops, takes the client address, and leaves only the caller-supplied leftovers in the header, which the limiter never reads. IPv6 clients are keyed by /64. Default 20 requests per minute with a burst of 20.
 - **Global ceiling.** A second bucket for the whole process, default 200 requests per second. Both buckets are per pod: the deployed resolver runs a single pod, and under the opt-in autoscaling profile in gua-deploy (`k8s/autoscaling/resolver-hpa.yaml`, 2 to 3 replicas) the effective in-service per-client rate becomes replicas x 20 per minute. The per-source limit shared across replicas is the Traefik `rateLimit` middleware on the resolver ingress, defined in gua-deploy (`k8s/services/login-ingress.sh`, applied by its deploy script): 10 requests per second average with a burst of 30, per source address. The in-service buckets are the floor that holds for a request that reaches a pod without passing the ingress.
 - **The 429 contract.** Over either limit the service answers `429 Too Many Requests` with a `Retry-After` header in seconds and the constant body `{"code":"rate_limited","message":"..."}`. The request body is not read, so a refused request reveals nothing about the phone.
-- **Decision trace.** `"trace": true` returns the matched rule, policy id and version, delegated zone and roster version only when `abuse.trace-enabled` is `true`. It is off by default because the trace exposes policy internals to anonymous callers; the dev testbed runbook depends on it, so the dev deployment has to set `GUA_RESOLVER_ABUSE_TRACE_ENABLED=true`.
+- **Decision trace.** `"trace": true` returns the matched rule, policy id and version, delegated zone and roster version only when `abuse.trace-enabled` is `true`. It is off by default because the trace exposes policy internals and the answer's source to anonymous callers. The dev testbed runbook depends on it, so the dev deployment has to set `GUA_RESOLVER_ABUSE_TRACE_ENABLED=true`.
 - **Observability.** `gua_resolver_resolve_ratelimited_total{scope="client"|"global"}` counts refusals, `gua_resolver_resolve_clients_tracked` gauges the distinct clients held (bounded by `abuse.max-tracked-clients`), and the first refusal per client per window logs a WARN carrying a truncated hash of the client key, never the phone.
 
-The `exists` flag stays in the response contract: the iOS and Android clients choose login versus create from it, and it changes only when the client verification phase changes the response, per ADM-001 L16. `abuse.enabled=false` switches the rate limits off (the rollback lever); the trace switch is independent of it.
+`exists` and `homeserver` stay in the response because deployed clients decode them. With `exists` false the clients take the homeserver from `registerAt` and run the phone sign-in, where the identity provider finds an existing account by its number. Both apps also read `exists` as the signup signal for account genesis, so with their account-genesis flag on every returning sign-in would register a new genesis. That flag stays off until the apps decide signup after phone verification (see ADM-008, "Implementation status and direction"). `abuse.enabled=false` switches the rate limits off (the rollback lever); the trace switch is independent of it.
 
 ## How this relates to the target architecture
 
