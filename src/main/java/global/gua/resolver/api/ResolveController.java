@@ -25,19 +25,19 @@ import global.gua.resolver.placement.NoPlacementAvailableException;
 import global.gua.resolver.placement.PlacementContext;
 import global.gua.resolver.placement.PlacementDecision;
 import global.gua.resolver.roster.RosterStore;
+import global.gua.resolver.service.HomeserverUnavailableException;
 import global.gua.resolver.service.ResolutionService;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 
 /**
  * The federation front door consumed by the iOS and Android clients BEFORE OIDC login. The client sends a
- * phone number and learns which homeserver to authenticate against; for a phone with no account it learns
- * where to register. Nothing about the phone is verified here: the endpoint is unauthenticated and takes a
- * raw E.164, so today it also answers whether an account exists for any number (ADM-001 L16 names this as
- * the enumeration oracle to close). Interim controls: {@code global.gua.resolver.abuse.ResolveAbuseFilter}
- * rate-limits the endpoint per client and globally, and the decision trace is returned only when
- * {@code gua.resolver.abuse.trace-enabled} is on. This is what replaces the clients' hardcoded
- * {@code GuaDefaultAccountProvider}.
+ * phone number and learns which homeserver to authenticate against: the one holding its account, or where
+ * to register. Nothing about the phone is verified here: the endpoint is unauthenticated and takes a raw
+ * E.164, so the answer must not say whether the number has an account. Interim controls:
+ * {@code global.gua.resolver.abuse.ResolveAbuseFilter} rate-limits the endpoint per client and globally,
+ * and the decision trace is returned only when {@code gua.resolver.abuse.trace-enabled} is on. This is what
+ * replaces the clients' hardcoded {@code GuaDefaultAccountProvider}.
  *
  * <p>Read-mostly and cacheable. Designed to run as a mirrorable fleet; both deployed environments run a
  * single node today (ADM-001 O12).
@@ -51,6 +51,7 @@ public class ResolveController {
     private final ResolverProperties.Abuse abuse;
     private final Counter resolveExisting;
     private final Counter resolveRegister;
+    private final Counter resolveUnavailable;
 
     public ResolveController(ResolutionService resolution, RosterStore rosterStore,
                              RoutingClaimsVerifier routingClaimsVerifier, ResolverProperties props,
@@ -59,16 +60,21 @@ public class ResolveController {
         this.rosterStore = rosterStore;
         this.routingClaimsVerifier = routingClaimsVerifier;
         this.abuse = props.getAbuse();
-        // gua_resolver_resolve_total{outcome=...}: login (existing account) vs register (new placement).
+        // gua_resolver_resolve_total{outcome=...}: existing account, new placement, or an existing account
+        // whose homeserver is not ACTIVE.
         this.resolveExisting = Counter.builder("gua.resolver.resolve").tag("outcome", "existing").register(metrics);
         this.resolveRegister = Counter.builder("gua.resolver.resolve").tag("outcome", "register").register(metrics);
+        this.resolveUnavailable = Counter.builder("gua.resolver.resolve")
+                .tag("outcome", "homeserver_unavailable").register(metrics);
     }
 
     /**
-     * Resolve a phone to its existing homeserver (login) or to a placement target (register).
-     * An existing account is looked up first; only a phone with no account runs placement. The decision
-     * trace is honoured only when the deployment enables it: it names the matched rule, policy id/version
-     * and delegated zone, which is policy internals an anonymous caller has no business seeing.
+     * Resolve a phone to the homeserver the client should authenticate against: the account's homeserver
+     * when the directory has one, otherwise the placement target. Both cases return the same shape, and
+     * placement runs on both so the work done matches. A directory row whose homeserver is not ACTIVE
+     * answers 503 and never falls through to placement. The decision trace is honoured only when the
+     * deployment enables it: it names the directory or the matched rule, policy id/version and delegated
+     * zone, which is internals an anonymous caller has no business seeing.
      */
     @PostMapping("/resolve")
     public ResolveResponse resolve(@Valid @RequestBody ResolveRequest request) {
@@ -77,21 +83,36 @@ public class ResolveController {
         boolean trace = abuse.isTraceEnabled() && Boolean.TRUE.equals(request.trace());
 
         Optional<Homeserver> existing = resolution.resolvePhone(request.phone());
+        PlacementDecision decision = placementDecisionFor(request, existing.isPresent());
+
         if (existing.isPresent()) {
             resolveExisting.increment();
             Homeserver hs = existing.get();
-            return ResolveResponse.existing(HomeserverRef.of(hs),
+            return ResolveResponse.of(HomeserverRef.of(hs),
                     trace ? DecisionTrace.existing(hs.id(), rosterVersion) : null);
         }
-
-        PlacementDecision decision = resolution.placementDecisionFor(placementContextFor(request));
         resolveRegister.increment();
-        return ResolveResponse.register(HomeserverRef.of(decision.homeserver()),
+        return ResolveResponse.of(HomeserverRef.of(decision.homeserver()),
                 trace ? DecisionTrace.of(decision, rosterVersion) : null);
     }
 
     /**
-     * Build the placement context for a new-account decision. Institution/OIDC affiliations and attributes
+     * Placement for this request. With an existing account the result is unused, and a placement failure
+     * is ignored so the account can still sign in while no homeserver accepts new accounts.
+     */
+    private PlacementDecision placementDecisionFor(ResolveRequest request, boolean accountExists) {
+        try {
+            return resolution.placementDecisionFor(placementContextFor(request));
+        } catch (NoPlacementAvailableException e) {
+            if (accountExists) {
+                return null;
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Build the placement context. Institution/OIDC affiliations and attributes
      * are trusted ONLY when they arrive in a signature-verified routing-claims envelope bound to this phone;
      * a public caller's self-asserted {@code affiliations}/{@code attributes} are deliberately dropped (they
      * were the self-assertion vector). Carrier/geo hints stay, because choosing a carrier homeserver is
@@ -145,6 +166,13 @@ public class ResolveController {
         return new ProblemResponse("no_placement_available", "no homeserver is currently accepting new accounts");
     }
 
+    @ExceptionHandler(HomeserverUnavailableException.class)
+    @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
+    public ProblemResponse onHomeserverUnavailable(HomeserverUnavailableException e) {
+        resolveUnavailable.increment();
+        return new ProblemResponse("homeserver_unavailable", "this account's homeserver is temporarily unavailable");
+    }
+
     // --- DTOs -----------------------------------------------------------------------------------
 
     /** The /resolve request body. A plain data carrier; all logic lives in the controller/service. */
@@ -166,14 +194,15 @@ public class ResolveController {
         }
     }
 
+    /**
+     * {@code exists} is always false and {@code homeserver} always null: deployed clients still decode both
+     * and take the target from {@code registerAt} when {@code exists} is false.
+     */
     public record ResolveResponse(boolean exists, HomeserverRef homeserver, HomeserverRef registerAt,
                                   @JsonInclude(JsonInclude.Include.NON_NULL)
                                   DecisionTrace trace) {
-        static ResolveResponse existing(HomeserverRef hs, DecisionTrace trace) {
-            return new ResolveResponse(true, hs, null, trace);
-        }
-        static ResolveResponse register(HomeserverRef hs, DecisionTrace trace) {
-            return new ResolveResponse(false, null, hs, trace);
+        static ResolveResponse of(HomeserverRef target, DecisionTrace trace) {
+            return new ResolveResponse(false, null, target, trace);
         }
     }
 

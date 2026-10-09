@@ -16,10 +16,18 @@ import global.gua.resolver.placement.PlacementDecision;
  */
 public interface ResolutionService {
 
-    /** Where an EXISTING account for this phone lives, if any. Empty = no account yet (→ register). */
+    /**
+     * Where an EXISTING account for this phone lives, if any. Empty = no account yet (→ register).
+     *
+     * @throws HomeserverUnavailableException when the account's homeserver is not ACTIVE in the roster
+     */
     Optional<Homeserver> resolvePhone(String e164Phone);
 
-    /** Where an EXISTING global username lives, if any (the federation locate-by-handle lookup). */
+    /**
+     * Where an EXISTING global username lives, if any (the federation locate-by-handle lookup).
+     *
+     * @throws HomeserverUnavailableException when the account's homeserver is not ACTIVE in the roster
+     */
     Optional<Homeserver> resolveUsername(String username);
 
     /** Where a NEW account for this context should be registered (runs the placement engine). */

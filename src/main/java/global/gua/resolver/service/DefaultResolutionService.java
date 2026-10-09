@@ -15,7 +15,8 @@ import global.gua.resolver.roster.RosterStore;
  * Resolution front-door logic: existing-account lookups hit the shared, persistent, peppered-HMAC
  * {@link DirectoryStore}; new accounts run the {@link PlacementEngine} over the verified roster. The
  * homeserver id from the directory is resolved to its full advertised endpoint via the current roster, so
- * a stale directory row can never point a client at a suspended/revoked homeserver. See §3–§4 + §6.
+ * a stale directory row can never point a client at a suspended/revoked homeserver, and is never mistaken
+ * for a phone with no account either. See §3, §4 and §6.
  */
 @Service
 public class DefaultResolutionService implements ResolutionService {
@@ -33,12 +34,12 @@ public class DefaultResolutionService implements ResolutionService {
 
     @Override
     public Optional<Homeserver> resolvePhone(String e164Phone) {
-        return directory.homeserverIdForPhone(e164Phone).flatMap(this::activeHomeserverById);
+        return directory.homeserverIdForPhone(e164Phone).map(this::activeHomeserverById);
     }
 
     @Override
     public Optional<Homeserver> resolveUsername(String username) {
-        return directory.homeserverIdForUsername(username).flatMap(this::activeHomeserverById);
+        return directory.homeserverIdForUsername(username).map(this::activeHomeserverById);
     }
 
     @Override
@@ -52,10 +53,11 @@ public class DefaultResolutionService implements ResolutionService {
     }
 
     /** Only resolve to homeservers that are currently ACTIVE in the verified roster. */
-    private Optional<Homeserver> activeHomeserverById(String id) {
+    private Homeserver activeHomeserverById(String id) {
         return rosterStore.current().activeEntries().stream()
                 .map(global.gua.resolver.roster.RosterEntry::homeserver)
                 .filter(hs -> hs.id().equals(id))
-                .findFirst();
+                .findFirst()
+                .orElseThrow(() -> new HomeserverUnavailableException(id));
     }
 }

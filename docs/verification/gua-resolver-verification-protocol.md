@@ -137,20 +137,24 @@ fallback seeds on the roster version, which is the transparency-log size, so its
 policy or directory-checkpoint leaf is appended even when membership did not change (ADM-001 L6 records
 this). To verify a `/resolve` answer:
 
-- **New account (`exists=false`, `registerAt`).** Run the placement pipeline over the verified artifacts and
-  confirm it yields the same homeserver id the resolver returned:
+The response does not say whether the number has an account: `exists` is always `false` and the target is
+always `registerAt`, which is either the placement decision or the homeserver a directory row names.
+
+- **Placement.** Run the placement pipeline over the verified artifacts and confirm it yields the same
+  homeserver id the resolver returned:
   1. **Signed policy rules** (priority order) whose zone is delegate-verified and currently valid, and whose
      match holds. Institution-domain / OIDC rules require the context's claims to be verified (see below).
   2. **Legacy signed-roster claim predicates** (carrier/geo may be self-asserted; affiliation/attribute
      require verified claims).
   3. **Stable weighted fallback** across active homeservers accepting new accounts (deterministic hash of the
      context + roster version + candidate ids/weights).
-- **Existing account (`exists=true`, `homeserver`).** The client cannot reproduce a directory lookup (the
-  phone graph is private), and no per-lookup inclusion proof is served today, so this branch is not
-  verifiable in the current implementation. What a client can check is that the returned homeserver id is
-  currently ACTIVE in the verified roster. The signed **directory checkpoint** (`GET /directory/checkpoint`)
-  commits the authority node to a directory state as a whole and carries no proof for an individual mapping
-  (ADM-001 L11, O1).
+- **Directory row.** When `registerAt` differs from the reproduced placement, it came from the directory. The
+  client cannot reproduce a directory lookup (the phone graph is private), and no per-lookup inclusion proof
+  is served today, so this case is not verifiable in the current implementation. What a client can check is
+  that the returned homeserver is currently ACTIVE in the verified roster; a row naming any other homeserver
+  answers `503 homeserver_unavailable` instead. The signed **directory checkpoint**
+  (`GET /directory/checkpoint`) commits the authority node to a directory state as a whole and carries no
+  proof for an individual mapping (ADM-001 L11, O1).
 
 ### Verified vs self-asserted claims
 
