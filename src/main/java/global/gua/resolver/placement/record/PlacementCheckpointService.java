@@ -21,15 +21,10 @@ import global.gua.resolver.roster.SignedRoster;
 /**
  * Anchors the placement state in the transparency log, mirroring the directory checkpoint service.
  *
- * <p>One leaf per record is exactly what this must not do. The roster version is the log size, and
- * {@code WeightedFallbackRule} seeds on the roster version, so every appended leaf moves new-account
- * fallback placement (ADM-001 L6 [CODE]). A per-record leaf would churn placement on every ingest. Instead
- * this computes the Merkle root over the records once per interval and appends a {@code PLACEMENT_CHECKPOINT}
- * leaf only when that root has actually changed, which bounds the churn to one leaf per interval in which
- * the placement state moved.
- *
- * <p>The signed root is an assertion by this node, not a proof that the state is correct, and no per-record
- * inclusion proof is served (ADM-001 L11). Authority mode only, and only with the placement flag on.
+ * <p>The roster version is the log size, and {@code WeightedFallbackRule} seeds on the roster version, so
+ * every appended leaf moves new-account fallback placement. So this computes the Merkle root over the
+ * records once per interval and appends a {@code PLACEMENT_CHECKPOINT} leaf only when that root has changed,
+ * never one leaf per record. Authority mode only, and only with the placement flag on.
  */
 @Component
 @ConditionalOnExpression(PlacementFeature.ENABLED)
@@ -56,7 +51,6 @@ public class PlacementCheckpointService {
                 ? null : Ed25519.privateKey(auth.getSigningPrivateKey());
     }
 
-    /** Canonical bytes signed over a placement checkpoint. */
     public static byte[] canonicalBytes(PlacementCheckpoint cp) {
         return ("gua-placement-checkpoint.v1\nroot=" + cp.merkleRoot() + "\nsize=" + cp.size()
                 + "\nissuedAt=" + cp.issuedAt().toEpochMilli() + "\n").getBytes(StandardCharsets.UTF_8);

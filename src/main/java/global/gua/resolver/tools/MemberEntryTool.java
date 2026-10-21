@@ -32,9 +32,9 @@ import global.gua.resolver.roster.RosterEntry;
 import global.gua.resolver.roster.SignedRoster;
 
 /**
- * Offline signing and checking tool for member roster entries (ADM-007). A homeserver operator runs it with
- * its own member private key to produce the body for {@code POST /authority/roster/{id}/member}; the resolver
- * never holds that key. See docs/runbooks/member-attestation.md.
+ * Offline signing and checking tool for member roster entries. A homeserver operator runs it with its own
+ * member private key to produce the body for {@code POST /authority/roster/{id}/member}; the resolver never
+ * holds that key. See docs/runbooks/member-attestation.md.
  *
  * <pre>
  *   sign    --fields fields.json --private-key-file -        [--format attest|member]

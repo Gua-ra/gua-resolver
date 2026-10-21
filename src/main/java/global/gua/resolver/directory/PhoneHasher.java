@@ -11,11 +11,10 @@ import org.springframework.stereotype.Component;
 import global.gua.resolver.config.ResolverProperties;
 
 /**
- * Turns an E.164 phone number into the peppered HMAC under which it is stored/looked up in the shared
- * directory (§4). The raw number is never persisted or logged; lookups require the shared pepper, so the
- * table is useless for enumeration if exfiltrated and cannot be reversed without the secret. The pepper
- * MUST be identical across the resolver fleet AND identity-service (which writes the entries). The shared
- * pepper is scheduled for replacement (ADM-001 L15).
+ * Turns an E.164 phone number into the peppered HMAC under which it is stored and looked up in the shared
+ * directory. The raw number is never persisted or logged; lookups require the shared pepper, so the table
+ * is useless for enumeration if exfiltrated and cannot be reversed without the secret. The pepper must be
+ * identical across the resolver fleet and identity-service.
  */
 @Component
 public class PhoneHasher {

@@ -9,11 +9,11 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
  * A declarative claim attached to a homeserver's signed roster entry: "I host accounts that match this."
  *
  * <p>Because predicates live in the authority-signed roster, an operator can only claim what was admitted,
- * and the authority validates non-overlap at admission (two carriers can't claim the same range). Adding a
- * carrier/institution claim is therefore a signed-roster edit — no resolver code change, no redeploy.
+ * and the authority validates non-overlap at admission (two carriers cannot claim the same range). Adding a
+ * carrier or institution claim is therefore a signed-roster edit: no resolver code change, no redeploy.
  *
  * <p>All set fields are ANDed. {@code remoteClaimUrl}, when present, delegates the final yes/no to the
- * operator's own webhook (for membership logic the resolver shouldn't encode).
+ * operator's own webhook (for membership logic the resolver should not encode).
  *
  * @param country        match ISO country (e.g. "BR")
  * @param mccmnc         match carrier MCC+MNC (e.g. "72411" = Vivo BR)
@@ -42,7 +42,7 @@ public record ClaimPredicate(
      * <p>Carrier/geo signals (country, MCC/MNC, carrier, phone prefix) are derived from the number and may
      * be matched from a public request: choosing a carrier homeserver is self-service, not privilege.
      * Institution/OIDC signals ({@code affiliation}, {@code attributeMatch}) grant scoped placement onto an
-     * operator's homeserver, so they match ONLY when {@code ctx.claimsVerified()} is true, i.e. the
+     * operator's homeserver, so they match only when {@code ctx.claimsVerified()} is true, i.e. the
      * affiliations/attributes came from a signature-verified routing-claims envelope. This is what stops an
      * anonymous caller from self-asserting {@code affiliations:["usp.br"]} to land on an institution.
      */
@@ -70,8 +70,8 @@ public record ClaimPredicate(
 
     /**
      * Derived from {@code remoteClaimUrl}, so it is not serialized: it is not state, it is not in any
-     * canonical byte encoding, and emitting it put a field on the wire that a strict reader of a signed
-     * object (a governance registry epoch's content) has to refuse as unknown.
+     * canonical byte encoding, and a strict reader of a signed object (a governance registry epoch's
+     * content) would have to refuse it as an unknown field.
      */
     @JsonIgnore
     public boolean isRemote() {

@@ -25,14 +25,13 @@ import global.gua.resolver.roster.RosterEntry;
 
 /**
  * Persistence for admitted homeservers: the roster the node signs and serves in AUTHORITY mode. Claim
- * predicates are stored as JSON. Authority mode reads + writes this; mirrors never touch it (they pull the
- * signed snapshot).
+ * predicates are stored as JSON. Mirrors never touch it (they pull the signed snapshot).
  *
- * <p>An entry also carries the member's accepted self-signature (ADM-007): the attestation columns, the
- * genesis key the operator was admitted with, and one {@code roster_member_history} row per accepted
- * attestation. The attestation timestamps are stored as UTC {@link LocalDateTime}, not through the JVM's
- * default zone, because they are signed values: a zone change or a daylight-saving fold must not be able to
- * move them and invalidate the signature.
+ * <p>An entry also carries the member's accepted self-signature: the attestation columns, the genesis key
+ * the operator was admitted with, and one {@code roster_member_history} row per accepted attestation. The
+ * attestation timestamps are stored as UTC {@link LocalDateTime}, not through the JVM's default zone,
+ * because they are signed values: a zone change or a daylight-saving fold must not be able to move them and
+ * invalidate the signature.
  */
 @Repository
 public class RosterEntryRepository {
@@ -71,7 +70,7 @@ public class RosterEntryRepository {
     /**
      * What a governance epoch needs to see about an entry: its current status, any status change recorded
      * as intent but not yet ratified, the hash of the member's own signed entry, and the placement
-     * attributes the epoch takes over (ADM-001 L10).
+     * attributes the epoch takes over.
      *
      * @param pendingStatus  a requested status awaiting a governance epoch, or null
      * @param registryEpoch  the epoch that set the current status, or null when it predates governance
@@ -158,8 +157,8 @@ public class RosterEntryRepository {
 
     /**
      * Record a requested status without changing the served one. This is what "intent only" means under
-     * governance: the operational key can ask, and only an epoch can act, so the operational key alone can
-     * no longer take a member out of service.
+     * governance: the operational key can ask, and only an epoch can act, so the operational key alone
+     * cannot take a member out of service.
      */
     public void setPendingStatus(String id, RosterEntry.Status status) {
         jdbc.update("UPDATE roster_entry SET pending_status = ? WHERE id = ?", status.name(), id);
@@ -182,15 +181,12 @@ public class RosterEntryRepository {
     /**
      * Replace the member-controlled columns with the accepted, signed values and record the attestation.
      * Only the fields the member signs are written here; weight, acceptsNew, claims and status stay as the
-     * authority holds them (ADM-007).
+     * authority holds them.
      *
-     * <p>The write is conditional on the entry still carrying {@code expectedSequence}, the accepted
-     * sequence the caller verified this attestation against. A plain read-check-write does not serialise
-     * at READ COMMITTED: two concurrent attestations carrying different sequences can both pass the
-     * caller's check and both commit, leaving the lower sequence last and regressing the served entry. A
-     * mirror that already accepted the higher sequence reads that regression as tampering and, with the
-     * transition flag on, drops the homeserver from its routing view. Zero rows updated means the entry
-     * moved underneath the check, so the attestation is refused rather than applied over the winner.
+     * <p>The write is conditional on the entry still carrying {@code expectedSequence}. A plain
+     * read-check-write does not serialise at READ COMMITTED: two concurrent attestations could both commit
+     * and leave the lower sequence last. Zero rows updated means another attestation won, so this one is
+     * refused.
      *
      * @param expectedSequence the accepted sequence the attestation was verified against; 0 for an entry
      *                         that carries no member block yet

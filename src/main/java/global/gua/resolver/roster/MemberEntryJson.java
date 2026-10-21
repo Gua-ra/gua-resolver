@@ -14,10 +14,10 @@ import global.gua.resolver.domain.Homeserver;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
- * Strict transport parsing for member-signed objects (ADM-007). Spring's shared {@code ObjectMapper} ignores
- * unknown properties, so a signed sub-object is read through a dedicated {@link ObjectReader} that rejects
- * unknown fields, duplicate keys, trailing content, nulls for primitives and fractional integers. That keeps
- * a signature from covering fewer fields than a consumer sees. Invalid UTF-8 is already rejected by Jackson's
+ * Strict transport parsing for member-signed objects. Spring's shared {@code ObjectMapper} ignores unknown
+ * properties, so a signed sub-object is read through a dedicated {@link ObjectReader} that rejects unknown
+ * fields, duplicate keys, trailing content, nulls for primitives and fractional integers. That keeps a
+ * signature from covering fewer fields than a consumer sees. Invalid UTF-8 is already rejected by Jackson's
  * byte parser; strings that are not valid Unicode are rejected by the canonical encoder.
  */
 public final class MemberEntryJson {
@@ -35,7 +35,6 @@ public final class MemberEntryJson {
                 .with(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
     }
 
-    /** Parse raw request bytes as {@code type}, strictly. */
     public static <T> T read(ObjectMapper base, byte[] json, Class<T> type) {
         if (json == null || json.length == 0) {
             throw new MalformedMemberEntryException("empty body");

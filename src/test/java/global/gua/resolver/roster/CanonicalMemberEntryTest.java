@@ -110,7 +110,6 @@ class CanonicalMemberEntryTest {
             assertThat(m.notBefore().toEpochMilli()).isEqualTo(v.get("notBeforeEpochMs").asLong());
             assertThat(m.notAfter().toEpochMilli()).isEqualTo(v.get("notAfterEpochMs").asLong());
 
-            // Deterministic: re-signing the same bytes with the same key reproduces the published signature.
             Ed25519.KeyPairB64 kp = key(root, v.get("signingKeyRef").asText());
             MemberAttestation resigned = MemberEntrySigner.sign(hs, m.withSignatures(List.of()),
                     m.keyId(), kp.privateKeyB64());

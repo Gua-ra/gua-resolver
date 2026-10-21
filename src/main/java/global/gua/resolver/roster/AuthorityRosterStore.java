@@ -14,17 +14,15 @@ import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.roster.store.RosterEntryRepository;
 
 /**
- * Authority-mode {@link RosterStore}: the node that builds the published roster from the persisted admitted
- * entries, anchors it to the current transparency-log checkpoint, and threshold-signs it. It is the writer
- * of the roster, not its trust root: integrity comes from transitions that others can replay, which the log
- * does not yet support (ADM-001 L11, O12). Every rebuild re-signs with a fresh {@code issuedAt}, so the
- * served bytes are not stable across rebuilds, and if its own signature threshold is not met it logs an
- * error and still serves the under-signed roster. On a fresh database it seeds the single configured dev
- * homeserver (Phase 1) and logs an ADMIT event, so the audit trail exists from the very first entry; that
- * seeded entry proves nothing and stays unattested until its operator attests it (ADM-007).
+ * Authority-mode {@link RosterStore}: builds the published roster from the persisted admitted entries,
+ * anchors it to the current transparency-log checkpoint, and threshold-signs it. Every rebuild re-signs with
+ * a fresh {@code issuedAt}, so the served bytes are not stable across rebuilds, and if its own signature
+ * threshold is not met it logs an error and still serves the under-signed roster. On an empty database it
+ * seeds the single configured dev homeserver and logs an ADMIT event; that seeded entry stays unattested
+ * until its operator attests it.
  *
  * <p>The roster {@code version} tracks the transparency-log size: every membership change appends a log
- * event, so a stable log size means a stable roster, and the signed snapshot is cached + only rebuilt when
+ * event, so a stable log size means a stable roster, and the signed snapshot is cached and only rebuilt when
  * the log advances (or {@link #refresh()} is called). Member attestations add one more trigger: they carry a
  * validity window, so the cache is also rebuilt when the next window opens or expires, which under
  * {@code gua.resolver.roster.require-member-signature} changes the entry set without a new leaf.
@@ -86,11 +84,9 @@ public class AuthorityRosterStore implements RosterStore {
 
     private synchronized SignedRoster rebuild(SignedRoster.LogCheckpoint head) {
         Instant now = Instant.now();
-        // A PENDING entry is an admission the governance keys have not ratified, so it is not part of what
-        // this authority asserts: it stays out of the canonical bytes, out of the signature over them, and
-        // out of GET /roster. That is what makes "an admission under governance is never served" true of the
-        // published document and not only of placement, and it keeps PENDING off the wire, where an older
-        // mirror or client build would meet a status value it cannot parse.
+        // A PENDING entry is an admission the governance keys have not ratified: it stays out of the canonical
+        // bytes, out of the signature over them, and out of GET /roster. That also keeps PENDING off the wire,
+        // where an older mirror or client build would meet a status value it cannot parse.
         List<RosterEntry> admitted = entries.findAll().stream().filter(e -> !e.isPending()).toList();
         RosterVerifier.VerifiedView view = verifier.verifiedView(admitted, now, id -> null, Set.of());
         report(view);
@@ -98,8 +94,8 @@ public class AuthorityRosterStore implements RosterStore {
         long version = head.size();
         SignedRoster signed = signer.sign(version, now, view.entries(), head);
         if (!verifier.isVerified(signed)) {
-            // Authority is misconfigured (no/short of signing keys for the threshold). Don't serve an
-            // unverifiable roster silently; clients/mirrors would reject it anyway.
+            // The authority is misconfigured (no signing key, or short of the threshold). Logged loudly rather
+            // than served silently; clients and mirrors reject the roster anyway.
             log.error("Authority produced a roster below the {}-of-n signature threshold; "
                     + "check gua.resolver.authority.signing-private-key / trusted-keys / threshold",
                     verifier.threshold());
@@ -139,7 +135,7 @@ public class AuthorityRosterStore implements RosterStore {
                 unattested.size(), String.join(", ", unattested));
     }
 
-    /** Seed the configured dev homeserver into a fresh roster (Phase 1) and record the ADMIT event. */
+    /** Seed the configured dev homeserver into an empty roster and record the ADMIT event. */
     private void seedIfEmpty() {
         if (entries.count() > 0) {
             return;

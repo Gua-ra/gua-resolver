@@ -22,11 +22,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * The reference client verifier verifies signed artifacts and independently reproduces the resolver's
- * new-account decision, so a client never has to trust the resolver's answer.
- *
- * <p>The two trust roots are deliberately different keys here. Before Phase 2 this test passed the authority
- * keys as the policy keys, which the fallback made indistinguishable from having no policy keys at all; with
- * the fallback gone, a port that conflates them fails.
+ * new-account decision, so a client never has to trust the resolver's answer. The roster and policy trust
+ * roots are deliberately different keys here, so a port that conflates them fails.
  */
 class ResolverVerifierTest {
 
@@ -51,7 +48,7 @@ class ResolverVerifierTest {
         return keys("auth-a", AUTH);
     }
 
-    /** The governance key set: what a policy bundle is signed under after Phase 2. */
+    /** The governance key set: what a policy bundle is signed under. */
     private static List<ResolverProperties.TrustedKey> governanceKeys() {
         return keys("gov-a", GOVERNANCE);
     }
@@ -114,8 +111,8 @@ class ResolverVerifierTest {
 
     @Test
     void rejectsAPolicySignedOnlyByTheOperationalAuthorityKey() {
-        // The roster key is not a governance key. Before Phase 2 an empty policy key list fell back to the
-        // authority keys and this bundle verified; now it does not, which is the point of the change.
+        // The roster key is not a governance key: an empty policy key list does not fall back to the
+        // authority keys.
         RoutingPolicyBundle signedByAuthority = policySignedBy("auth-a", AUTH, true);
 
         assertThatThrownBy(() -> verifier().verifyPolicy(signedByAuthority))

@@ -10,7 +10,7 @@ package global.gua.resolver.placement.record;
  * {@code gua_resolver_placement_record_rejections_total}, so a rejection is countable and attributable
  * without reading logs. A refusal never carries anything the caller sent back to it.
  *
- * <p>The order below is the order the checks run in, and that order is load-bearing. Everything above
+ * <p>The order below is the order the checks run in, and that order matters. Everything above
  * {@link #BAD_SIGNATURE} is a property of the bytes the caller presented; nothing above it consults stored
  * state. Only a record that verifies under the roster key of the ACTIVE homeserver it names reaches the
  * storage rules, so the two answers that describe stored state ({@link #PLACEMENT_CONFLICT},
@@ -37,7 +37,7 @@ public enum PlacementRecordRejection {
     /** A record version this build does not decode. */
     UNSUPPORTED_VERSION("unsupported_version"),
 
-    /** A generation other than 1. Generation 1 is all this phase issues or accepts. */
+    /** A generation other than 1, the only one issued or accepted. */
     UNSUPPORTED_GENERATION("unsupported_generation"),
 
     /** The first raw accountId byte is not the accountId format version. */
@@ -55,7 +55,7 @@ public enum PlacementRecordRejection {
     /** The declared homeserver-id length is zero or above the maximum. */
     BAD_HOMESERVER_ID_LENGTH("bad_homeserver_id_length"),
 
-    /** The homeserver id is not printable ASCII, or carries the character the checkpoint leaves delimit on. */
+    /** The homeserver id is not printable ASCII, or carries the checkpoint leaf delimiter. */
     INVALID_HOMESERVER_ID("invalid_homeserver_id"),
 
     /** A timestamp is outside the range an epoch-millisecond instant can hold. */
@@ -88,7 +88,7 @@ public enum PlacementRecordRejection {
     /** issuedAt is ahead of this node's clock, beyond the accepted skew, so it cannot freeze a slot. */
     ISSUED_IN_THE_FUTURE("issued_in_the_future"),
 
-    /** A different homeserver already holds this accountId. One accountId has one home (ADM-001 L9). */
+    /** A different homeserver already holds this accountId. One accountId has one home. */
     PLACEMENT_CONFLICT("placement_conflict"),
 
     /** The holding homeserver re-issued with an issuedAt that is not newer than the stored one. */

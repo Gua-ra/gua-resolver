@@ -19,8 +19,8 @@ import global.gua.resolver.governance.Registry;
  *
  * <p>The content is stored as the JSON that was hashed, not as reconstructed fields, so the epoch can be
  * re-verified later against exactly what was signed. Timestamps are stored as UTC {@link LocalDateTime}
- * rather than through the JVM's default zone, for the same reason the member attestation columns are: they
- * are signed values, and a zone change must not be able to move them and invalidate a signature.
+ * rather than through the JVM's default zone: they are signed values, and a zone change must not be able to
+ * move them and invalidate a signature.
  */
 @Repository
 public class RegistryEpochRepository {

@@ -10,9 +10,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * The rule ADM-001 L8 turns on: a governance threshold counts distinct operators, never key ids. These tests
- * are the guard against someone "simplifying" this back into the per-key counting the roster verifier uses,
- * which would make a k-of-n satisfiable by one party holding k keys.
+ * A governance threshold counts distinct operators, never key ids. Per-key counting, which the roster
+ * verifier uses, would make a k-of-n satisfiable by one party holding k keys.
  */
 class GovernanceVerifierTest {
 
@@ -39,8 +38,6 @@ class GovernanceVerifierTest {
         GovernanceFixtures.Holder first = GovernanceFixtures.Holder.of("gov-1", "operator-a");
         GovernanceFixtures.Holder second = GovernanceFixtures.Holder.of("gov-2", "operator-a");
 
-        // A threshold that no set of operators could ever meet is refused when the key set is built, rather
-        // than accepted and then quietly unsatisfiable.
         assertThatThrownBy(() -> GovernanceKeySet.of("genesis", 2, List.of(first.key(), second.key())))
                 .isInstanceOf(GovernanceException.class)
                 .hasMessageContaining("exceeds the 1 distinct operator");

@@ -5,7 +5,7 @@ import java.util.List;
 import global.gua.resolver.crypto.CanonicalEncoder;
 
 /**
- * The {@code gua-governance-transition.v1} canonical bytes, encoded with {@code gua-lp.v1} (ADM-007).
+ * The {@code gua-governance-transition.v1} canonical bytes, encoded with {@code gua-lp.v1}.
  *
  * <p>Field order: schema tag; genesisId; index (int64); previousHash; issuedAt (int64 epoch ms);
  * newThreshold (int64); newKeys as a list sorted by keyId, each {keyId, alg, publicKey, operatorId}.

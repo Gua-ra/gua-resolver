@@ -11,7 +11,6 @@ import global.gua.resolver.domain.Homeserver;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** The member self-signature rules (ADM-007), each exercised against keys generated in memory. */
 class MemberEntryVerifierTest {
 
     private static final Ed25519.KeyPairB64 KEY = Ed25519.generate();
@@ -183,7 +182,7 @@ class MemberEntryVerifierTest {
 
         assertThat(verifier.verify(rotated, onlyNew, AT, prior).reason())
                 .contains("not signed by the previous key");
-        // Without prior state the same entry is self-consistent: continuity needs history (brief rule 5).
+        // Without prior state the same entry is self-consistent: continuity needs history.
         assertThat(verifier.verify(rotated, onlyNew, AT).valid()).isTrue();
 
         // A signature labelled k1 but made by some other key does not stand in for the previous key.

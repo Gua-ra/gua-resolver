@@ -11,19 +11,14 @@ import io.micrometer.core.instrument.MeterRegistry;
 
 /**
  * Two-layer token-bucket limiter for {@code POST /resolve}: one bucket per client key, held in a bounded
- * cache (max size + idle expiry), and one global ceiling for the whole process. Both are per pod: with more
- * than one replica each pod enforces its own copy, so the effective per-client rate is replicas times the
- * configured limit. The per-source limit shared across replicas is the rate-limit middleware on the resolver
- * ingress, defined in gua-deploy; this is the floor that holds even for a request that reaches a pod directly.
+ * cache (max size plus idle expiry), and one global ceiling for the whole process. Both are per pod, so with
+ * several replicas the effective per-client rate is replicas times the configured limit.
  *
- * <p>Order: the client bucket is charged first, so an abuser is the one that runs dry and gets identified;
- * the global bucket is checked second. A request refused by the global bucket has already spent one client
- * token, which is accepted: under a flood the honest client's next request is throttled per client too
- * rather than retried into the flood.
+ * <p>The client bucket is charged first, so an abuser is the one that runs dry; the global bucket is checked
+ * second. A request refused by the global bucket has already spent one client token.
  *
- * <p>Eviction is the bounded-memory trade-off: past {@code max-tracked-clients} active keys the least
- * recently used bucket is dropped and that client starts over with a full bucket. The global ceiling still
- * bounds the total rate whatever the key churn.
+ * <p>Past {@code max-tracked-clients} active keys the least recently used bucket is dropped and that client
+ * starts over with a full bucket. The global ceiling still bounds the total rate whatever the key churn.
  */
 public class ResolveRateLimiter {
 

@@ -37,10 +37,9 @@ import global.gua.resolver.policy.CanonicalRoutingPolicy;
 import global.gua.resolver.policy.RoutingPolicyBundle;
 
 /**
- * Offline governance tool (ADM-001 L10, S5). An operator runs it on a machine outside the cluster, with the
- * governance private key that never enters a resolver namespace, to create a federation genesis, sign a
- * membership epoch, sign a routing-policy bundle, or sign a governance key transition. See
- * docs/runbooks/governance-keys.md.
+ * Offline governance tool. An operator runs it on a machine outside the cluster, with the governance private
+ * key that never enters a resolver namespace, to create a federation genesis, sign a membership epoch, sign
+ * a routing-policy bundle, or sign a governance key transition. See docs/runbooks/governance-keys.md.
  *
  * <pre>
  *   keygen     --operator ID --key-id ID --private-key-out FILE

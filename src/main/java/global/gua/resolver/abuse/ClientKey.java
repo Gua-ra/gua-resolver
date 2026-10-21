@@ -13,23 +13,11 @@ import jakarta.servlet.http.HttpServletRequest;
  * Derives the per-client rate-limit key for {@code POST /resolve} from the request's remote address, and
  * from nothing else.
  *
- * <p>The forwarded chain the pod receives has two trusted hops, not one. The public edge terminates the
- * client connection and appends the client address to {@code X-Forwarded-For}; the in-cluster ingress trusts
- * forwarded headers from the private ranges, keeps that chain and appends the address it saw the connection
- * come from, which is an internal one (the service load balancer masquerades). At the pod the header reads
- * "{@code <caller-supplied entries>, <client>, <internal hop>}": the last entry is never the client, and
- * keying on it would fold every client into one bucket, while every entry in front of the client is
- * caller-controlled.
- *
- * <p>The service therefore pins {@code server.forward-headers-strategy=native}, which installs Tomcat's
- * {@code RemoteIpValve} ahead of every filter. The valve walks the chain from the right, skips each address
- * in the internal-proxies set (Spring Boot's default covers RFC 1918, 100.64/10, loopback, link-local and
- * IPv6 unique-local, which is every hop in this chain), sets the remote address to the first other address,
- * the one the edge appended, and rewrites the header to hold only the caller-supplied leftovers. This class
- * reads {@link HttpServletRequest#getRemoteAddr()} and deliberately never the header: after the valve, the
- * header is exactly the part an attacker chose. A request that reaches the pod without a chain (a
- * port-forward, an in-cluster caller) is keyed by its socket peer, which is what the remote address already
- * is.
+ * <p>{@code server.forward-headers-strategy=native} installs Tomcat's {@code RemoteIpValve} ahead of every
+ * filter. The valve skips the internal proxy hops, sets the remote address to the client address the public
+ * edge appended, and leaves only the caller-supplied entries in {@code X-Forwarded-For}. So this class reads
+ * {@link HttpServletRequest#getRemoteAddr()} and never the header. A request that arrives without a chain
+ * (a port-forward, an in-cluster caller) is keyed by its socket peer.
  *
  * <p>IPv6 clients are keyed by their /64: a single subscriber is routinely handed a whole /64, and keying on
  * the full address would hand an attacker 2^64 free buckets. IPv4-mapped IPv6 literals key by the embedded
@@ -54,10 +42,7 @@ public final class ClientKey {
         return normalize(candidate);
     }
 
-    /**
-     * Truncated SHA-256 of the key: a correlation handle for logs and alerts, so raw client addresses stay out
-     * of them. It is a handle, not anonymisation: the input space is small enough to brute-force.
-     */
+    /** Log correlation handle. Brute-forceable, so not anonymisation. */
     public static String logHandle(String key) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
@@ -70,10 +55,10 @@ public final class ClientKey {
     /** Strip a port suffix, then key IPv6 by /64 (or embedded IPv4); anything else is used verbatim. */
     static String normalize(String address) {
         String a = address;
-        if (a.startsWith("[")) {                                             // "[v6]" or "[v6]:port"
+        if (a.startsWith("[")) {  // "[v6]" or "[v6]:port"
             int end = a.indexOf(']');
             a = end > 0 ? a.substring(1, end) : a.substring(1);
-        } else if (a.indexOf(':') >= 0 && a.indexOf(':') == a.lastIndexOf(':')) {   // "v4:port"
+        } else if (a.indexOf(':') >= 0 && a.indexOf(':') == a.lastIndexOf(':')) {  // "v4:port"
             a = a.substring(0, a.indexOf(':'));
         }
         if (a.indexOf(':') >= 0) {
@@ -105,7 +90,7 @@ public final class ClientKey {
     private static int[] parseIpv6(String s) {
         int gap = s.indexOf("::");
         if (gap >= 0 && s.indexOf("::", gap + 1) >= 0) {
-            return null;                                                   // more than one "::"
+            return null;
         }
         int[] head = parseGroups(gap >= 0 ? s.substring(0, gap) : s);
         int[] tail = parseGroups(gap >= 0 ? s.substring(gap + 2) : "");

@@ -7,7 +7,7 @@ import global.gua.resolver.crypto.CanonicalEncoder;
 import global.gua.resolver.placement.ClaimPredicate;
 
 /**
- * The {@code gua-homeserver-registry-content.v1} canonical bytes, encoded with {@code gua-lp.v1} (ADM-007).
+ * The {@code gua-homeserver-registry-content.v1} canonical bytes, encoded with {@code gua-lp.v1}.
  * This is the object a {@code HomeserverRegistry} epoch commits to by hash.
  *
  * <p>Field order: schema tag; members as a list sorted by homeserverId, each {homeserverId, status,

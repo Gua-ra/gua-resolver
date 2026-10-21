@@ -21,14 +21,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Everything this phase adds is off unless a deployment turns it on, and off means absent: no bean, no
- * mapped path, no scheduled job, nothing read or written. This runs on the shipped defaults, which is what
- * both environments deploy, so the rollback for the whole feature is a flag rather than a release.
- *
- * <p>Off also means the security chain is the chain that shipped before this phase. The placement paths are
- * added to the public allowlist under the same condition that maps the controller, so with the flags off
- * they are not permitted, not merely unmapped, and they answer the deny-by-default 401 they have always
- * answered rather than a 404 that only this phase could produce.
+ * On the shipped defaults the placement feature is absent: no bean, no mapped path, no scheduled job,
+ * nothing read or written. The placement paths are not on the public allowlist either, so they answer the
+ * deny-by-default 401 rather than a 404.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -57,8 +52,7 @@ class PlacementOffByDefaultTest {
 
     @Test
     void noPlacementPathIsPermittedOrMapped() throws Exception {
-        // 401, not 404: with the flags off these paths fall to deny-by-default exactly as they did before
-        // this phase existed. A 404 would mean the allowlist entry outlived the controller it exists for.
+        // 401, not 404: with the flags off these paths fall to deny-by-default.
         mockMvc.perform(post("/placement/records").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"record\":\"AAAA\",\"signature\":\"AAAA\"}"))
                 .andExpect(status().isUnauthorized());

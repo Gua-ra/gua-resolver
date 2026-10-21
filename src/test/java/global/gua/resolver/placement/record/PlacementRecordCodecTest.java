@@ -18,9 +18,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 /**
- * The fixed-layout decode (ADM-008 encoding tables). Every malformed case is refused, each with its own
- * reason, and none is repaired. The decode is pure, so nothing here needs a clock, a roster or a database:
- * that separation is what lets the public ingest answer a structural failure without touching stored state.
+ * The fixed-layout decode. Every malformed case is refused, each with its own reason, and none is repaired.
+ * The decode is pure, so nothing here needs a clock, a roster or a database.
  */
 class PlacementRecordCodecTest {
 
@@ -42,7 +41,6 @@ class PlacementRecordCodecTest {
         assertThat(decoded.issuedAt()).isEqualTo(ISSUED);
         assertThat(decoded.notBefore()).isEqualTo(ISSUED);
         assertThat(decoded.notAfter()).isEqualTo(ISSUED.plus(PlacementFixtures.VALIDITY));
-        // The bytes are exactly 66 + the homeserver-id length, and re-encoding reproduces them.
         assertThat(canonical).hasSize(PlacementRecordCodec.FIXED_LENGTH + HOMESERVER.length());
         assertThat(PlacementRecordCodec.encode(decoded)).containsExactly(canonical);
     }
@@ -61,7 +59,7 @@ class PlacementRecordCodecTest {
     void aRecordCarriesNoIdentifier() {
         // The whole object is 66 + n bytes of magic, version, generation, an account hash, an origin byte, a
         // roster id and three timestamps. There is no field a phone, a phone hash or a Matrix user id could
-        // be carried in (ADM-001 L4, L15), and this is the test that fails if one is ever added.
+        // be carried in, and this is the test that fails if one is ever added.
         String accountId = PlacementFixtures.genesisAccountId("codec-fields");
         byte[] canonical = PlacementFixtures.canonical(accountId, HOMESERVER, ISSUED);
 
@@ -74,10 +72,6 @@ class PlacementRecordCodecTest {
 
     @Test
     void neitherTheStoredRowNorTheApiResponseCarriesAnIdentifier() {
-        // The decoded record is pinned above. These are the shapes it turns into afterwards, pinned for the
-        // same reason and against the same rule: no identifier of any kind in per-account federation state,
-        // held or served (ADM-001 L4, L15). The database columns are pinned in PlacementRecordIngestTest,
-        // where there is a schema to read.
         assertThat(StoredPlacementRecord.class.getRecordComponents())
                 .extracting(java.lang.reflect.RecordComponent::getName)
                 .containsExactly("accountId", "homeserverId", "generation", "origin", "issuedAt",
@@ -136,8 +130,7 @@ class PlacementRecordCodecTest {
         byte[] valid = PlacementFixtures.canonical(
                 PlacementFixtures.genesisAccountId("codec-lengths"), HOMESERVER, ISSUED);
 
-        // One byte short of what the length prefix declares: the body is truncated, not simply the wrong
-        // size, and the prefix is what says so.
+        // One byte short of what the length prefix declares.
         assertThat(reasonFor(Arrays.copyOf(valid, valid.length - 1)))
                 .isEqualTo(PlacementRecordRejection.DECLARED_LENGTH_MISMATCH);
         // A trailing byte nobody declared, which is the same defect from the other side.

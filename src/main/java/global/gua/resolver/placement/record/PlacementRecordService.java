@@ -21,7 +21,7 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 
 /**
- * The ingest and custody rules for generation-1 placement records (ADM-008 decision 7).
+ * The ingest and custody rules for placement records.
  *
  * <ul>
  *   <li>no row for this accountId: insert;</li>
@@ -31,13 +31,12 @@ import io.micrometer.core.instrument.MeterRegistry;
  *   <li>the same homeserver presents an older issuedAt: refused, the stored record stands;</li>
  *   <li>a different homeserver claims an accountId that already has a home: refused with a conflict, logged
  *       with both homeserver ids and counted. One accountId has one home, and a conflicting record is
- *       rejected, never migrated (ADM-001 L9).</li>
+ *       rejected, never migrated.</li>
  * </ul>
  *
  * <p>Deliberately not transactional. Every write is a single statement whose WHERE clause carries the
  * condition it depends on: the primary key for the insert, the holder and the issuedAt floor for the
- * replace. That gives the same guarantees without a transaction that a constraint violation would abort
- * mid-flight, which is what would happen on Postgres if the duplicate-key race were caught inside one.
+ * replace. On Postgres a transaction would be aborted by the duplicate-key violation it has to catch.
  *
  * <p>Nothing here is on the resolution path. The table this writes is never read by {@code /resolve}.
  */
@@ -47,7 +46,6 @@ public class PlacementRecordService {
 
     private static final Logger log = LoggerFactory.getLogger(PlacementRecordService.class);
 
-    /** What an accepted ingest did. */
     public enum Outcome { STORED, REPLACED, UNCHANGED }
 
     private final PlacementRecordVerifier verifier;
@@ -129,7 +127,7 @@ public class PlacementRecordService {
     private Outcome reconcile(StoredPlacementRecord held, StoredPlacementRecord incoming) {
         if (!held.homeserverId().equals(incoming.homeserverId())) {
             // accountIds are not identifiers, so the pair is safe to log and is what an operator needs to
-            // tell a duplicate account from a bad signer (ADM-008 shadow classification record_disagrees).
+            // tell a duplicate account from a bad signer.
             log.error("Placement conflict for accountId={}: held by homeserverId={}, claimed by "
                             + "homeserverId={}; keeping the held record",
                     held.accountId(), held.homeserverId(), incoming.homeserverId());

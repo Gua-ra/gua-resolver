@@ -26,7 +26,6 @@ public class PlacementRecordException extends RuntimeException {
         return rejection;
     }
 
-    /** The stable code: the API error code and the metric tag value. */
     public String reason() {
         return rejection.reason();
     }

@@ -39,7 +39,7 @@ class FileRoutingPolicySourceTest {
         FileRoutingPolicySource source = source(file, Clock.systemUTC());
         assertThat(source.current()).map(RoutingPolicyBundle::version).contains(5L);
 
-        // An attacker/stale mirror swaps in a validly-signed but OLDER policy; it must be rejected.
+        // An attacker or stale mirror swaps in a validly signed but older policy; it must be rejected.
         writePolicy(file, 4);
         source.refresh();
 
@@ -74,7 +74,7 @@ class FileRoutingPolicySourceTest {
         clock.set(base.plusSeconds(120));                                    // v5 expires
         assertThat(source.current()).isEmpty();
 
-        // An operator recovers by publishing a good, in-window v4; rollback protection must NOT block it,
+        // An operator recovers by publishing a good, in-window v4; rollback protection must not block it,
         // because the expired v5 no longer floors the version.
         writePolicy(file, 4, base.minusSeconds(60), base.plusSeconds(3600));
         source.refresh();

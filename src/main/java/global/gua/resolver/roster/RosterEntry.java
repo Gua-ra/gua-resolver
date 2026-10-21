@@ -13,17 +13,17 @@ import global.gua.resolver.placement.ClaimPredicate;
 /**
  * One admitted homeserver in the federation roster: the homeserver itself, the claim predicates it is
  * authorised to assert for placement, and the admission/lifecycle metadata. The authority validates that
- * no two entries' claim predicates overlap before admitting/updating.
+ * no two entries' claim predicates overlap before admitting or updating.
  *
- * <p>An entry also carries the member's own signature over the fields it controls ({@link MemberAttestation},
- * ADM-007) once that member has attested. It is null for an entry admitted before Phase 1 or through the
- * legacy path, which {@link MemberEntryVerifier} reports as unattested rather than invalid, and it is omitted
- * from the JSON when null, so a roster of unattested entries is byte-identical to what clients see today.
+ * <p>An entry also carries the member's own signature over the fields it controls ({@link MemberAttestation})
+ * once that member has attested. It is null for an unattested entry, which {@link MemberEntryVerifier}
+ * reports as unattested rather than invalid, and it is omitted from the JSON when null, so a roster of
+ * unattested entries keeps the earlier wire format byte for byte.
  *
  * @param homeserver  the advertised homeserver
  * @param claims      declarative placement claims this operator is authorised to assert (may be empty)
  * @param admittedAt  when the authority admitted this homeserver
- * @param status      ACTIVE | SUSPENDED | REVOKED
+ * @param status      lifecycle status, see {@link Status}
  * @param member      the member's self-signature over its own endpoint and key fields, or null
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -35,21 +35,19 @@ public record RosterEntry(
         @JsonInclude(JsonInclude.Include.NON_NULL) MemberAttestation member) {
 
     /**
-     * ACTIVE, SUSPENDED and REVOKED are governed statuses: with
-     * {@code gua.resolver.governance.required} on, only a governance-signed membership epoch sets one
-     * (ADM-001 L10). PENDING is not a governed status but an intent: an entry admitted while governance is
-     * required waits in PENDING, stays out of the signed roster entirely, and becomes ACTIVE only when an
-     * epoch says so. Keeping it out of the roster is also what keeps the name off the wire, so a mirror or
-     * a client built before this status existed never has to parse it.
+     * ACTIVE, SUSPENDED and REVOKED are governed statuses: with {@code gua.resolver.governance.required} on,
+     * only a governance-signed membership epoch sets one. PENDING is an intent: an entry admitted while
+     * governance is required waits in PENDING, stays out of the signed roster entirely, and becomes ACTIVE
+     * only when an epoch says so. Keeping it out of the roster also keeps the name off the wire, so a mirror
+     * or a client built before this status existed never has to parse it.
      */
     public enum Status { ACTIVE, SUSPENDED, REVOKED, PENDING }
 
-    /** An entry with no member attestation (seeded, legacy, or admitted before Phase 1). */
+    /** An entry with no member attestation (seeded or legacy). */
     public RosterEntry(Homeserver homeserver, List<ClaimPredicate> claims, Instant admittedAt, Status status) {
         this(homeserver, claims, admittedAt, status, null);
     }
 
-    /** The same entry carrying {@code attestation}. */
     public RosterEntry withMember(MemberAttestation attestation) {
         return new RosterEntry(homeserver, claims, admittedAt, status, attestation);
     }

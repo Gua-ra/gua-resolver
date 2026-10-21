@@ -20,7 +20,7 @@ import global.gua.resolver.crypto.MerkleTree;
  * (UPDATE-then-INSERT, no vendor-specific {@code ON CONFLICT}/{@code MERGE}).
  *
  * <p>Stores the directory rows in AUTHORITY mode. Mirrors {@link RemoteDirectoryStore query} it instead
- * of replicating it (§4).
+ * of replicating it.
  */
 @Component
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)

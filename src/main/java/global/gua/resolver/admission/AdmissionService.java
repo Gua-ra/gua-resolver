@@ -32,16 +32,15 @@ import global.gua.resolver.roster.TransparencyLog;
 import global.gua.resolver.roster.store.RosterEntryRepository;
 
 /**
- * The authority's admission control (§3, §5). Admitting a homeserver is the only way a roster entry comes
- * into being, and every admit/suspend/revoke is appended to the transparency log before the roster is
- * re-signed, so the membership history is tamper-evident and auditable. Admission enforces three gates:
- * proof of control over the registered signing key, a domain-ownership proof, and claim non-overlap.
+ * The authority's admission control. Admitting a homeserver is the only way a roster entry comes into being,
+ * and every admit, suspend and revoke is appended to the transparency log before the roster is re-signed.
+ * Admission enforces three checks: proof of control over the registered signing key, a domain-ownership
+ * proof, and claim non-overlap.
  *
- * <p>An applicant proves possession either by signing its own roster entry (a member block, ADM-007) or, on
- * the legacy path, by signing its bare server name. The key it registers is retained as the anchor of its
- * attestation chain: from then on only that key, or a key it signs a rotation to, can change the entry's
- * address, issuer, key or search policy through {@link #attest}. The authority keeps weight, acceptsNew,
- * claims and status.
+ * <p>An applicant proves possession either by signing its own roster entry (a member block) or, on the
+ * legacy path, by signing its bare server name. The key it registers anchors its attestation chain: from
+ * then on only that key, or a key it signs a rotation to, can change the entry's address, issuer, key or
+ * search policy through {@link #attest}. The authority keeps weight, acceptsNew, claims and status.
  */
 @Service
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)
@@ -77,7 +76,7 @@ public class AdmissionService {
     public SignedRoster admit(AdmissionRequest req) {
         boolean selfSigned = req.member() != null;
 
-        // Gate 1 — proof the applicant controls the signing key it is registering (membership credential).
+        // Proof that the applicant controls the signing key it is registering.
         if (!selfSigned) {
             if (props.getRoster().isRequireMemberSignature()) {
                 throw new AdmissionException("a member self-signature is required: "
@@ -91,19 +90,15 @@ public class AdmissionService {
                 throw new AdmissionException("key-possession proof invalid for " + req.serverName());
             }
         }
-        // Gate 2 — domain ownership.
+        // Domain ownership.
         if (!domainVerifier.verify(req.serverName(), req.domainProof())) {
             throw new AdmissionException("domain-ownership proof rejected for " + req.serverName());
         }
-        // Gate 3 — uniqueness + claim non-overlap against currently-admitted entries.
+        // Uniqueness and claim non-overlap against the entries already admitted.
         if (entries.existsByServerName(req.serverName())) {
             throw new AdmissionException(req.serverName() + " is already admitted");
         }
-        // Non-REVOKED, not only ACTIVE: a suspended member keeps the range it was admitted for while it is
-        // out of service, and under governance an admitted entry sits in PENDING holding that range until an
-        // epoch ratifies it. Checking ACTIVE entries alone would let two homeservers claiming the same
-        // accounts both be admitted while they wait, and the epoch that made them ACTIVE would make the
-        // overlap real, which is exactly what ClaimOverlap exists to prevent.
+        // Every non-REVOKED entry counts: a SUSPENDED or PENDING member still holds its claimed range.
         List<RosterEntry> holdingClaims = entries.findAll().stream()
                 .filter(e -> e.status() != RosterEntry.Status.REVOKED).toList();
         for (RosterEntry e : holdingClaims) {
@@ -138,9 +133,8 @@ public class AdmissionService {
                     + "this entry until its operator attests it (ADM-007)", req.serverName());
         }
 
-        // Under governance an admission is an intent, not an act: the entry waits in PENDING, stays out of
-        // the signed roster entirely, and is served only once a governance-signed membership epoch makes it
-        // ACTIVE (ADM-001 L10).
+        // Under governance an admission is an intent: the entry waits in PENDING, out of the signed roster,
+        // until a governance-signed membership epoch makes it ACTIVE.
         RosterEntry.Status initial = genesis.governanceRequired()
                 ? RosterEntry.Status.PENDING
                 : RosterEntry.Status.ACTIVE;
@@ -237,8 +231,8 @@ public class AdmissionService {
 
     /**
      * Search discoverability is part of the signed roster, so it is validated at the admission gate:
-     * GROUP visibility without any group would silently hide the homeserver from everyone, which is
-     * almost certainly a misconfiguration, and groups on non-GROUP visibility would be dead config.
+     * GROUP visibility without any group would silently hide the homeserver from everyone, and groups on
+     * non-GROUP visibility would be dead config.
      */
     private static Homeserver.SearchVisibility parseSearchVisibility(AdmissionRequest req) {
         String raw = req.searchVisibility();
@@ -271,10 +265,9 @@ public class AdmissionService {
     /**
      * Suspend (temporarily) or revoke (permanently) an admitted homeserver.
      *
-     * <p>With governance required this records intent and changes nothing that is served. That is the whole
-     * point: if recording the intent also took the member out of service, the operational key would still be
-     * able to deny a member service on its own, and the power ADM-001 L10 moves to the governance keys would
-     * not have moved. The change takes effect when a membership epoch carries it.
+     * <p>With governance required this records intent only and changes nothing that is served, so the
+     * operational key cannot take a member out of service on its own. The change takes effect when a
+     * membership epoch carries it.
      */
     @Transactional
     public SignedRoster setStatus(String id, RosterEntry.Status status) {
@@ -284,10 +277,8 @@ public class AdmissionService {
         }
         if (genesis.governanceRequired()) {
             entries.setPendingStatus(id, status);
-            // The request is logged even though nothing served changes. A suspend governance never ratifies
-            // would otherwise be recorded nowhere an auditor can see it, and who asked for a member to be
-            // taken out of service is the kind of thing this log exists to answer. The leaf commits to the
-            // request; the epoch that carries it commits to the change.
+            // Logged even though nothing served changes, so an auditor can see a request that governance never
+            // ratified. The leaf commits to the request; the epoch that carries it commits to the change.
             transparencyLog.append(TransparencyLog.STATUS_INTENT, id,
                     MerkleTree.sha256Hex(id + ":" + status + ":intent"));
             log.info("Recorded intent to set homeserver {} status -> {}. It stays as it is until a "

@@ -32,11 +32,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * The transition flag as a cutover (ADM-007). With
- * {@code gua.resolver.roster.require-member-signature=true} an ACTIVE entry that carries no valid member
- * self-signature leaves the signed roster, placement and existing-account resolution, and the legacy
- * admission path is refused. Attesting the entry puts it back, which is why the deploy order is attest first,
- * flip second.
+ * The transition flag as a cutover. With {@code gua.resolver.roster.require-member-signature=true} an ACTIVE
+ * entry that carries no valid member self-signature leaves the signed roster, placement and existing-account
+ * resolution, and the legacy admission path is refused. Attesting the entry puts it back, which is why the
+ * deploy order is attest first, flip second.
  */
 @SpringBootTest
 @AutoConfigureMockMvc

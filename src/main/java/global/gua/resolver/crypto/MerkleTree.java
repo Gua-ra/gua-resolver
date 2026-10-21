@@ -9,13 +9,12 @@ import java.util.List;
 
 /**
  * RFC 6962 (Certificate Transparency) Merkle tree hashing, the tamper-evidence primitive behind the
- * transparency log (§5). Domain-separated so leaf and interior hashes can't be confused:
+ * transparency log. Domain-separated so leaf and interior hashes cannot be confused:
  * {@code leafHash = SHA256(0x00 || data)}, {@code nodeHash = SHA256(0x01 || left || right)}.
  *
- * <p>Provides the Merkle Tree Hash (root) and the consistency proof + verification that lets a mirror
+ * <p>Provides the Merkle Tree Hash (root) and the consistency proof plus verification that lets a mirror
  * check that a new checkpoint is an append-only extension of one it saw earlier. That detects a history
- * rewritten relative to that earlier checkpoint; ruling out a split view between readers needs witnesses
- * and cross-channel comparison (ADM-001 L12).
+ * rewritten relative to that earlier checkpoint; it does not rule out a split view between readers.
  */
 public final class MerkleTree {
 
@@ -59,8 +58,8 @@ public final class MerkleTree {
     }
 
     /**
-     * Merkle Tree Hash (RFC 6962 §2.1) over {@code leafHashes} (each a hex leaf hash). Returns the root as
-     * hex. The empty tree hashes to SHA256 of the empty string.
+     * Merkle Tree Hash (RFC 6962 section 2.1) over {@code leafHashes} (each a hex leaf hash). Returns the root
+     * as hex. The empty tree hashes to SHA256 of the empty string.
      */
     public static String root(List<String> leafHashes) {
         if (leafHashes.isEmpty()) {
@@ -94,8 +93,8 @@ public final class MerkleTree {
     }
 
     /**
-     * RFC 6962 §2.1.2 consistency proof between a tree of {@code first} leaves and one of {@code second}
-     * leaves (first &le; second). Returns the list of hex node hashes the verifier needs.
+     * RFC 6962 section 2.1.2 consistency proof between a tree of {@code first} leaves and one of
+     * {@code second} leaves (first &le; second). Returns the list of hex node hashes the verifier needs.
      */
     public static List<String> consistencyProof(List<String> leafHashes, int first, int second) {
         if (first < 0 || second < first || second > leafHashes.size()) {
