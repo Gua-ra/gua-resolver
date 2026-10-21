@@ -45,16 +45,10 @@ public class RoutingClaimsVerifier {
         this.clock = clock;
         this.replayStore = replayStore;
 
-        // Trust root for routing-claims signatures, gated on gua.resolver.governance.required exactly like
-        // the policy trust root, so one flag moves both and neither moves on its own at deploy time.
-        //
-        // Flag on: keys scoped to the claims issuer, and nothing else. An empty list is no keys, and no keys
-        // rejects every envelope. ADM-001 L8 names this fallback explicitly and requires it to fail closed:
-        // "Any independence rule must fail closed. No fallback, ever."
-        //
-        // Flag off: the pre-cutover chain (claims, then policy, then authority). It widens WHO can mint
-        // institutional and OIDC claims all the way to the roster-signing key, which is the defect; it stays
-        // until the cutover because it is what an environment that has not run the key ceremony is serving on.
+        // Trust root for routing-claims signatures, gated on gua.resolver.governance.required like the policy
+        // trust root, so one flag moves both.
+        // Flag on: only claims.trusted-keys. An empty list rejects every envelope; there is no fallback.
+        // Flag off: the pre-cutover chain (claims keys, then policy keys, then authority keys).
         boolean governanceRequired = props.getGovernance().isRequired();
         String keySource = "claims";
         List<ResolverProperties.TrustedKey> keys = props.getClaims().getTrustedKeys();
@@ -188,7 +182,7 @@ public class RoutingClaimsVerifier {
         if (!replayProtectionEnabled) {
             return;
         }
-        // Retain the nonce until the end of the ACCEPTANCE window (expiresAt + skew), not just expiresAt, so
+        // Retain the nonce until the end of the acceptance window (expiresAt + skew), not just expiresAt, so
         // an envelope still accepted during the skew grace period cannot be replayed after cleanup would
         // otherwise have purged its row.
         Duration skew = maxClockSkew == null ? Duration.ZERO : maxClockSkew;

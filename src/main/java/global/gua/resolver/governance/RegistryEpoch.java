@@ -4,8 +4,8 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * One version of one registry, signed by the governance keys (ADM-001 L10). Each registry has its own epoch
- * chain under the common genesis, so a verifier rotation is not a membership epoch.
+ * One version of one registry, signed by the governance keys. Each registry has its own epoch chain under
+ * the common genesis, so a verifier rotation is not a membership epoch.
  *
  * <p>The chain is what makes an epoch hard to replace rather than merely signed: {@code genesisId} binds it
  * to one federation root, {@code epoch} must be exactly one past the accepted one, and

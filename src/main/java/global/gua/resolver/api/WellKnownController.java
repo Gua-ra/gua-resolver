@@ -16,13 +16,11 @@ import global.gua.resolver.governance.GovernanceTransition;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Publishes the pinned federation genesis and its governance key transitions (ADM-001 L10).
+ * Publishes the pinned federation genesis and its governance key transitions.
  *
- * <p>This endpoint is one of several channels, not the trust root. A genesis fetched here is signed by the
- * keys it enumerates, so it verifies against itself and proves nothing on its own; what makes it a root is an
- * operator or a client comparing its fingerprint against an independent channel, and first-party clients
- * pinning it at build time. Serving it here is what makes that comparison possible, and it is deliberately
- * cacheable and unauthenticated for the same reason.
+ * <p>This endpoint is one of several channels, not the trust root: a genesis fetched here is signed by the
+ * keys it enumerates, so it proves nothing until its fingerprint is compared against an independent channel.
+ * It is cacheable and unauthenticated so that comparison is possible.
  *
  * <p>It is served on the resolver origin rather than the apex, whose {@code /.well-known/*} paths belong to
  * a different service.

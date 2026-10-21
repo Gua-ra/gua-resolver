@@ -28,7 +28,7 @@ final class TokenBucket {
         this.lastRefillNanos = nowNanos;
     }
 
-    /** Take one token. Returns 0 when granted, otherwise the nanoseconds until the next token exists. */
+    /** Returns 0 when granted, otherwise the nanoseconds until the next token. */
     synchronized long tryAcquire(long nowNanos) {
         refill(nowNanos);
         if (tokens >= 1.0) {

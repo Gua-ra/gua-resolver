@@ -19,18 +19,10 @@ import global.gua.resolver.policy.RoutingPolicyVerifier;
 import global.gua.resolver.roster.RosterStore;
 
 /**
- * Authority admin surface for routing-policy governance: validation only.
- *
- * <p>This endpoint used to sign. Signing a policy bundle is a governance act, and ADM-001 L8 requires the
- * key roles to stop sharing, so the signing key left this process in Phase 2: an operator signs a bundle
- * offline with the governance key and ships the signed file. What is left here is the part that genuinely
- * needs the live roster, and cannot be done offline: checking that every target is an active member, that
- * each rule sits inside its delegation zone, and that the delegate signatures present will actually route.
- *
- * <p>Validating here and signing elsewhere means an operator can still see, before publishing, exactly what
- * the resolver will make of a bundle. {@code signaturesVerified} answers the question that matters most
- * after the cutover: whether the bundle verifies under the governance keys this resolver trusts, so a bundle
- * still signed by the retired operational key is caught before it is deployed rather than at startup.
+ * Authority admin surface for routing policy: validation only. Bundles are signed offline, never by this
+ * process. This endpoint does the part that needs the live roster: checking that every target is an active
+ * member, that each rule sits inside its delegation zone, and that the delegate signatures present will
+ * actually route.
  */
 @RestController
 @RequestMapping("/authority")

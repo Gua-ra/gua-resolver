@@ -21,21 +21,17 @@ import global.gua.resolver.roster.RosterVerifier;
 import global.gua.resolver.roster.SignedRoster;
 
 /**
- * Reference client-side verifier. Because resolver placement is a re-evaluation of the same rules over the
- * same inputs (verified roster, verified policy, context), a client does not have to trust a resolver's
+ * Reference client-side verifier. Resolver placement is a re-evaluation of the same rules over the same
+ * inputs (verified roster, verified policy, context), so a client does not have to trust a resolver's
  * {@code /resolve} answer: it fetches the signed roster and signed policy, verifies their authority (k-of-n)
  * and delegate signatures, and reproduces the decision locally. The answer is stable only for a fixed
- * transparency-log size: the weighted fallback reseeds on every log leaf, so it moves whenever a policy or
- * checkpoint leaf is appended even when membership did not change (ADM-001 L6). This class is the canonical
- * reference implementation of that algorithm (see docs/verification/gua-resolver-verification-protocol.md);
- * it reuses the server's own verification and placement code so the two can never diverge. Platform
- * verifiers (web / iOS / Android) port the same spec.
+ * transparency-log size, because the weighted fallback reseeds on every log leaf. This class reuses the
+ * server's own verification and placement code so the two can never diverge (see
+ * docs/verification/gua-resolver-verification-protocol.md); platform verifiers port the same spec.
  *
- * <p>New-account placement is client-reproducible in that sense. Existing-account (directory) results are
- * not verifiable per mapping today: no per-lookup inclusion proof is served, and there is no directory-HA
- * design that specifies one. What a client can check is that the returned homeserver id is currently ACTIVE
- * in the verified roster; the signed directory checkpoint commits the authority node to a directory state as
- * a whole and carries no proof for an individual mapping (ADM-001 L11, O1).
+ * <p>Existing-account (directory) results are not verifiable per mapping: no per-lookup inclusion proof is
+ * served. What a client can check is that the returned homeserver id is currently ACTIVE in the verified
+ * roster.
  */
 public final class ResolverVerifier {
 
@@ -46,19 +42,14 @@ public final class ResolverVerifier {
      * @param authorityKeys      published authority public keys (n) the client trusts, for the roster
      * @param authorityThreshold k of n required for a roster authority signature
      * @param policyKeys         the keys a policy bundle must verify under: the federation's governance keys
-     *                           once a genesis is pinned. There is no fallback to the authority keys any
-     *                           more, so an empty list verifies nothing rather than silently accepting
-     *                           bundles signed by the operational roster key (ADM-001 L8)
+     *                           once a genesis is pinned. There is no fallback to the authority keys, so an
+     *                           empty list verifies nothing rather than accepting bundles signed by the
+     *                           operational roster key
      * @param policyThreshold    k required for a policy signature
      */
     public ResolverVerifier(List<ResolverProperties.TrustedKey> authorityKeys, int authorityThreshold,
                             List<ResolverProperties.TrustedKey> policyKeys, int policyThreshold) {
-        // Two property sets on purpose. The server keeps a fallback from the policy trust root to the
-        // operational authority keys until the governance cutover, because a deployed bundle is signed with
-        // that key and removing the fallback under it stops the service starting. A client verifier has no
-        // such bundle to keep serving, so it gets the fail-closed root unconditionally: the policy verifier
-        // below is handed the policy keys and NO authority keys, so an empty policy key list verifies
-        // nothing instead of quietly accepting a bundle signed by the roster key (ADM-001 L8).
+        // The policy verifier gets no authority keys, so an empty policy key list verifies nothing.
         ResolverProperties rosterProps = new ResolverProperties();
         rosterProps.getAuthority().setThreshold(authorityThreshold);
         rosterProps.getAuthority().setTrustedKeys(authorityKeys == null ? List.of() : authorityKeys);
@@ -83,7 +74,7 @@ public final class ResolverVerifier {
     }
 
     /**
-     * Independently reproduce the homeserver a NEW account with this context must be placed on, from verified
+     * Independently reproduce the homeserver a new account with this context must be placed on, from verified
      * artifacts. Verifies the roster (always) and the policy (when present) first, then runs the exact
      * deterministic placement pipeline the server runs.
      */

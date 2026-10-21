@@ -13,8 +13,8 @@ import java.util.HexFormat;
 import java.util.List;
 
 /**
- * The {@code gua-lp.v1} length-prefixed canonical encoding (ADM-007). Every signed object built on it has
- * exactly one byte representation, so a signature or hash over those bytes means one thing (ADM-001 L4).
+ * The {@code gua-lp.v1} length-prefixed canonical encoding. Every signed object built on it has exactly one
+ * byte representation, so a signature or hash over those bytes means one thing.
  *
  * <ul>
  *   <li>byte string: u32 big-endian length, then the bytes;</li>
@@ -112,8 +112,7 @@ public final class CanonicalEncoder {
     /**
      * The {@code u32} element count that opens a list whose elements are composite rather than plain
      * strings. The caller then encodes each element's fields in order, so the framing is the same
-     * {@code list(T)} rule: a count, then the elements. Used by the governance objects, whose lists hold
-     * multi-field records (keys, registry members) instead of single values.
+     * {@code list(T)} rule: a count, then the elements.
      */
     public CanonicalEncoder listCount(int count) {
         writeU32(count);

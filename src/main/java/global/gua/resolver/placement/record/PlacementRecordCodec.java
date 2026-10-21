@@ -8,7 +8,7 @@ import java.time.Instant;
 import java.util.Arrays;
 
 /**
- * Strict fixed-layout codec for the generation-1 placement record (ADM-008 encoding tables).
+ * Strict fixed-layout codec for the placement record.
  *
  * <pre>
  * off     len   field
@@ -29,19 +29,19 @@ import java.util.Arrays;
  * ({@link PlacementRecordRejection}) and none is repaired.
  *
  * <p>The decode is pure: no clock, no database, no roster. Everything that depends on this node's state
- * lives in {@link PlacementRecordVerifier}, which is why a decode result can be trusted to say nothing about
- * what the resolver holds.
+ * lives in {@link PlacementRecordVerifier}.
  *
  * <p>{@link #encode} exists for tests and for offline tooling. The ingest path never re-encodes: it hashes,
- * verifies and stores the bytes it received, and {@link #decode} only re-derives the accountId string from
- * the raw bytes those same received bytes carry.
+ * verifies and stores the bytes it received.
  */
 public final class PlacementRecordCodec {
 
-    /** ASCII "GUAP". The magic is the signature domain, which is what keeps a record from being mistaken
+    /**
+     * ASCII "GUAP". The magic is the signature domain, which is what keeps a record from being mistaken
      * for any other object a roster membership key signs: a {@code gua-lp.v1} object opens with a u32 length
      * whose first byte is 0x00, and admission's bare possession proof signs a server name, which cannot
-     * begin with these four bytes followed by two control bytes. */
+     * begin with these four bytes followed by two control bytes.
+     */
     public static final byte[] MAGIC = {'G', 'U', 'A', 'P'};
 
     public static final int VERSION = 0x01;
@@ -89,9 +89,8 @@ public final class PlacementRecordCodec {
         if (origin == null) {
             throw new PlacementRecordException(PlacementRecordRejection.UNKNOWN_ORIGIN);
         }
-        // The origin byte is redundant with the class byte on purpose: an id whose class says bootstrap and
-        // whose record claims a genesis root is the audit marker ADM-008 decision 2 relies on, and a record
-        // that disagrees with itself is refused rather than resolved in either direction.
+        // The origin byte is redundant with the class byte on purpose: a record that disagrees with itself is
+        // refused rather than resolved in either direction.
         if (origin.code() != rootClass) {
             throw new PlacementRecordException(PlacementRecordRejection.ORIGIN_CLASS_MISMATCH);
         }

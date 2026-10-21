@@ -8,11 +8,10 @@ import global.gua.resolver.directory.DirectoryCheckpoint;
 import global.gua.resolver.directory.DirectoryCheckpointService;
 
 /**
- * Public, signed directory checkpoint (Merkle root + size, authority-signed, anchored in the transparency
+ * Public, signed directory checkpoint (Merkle root plus size, authority-signed, anchored in the transparency
  * log). Clients and mirrors read it to learn which directory state the authority node has committed to. It
- * is an assertion by the signer (ADM-001 L11): no per-entry inclusion proof is served, so an individual
- * mapping cannot be checked against it. The raw phone graph is not exposed here, though
- * {@code POST /resolve} answers existence for any number (ADM-001 L16). Authority mode only.
+ * is an assertion by the signer: no per-entry inclusion proof is served, so an individual mapping cannot be
+ * checked against it. Authority mode only.
  */
 @RestController
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)

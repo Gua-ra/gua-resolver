@@ -44,33 +44,15 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Nothing is served from placement records in this phase. This is the explicit non-goal, and it is a test so
- * that wiring the table into the resolution path fails the build rather than passing review.
+ * Nothing is served from placement records, and wiring the table into the resolution path fails the build.
  *
- * <p>It is checked three ways. Structurally, no class that makes up the resolution path mentions the
- * placement-record package or the table's name anywhere in its bytecode. Behaviourally, {@code /resolve}
- * answers byte for byte the same with records stored as without them, for an account the directory places
- * and for one it does not. And by configuration, there is no serve-from-records flag to turn on: the feature
- * has a custody flag and an ingest flag, and that is all.
+ * <p>Checked three ways: no class on the resolution path mentions the placement-record package or the table
+ * name anywhere in its bytecode; {@code /resolve} answers byte for byte the same with records stored as
+ * without them; and there is no serve-from-records flag. The class set is derived from the packages rather
+ * than listed, and the table name is checked as a string so a raw JDBC query is caught too.
  *
- * <p>The structural check is deliberately not a list of class names. The resolution path is larger than any
- * list somebody remembers to update: {@code DefaultResolutionService} holds a {@link PlacementEngine} and
- * every {@link global.gua.resolver.placement.PlacementRule} behind it, so a rule added tomorrow is on the
- * path the day it is written. The class set is derived from the packages instead, and the check reads
- * compiled bytecode rather than the reflective surface, so a reference made inside a method body is caught
- * as well as a field, and the table name is checked as a string so that a raw JDBC query against
- * {@code placement_record} is caught even though it names no type.
- *
- * <p>The deepest reason it cannot be served is in the record itself: it carries no identifier, so there is
- * nothing in it {@code /resolve} could key a phone lookup on. Phase 5's binding record is what would change
- * that, and it is not in this scope.
- *
- * <p>One limit of the behavioural check, worth stating so the phrase "byte-identical" is not read as
- * unconditional: it holds while no checkpoint leaf has been published. A {@code PLACEMENT_CHECKPOINT} leaf
- * moves the log size, the log size is the roster version, and {@code WeightedFallbackRule} seeds on it
- * (ADM-001 L6 [CODE]), so once checkpoints publish, new-account placement does move as a function of
- * placement content. That is documented and accepted in ADM-008's consequences. What this test pins is the
- * rule that keeps it bounded: ingest itself appends no leaf, so the answer cannot move per record.
+ * <p>The behavioural check holds while no checkpoint leaf has been published: a {@code PLACEMENT_CHECKPOINT}
+ * leaf moves the roster version, which {@code WeightedFallbackRule} seeds on. Ingest itself appends no leaf.
  */
 @SpringBootTest(properties = {
         "gua.resolver.placement.enabled=true",
@@ -122,7 +104,7 @@ class PlacementRecordsAreNotServedTest {
     void noClassOnTheResolutionPathMentionsPlacementRecordsAtAll() throws Exception {
         Map<String, byte[]> scanned = resolutionPathBytecode();
 
-        // Derived from the packages, not listed. These are the load-bearing members of that set; if the scan
+        // Derived from the packages, not listed. These are the essential members of that set; if the scan
         // ever stops finding them it is the scan that broke, not the property that got safer.
         assertThat(scanned.keySet()).contains(
                 DefaultResolutionService.class.getName(),
@@ -163,7 +145,6 @@ class PlacementRecordsAreNotServedTest {
             String newBefore = resolve(newPhone);
             long logBefore = transparencyLog.head().size();
 
-            // Records that say these accounts live on a homeserver the directory never mentions.
             for (String seed : new String[] {"not-served-a", "not-served-b"}) {
                 mockMvc.perform(post("/placement/records")
                                 .contentType(MediaType.APPLICATION_JSON)
@@ -174,7 +155,6 @@ class PlacementRecordsAreNotServedTest {
 
             assertThat(resolve(placedPhone)).isEqualTo(placedBefore);
             assertThat(resolve(newPhone)).isEqualTo(newBefore);
-            // Unchanged down to the roster version the answer is made against, because no leaf was appended.
             assertThat(transparencyLog.head().size()).isEqualTo(logBefore);
         } finally {
             directory.removePhone(placedPhone);

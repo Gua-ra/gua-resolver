@@ -28,8 +28,8 @@ permissions:
 
 env:
   IMAGE: ghcr.io/gua-ra/gua-resolver
-  # Put this label on a PR to roll that PR's build onto dev. Only people with write
-  # access can label, which is what keeps this from being an open door on a public repo.
+  # Put this label on a PR to roll that PR's build onto dev. Only people with write access can label,
+  # which is what keeps this from being an open door on a public repo.
   DEPLOY_LABEL: deploy:dev
 
 jobs:
@@ -50,8 +50,8 @@ jobs:
 
       - name: Decide whether this PR asked for a dev deploy
         id: gate
-        # Same-repo check: a PR from a fork has no access to the registry credentials, so
-        # labelling one would fail at the push step rather than deploy anything.
+        # Same-repo check: a PR from a fork has no access to the registry credentials, so labelling one
+        # would fail at the push step rather than deploy anything.
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ] \
              && [ "${{ github.event.pull_request.head.repo.full_name }}" = "${{ github.repository }}" ] \
@@ -61,12 +61,11 @@ jobs:
             echo "dev=false" >> "$GITHUB_OUTPUT"
           fi
 
-  # Image build + push to GHCR. Runs on push/dispatch, and for a same-repo PR labelled
-  # `deploy:dev` (an unlabelled PR stops at "it builds and the tests pass": no image, no
-  # deploy). ONLY in the origin repo: a fork/clone runs `test` above (so anyone can build +
-  # test), but the publish + deploy jobs skip cleanly in a fork. To run your own Gua
-  # resolver, change this guard to your repo, point IMAGE at your own GHCR namespace, and
-  # provide your own deploy target/runner.
+  # Image build and push to GHCR. Runs on push/dispatch, and for a same-repo PR labelled `deploy:dev`
+  # (an unlabelled PR stops at "it builds and the tests pass": no image, no deploy). Only in the origin
+  # repo: a fork runs `test` above, but the publish and deploy jobs skip cleanly there. To run your own
+  # resolver, change this guard to your repo, point IMAGE at your own GHCR namespace, and provide your
+  # own deploy target and runner.
   build:
     needs: test
     if: >-
@@ -94,8 +93,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE }}
-          # Deploys always use the immutable sha tag. `dev` stays pinned to main so it keeps
-          # meaning "what main builds"; a labelled PR gets a pr-N tag for humans to spot.
+          # Deploys always use the immutable sha tag. `dev` stays pinned to main so it keeps meaning
+          # "what main builds"; a labelled PR gets a pr-N tag for humans to spot.
           tags: |
             type=sha,format=long
             type=raw,value=dev,enable=${{ github.ref == 'refs/heads/main' }}
@@ -111,12 +110,10 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # AUTOMATIC on merge to main; also fires for a PR labelled `deploy:dev`, and manually
-  # dispatchable to roll a branch onto dev for QA.
-  # Runs on the dedicated in-cluster, least-privilege runner (gua-deploy k8s/cicd/
-  # gua-resolver-deploy-runner.yaml): a public repo must not get the privileged host `dev`
-  # runner. The runner's ServiceAccount can patch ONLY the gua-resolver Deployment, and it
-  # uses the in-cluster kube API (no sudo, no kubeconfig secret).
+  # Automatic on merge to main; also fires for a PR labelled `deploy:dev`, and manually dispatchable to
+  # roll a branch onto dev for QA. Runs on the dedicated in-cluster, least-privilege runner: a public repo
+  # must not get a privileged host runner. The runner's ServiceAccount can patch only the gua-resolver
+  # Deployment, and it uses the in-cluster kube API (no sudo, no kubeconfig secret).
   deploy-dev:
     needs: build
     if: >-
@@ -130,9 +127,8 @@ jobs:
       - name: Roll out ${{ needs.build.outputs.ref }} to dev
         run: |
           IMG="${{ needs.build.outputs.ref }}"
-          # Single strategic patch: ensure the ghcr-pull secret (self-heals bootstrap drift where the live
-          # deployment was created from a local image without it) AND set the new immutable sha-tagged image,
-          # so the pod can pull from GHCR. One template change = one rollout.
+          # Single strategic patch: ensure the ghcr-pull secret and set the new immutable sha-tagged image, so
+          # the pod can pull from GHCR. One template change = one rollout.
           kubectl -n gua patch deployment/gua-resolver --type=strategic \
             -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"ghcr-pull\"}],\"containers\":[{\"name\":\"gua-resolver\",\"image\":\"$IMG\",\"imagePullPolicy\":\"IfNotPresent\"}]}}}}"
           kubectl -n gua rollout status deployment/gua-resolver --timeout=180s
@@ -149,20 +145,9 @@ jobs:
               body: `Deployed to **dev** (ns \`gua\`): \`${{ needs.build.outputs.ref }}\`\n\nDev keeps running this build until something else is deployed over it. Merging to main returns dev to main's build.`
             })
 
-  # Staged on every merge to main and manually dispatchable; either way it pauses until a
-  # maintainer approves the `production` GitHub Environment.
-  #
-  # NOTE: this job targets ns gua-prod. It used to say `-n gua`, which meant an approved
-  # prod deploy silently re-rolled DEV and prod never received the build. That is why prod
-  # still runs the mutable `:dev` tag: it has never had a real deploy. The first successful
-  # run here pins prod to an immutable sha.
-  #
-  # It also waits for a runner labelled `gua-resolver-incluster-prod`, which does not exist
-  # yet (the only registered runner is labelled `gua-resolver-incluster`; stand a prod one
-  # up alongside the dev runner, mirroring gua-deploy k8s/cicd/gua-resolver-deploy-runner.yaml
-  # with a prod label + prod-cluster context). Until one is registered the job queues rather
-  # than deploying, which is the safe failure: it can no longer quietly hit the wrong
-  # namespace.
+  # Staged on every merge to main and manually dispatchable; either way it pauses until a maintainer
+  # approves the `production` GitHub Environment. It targets ns gua-prod and waits for a runner labelled
+  # `gua-resolver-incluster-prod`; until one is registered the job queues rather than deploying.
   deploy-prod:
     needs: build
     if: >-

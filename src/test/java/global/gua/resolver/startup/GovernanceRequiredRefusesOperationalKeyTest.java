@@ -20,13 +20,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * The fail-closed half of the cutover, pinned rather than left accidental: with governance required, a
- * bundle signed by the operational key does NOT verify, and the service does not come up.
- *
- * <p>The second test is the whole point of the gate. It boots the SAME bundle, signed by the SAME key, from
- * the same file, with {@code gua.resolver.governance.required} flipped to false, and it must start. So the
- * flag, and nothing else, is what decides whether the operational key is a policy trust root. That is the
- * property that was missing when this shipped unconditionally and took an environment down.
+ * With governance required, a bundle signed by the operational key does not verify, and the service does not
+ * come up. The second test boots the same bundle with {@code gua.resolver.governance.required} set to false,
+ * and it must start: the flag alone decides whether the operational key is a policy trust root.
  *
  * <p>These boot the application themselves instead of using {@code @SpringBootTest}, because a context that
  * must fail to start cannot be an injected one.
@@ -42,7 +38,6 @@ class GovernanceRequiredRefusesOperationalKeyTest {
     private static final Ed25519.KeyPairB64 OPERATIONAL = Ed25519.generate();
     private static final String OPERATIONAL_KEY_ID = "gua-authority-startup";
 
-    /** The bundle an environment is still serving before the re-signing step of the runbook has been done. */
     private static Path operationalKeySignedBundle() throws Exception {
         return StartupPolicyFixtures.write(
                 StartupPolicyFixtures.signedBy(StartupPolicyFixtures.ruleless(),
@@ -58,7 +53,7 @@ class GovernanceRequiredRefusesOperationalKeyTest {
 
     /**
      * Passed as command-line arguments, not {@code SpringApplicationBuilder.properties}, which lands in
-     * {@code defaultProperties} BELOW the test {@code application.yml}. That yml carries its own
+     * {@code defaultProperties} below the test {@code application.yml}. That yml carries its own
      * {@code authority.trusted-keys}, so a lower-precedence override is silently ignored and the operational
      * key minted here would never be the one in force.
      */
@@ -99,7 +94,6 @@ class GovernanceRequiredRefusesOperationalKeyTest {
         });
 
         assertThat(thrown).isNotNull();
-        // Both halves of the real crash-loop message, so this pins the behaviour rather than just "it threw".
         assertThat(StartupPolicyFixtures.causeMessages(thrown))
                 .anySatisfy(m -> assertThat(m).contains("no valid routing policy loaded"))
                 .anySatisfy(m -> assertThat(m).contains("has 0 valid signatures, need 1"));
@@ -107,7 +101,6 @@ class GovernanceRequiredRefusesOperationalKeyTest {
 
     @Test
     void theSameBundleStartsWhenGovernanceIsNotRequired() throws Exception {
-        // Same bundle, same operational key, same genesis on disk. Only the flag differs.
         String[] arguments = arguments(genesisFile(), operationalKeySignedBundle(),
                 "refuse-operational-ungoverned", false);
 

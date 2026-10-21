@@ -4,8 +4,8 @@ import global.gua.resolver.crypto.CanonicalEncoder;
 import global.gua.resolver.domain.Homeserver;
 
 /**
- * The {@code gua-member-entry.v1} canonical bytes: what a homeserver's member key signs about itself
- * (ADM-007). Encoded with {@code gua-lp.v1}, never with {@link CanonicalRoster}'s delimiter form (ADM-001 L4).
+ * The {@code gua-member-entry.v1} canonical bytes: what a homeserver's member key signs about itself.
+ * Encoded with {@code gua-lp.v1}, never with {@link CanonicalRoster}'s delimiter form.
  *
  * <p>Field order: schema tag; homeserverId; serverName; baseUrl; masIssuer; alg; signingKey (base64 X.509
  * SubjectPublicKeyInfo, exactly as stored); keyId; sequence (int64); notBefore (int64 epoch ms); notAfter

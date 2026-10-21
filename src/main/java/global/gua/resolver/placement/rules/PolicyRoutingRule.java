@@ -39,7 +39,7 @@ public class PolicyRoutingRule implements PlacementRule {
     private final RoutingPolicyVerifier verifier;
     private final Clock clock = Clock.systemUTC();
 
-    // Cache the delegate-verified zone set per (policyId, version) so we don't re-verify signatures per call.
+    // Cache the delegate-verified zone set per (policyId, version) so signatures are not re-verified per call.
     // A single immutable holder published through one volatile write, so concurrent request threads always
     // read a self-consistent (key, zones) snapshot (never a key from one policy with zones from another).
     private record VerifiedZoneCache(String key, Set<String> zones) {}
@@ -72,7 +72,7 @@ public class PolicyRoutingRule implements PlacementRule {
 
         return (policy.rules() == null ? java.util.List.<RoutingPolicyRule>of() : policy.rules()).stream()
                 .filter(RoutingPolicyRule::isEnabled)
-                // a rule only applies when its zone is delegate-signed AND currently within its validity window
+                // a rule only applies when its zone is delegate-signed and currently within its validity window
                 .filter(rule -> delegateVerified.contains(rule.delegatedZoneId()))
                 .filter(rule -> zoneActive(zones.get(rule.delegatedZoneId()), now))
                 .sorted(Comparator.comparingInt(RoutingPolicyRule::priority)

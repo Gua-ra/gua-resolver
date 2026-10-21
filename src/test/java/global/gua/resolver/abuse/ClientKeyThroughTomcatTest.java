@@ -22,12 +22,11 @@ import org.springframework.test.annotation.DirtiesContext;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The per-client key against a real Tomcat listener, which is where the forwarded chain is resolved: MockMvc
- * never runs {@code RemoteIpValve}, so only a request through a socket sees the header the way the pod does.
- * The socket peer here is the loopback address, which is in the internal-proxies set exactly like the
- * in-cluster hops, so a chain sent here is processed as the pod processes it. Clients are RFC 5737
- * documentation addresses and internal hops are RFC 1918 addresses; none of them is real infrastructure.
- * Runs in its own context (small budget, long period) and dirties it so bucket state never leaks.
+ * The per-client key against a real Tomcat listener: MockMvc never runs {@code RemoteIpValve}, so only a
+ * request through a socket sees the header the way the pod does. The socket peer here is the loopback
+ * address, which is in the internal-proxies set like the in-cluster hops. Clients are RFC 5737 documentation
+ * addresses and internal hops are RFC 1918 addresses. Runs in its own context (small budget, long period)
+ * and dirties it so bucket state never leaks.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "gua.resolver.abuse.client-limit-for-period=2",
@@ -50,14 +49,13 @@ class ClientKeyThroughTomcatTest {
     @Autowired
     private Environment environment;
 
-    /** POST /resolve over a real socket, with the given X-Forwarded-For chain (none when null). */
     private ResponseEntity<String> resolve(String forwardedFor) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         if (forwardedFor != null) {
             headers.set("X-Forwarded-For", forwardedFor);
         }
-        // The IPv4 literal pins the socket peer to 127.0.0.1 so the no-chain case keys deterministically.
+        // The IPv4 literal pins the socket peer to 127.0.0.1.
         return http.postForEntity("http://127.0.0.1:" + port + "/resolve", new HttpEntity<>(BODY, headers),
                 String.class);
     }
@@ -68,9 +66,8 @@ class ClientKeyThroughTomcatTest {
 
     @Test
     void theStrategyIsPinnedToNativeInTheRunningContextAndInEveryProfileOnTheClasspath() throws IOException {
-        // The key derivation is only correct with the valve installed, and the valve is only installed
-        // under the native strategy. Boot deduces native on its own when it detects Kubernetes; the pin
-        // makes it explicit, so neither profile may drop it.
+        // The key derivation is only correct with the valve installed, and the valve is only installed under
+        // the native strategy, so neither profile may drop the pin.
         assertThat(environment.getProperty("server.forward-headers-strategy")).isEqualTo("native");
 
         Resource[] profiles = new PathMatchingResourcePatternResolver().getResources("classpath*:application.yml");
@@ -89,7 +86,7 @@ class ClientKeyThroughTomcatTest {
     @Test
     void theValveKeysOnTheAddressTheEdgeAppendedNotOnTheInternalHop() {
         // "<client>, <internal hop>" is what the pod sees for an honest request. Two clients behind the same
-        // internal hop must not share a bucket; the removed last-entry rule would have folded them.
+        // internal hop must not share a bucket.
         assertThat(status("203.0.113.9, " + INTERNAL_HOP)).isEqualTo(HttpStatus.OK);
         assertThat(status("203.0.113.9, " + INTERNAL_HOP)).isEqualTo(HttpStatus.OK);
         assertThat(status("203.0.113.9, " + INTERNAL_HOP)).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
@@ -107,8 +104,7 @@ class ClientKeyThroughTomcatTest {
         assertThat(status("192.0.2.3, 203.0.113.20, " + INTERNAL_HOP)).isEqualTo(HttpStatus.OK);
         assertThat(status("203.0.113.20, " + INTERNAL_HOP)).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
 
-        // ...and naming a victim there must not touch the victim's bucket: the removed header rule keyed on
-        // exactly this leftover, which is what made targeted draining possible.
+        // ...and naming a victim there must not touch the victim's bucket.
         assertThat(status("203.0.113.21, 203.0.113.22, " + INTERNAL_HOP)).isEqualTo(HttpStatus.OK);
         assertThat(status("203.0.113.21, 203.0.113.22, " + INTERNAL_HOP)).isEqualTo(HttpStatus.OK);
         assertThat(status("203.0.113.21, 203.0.113.22, " + INTERNAL_HOP)).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);

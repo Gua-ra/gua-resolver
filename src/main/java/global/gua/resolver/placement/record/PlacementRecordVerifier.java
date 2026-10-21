@@ -18,18 +18,14 @@ import global.gua.resolver.roster.RosterStore;
 
 /**
  * Makes a presented placement record self-authenticating, which is the whole reason the ingest endpoint can
- * be public (ADM-008 decision 7).
+ * be public.
  *
  * <p>The record names a homeserver. That homeserver must be an ACTIVE entry of the current verified roster,
  * and the signature must verify under that entry's roster signing key, the key whose possession admission
- * proved. A signature by any other member is rejected, so the bound on what a caller who can reach this
- * endpoint can do is: present records, each of which either verifies under an active roster key or is
- * refused. No part of this check consults the placement table, so a caller learns nothing about stored state
- * by failing it.
+ * proved. A signature by any other member is rejected. No part of this check consults the placement table,
+ * so a caller learns nothing about stored state by failing it.
  *
- * <p>The validity window is checked against this node's own clock with the configured claims skew. ADM-008
- * records that as admission rather than a replayable transition (ADM-001 L11): these windows move to
- * sequenced time when placements enter the state root.
+ * <p>The validity window is checked against this node's own clock with the configured claims skew.
  */
 @Component
 @ConditionalOnExpression(PlacementFeature.ENABLED)
@@ -94,14 +90,10 @@ public class PlacementRecordVerifier {
      * arrived.
      *
      * <p>A plain decoder accepts padding and ignores the trailing bits of the last character, so one byte
-     * string has several spellings. That matters here for two reasons. The signature covers the bytes, not
-     * the spelling, so every spelling of a signed record verifies, and a publisher retrying after a timeout
+     * string has several spellings. The signature covers the bytes, not the spelling, so a publisher retrying
      * with a differently spelled but byte-identical record would otherwise be read as a re-issue and refused
-     * as stale. And the accountId already has exactly one canonical spelling (ADM-008 decision 2); the
-     * transport that carries it should not quietly admit eight of its own.
-     *
-     * <p>The check is the same shape as the accountId's: decode, re-encode, and require the result to equal
-     * the input.
+     * as stale. The check is the same shape as the accountId's: decode, re-encode, and require the result to
+     * equal the input.
      */
     private static byte[] decodeCanonicalBase64Url(String value) {
         if (value.indexOf('=') >= 0) {

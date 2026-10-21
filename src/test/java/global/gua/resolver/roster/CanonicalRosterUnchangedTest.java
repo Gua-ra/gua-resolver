@@ -10,11 +10,7 @@ import global.gua.resolver.domain.Homeserver;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * gua-roster.v1 must stay byte-identical across the member-attestation change: mirrors and clients that
- * verify the authority signature today keep verifying (ADM-007). The member block is additive JSON and is
- * outside CanonicalRoster, so attaching one must not move a single byte.
- */
+/** gua-roster.v1 bytes must not change: deployed mirrors and clients verify signatures over them. */
 class CanonicalRosterUnchangedTest {
 
     private static final Instant ADMITTED = Instant.ofEpochMilli(1_789_084_800_000L);
@@ -42,10 +38,6 @@ class CanonicalRosterUnchangedTest {
         assertThat(with).isEqualTo(without);
     }
 
-    /**
-     * The exact bytes main produced for this roster, pinned as a literal so any future edit to
-     * CanonicalRoster, RosterEntry or Homeserver that moves them fails here rather than in a client.
-     */
     @Test
     void theCanonicalRosterFormIsPinnedByteForByte() {
         RosterEntry entry = new RosterEntry(homeserver(), List.of(), ADMITTED, RosterEntry.Status.ACTIVE)

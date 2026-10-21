@@ -23,12 +23,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Everything Phase 2 adds is off unless it is configured. With no genesis, the resolver behaves exactly as it
- * did before: an admission is ACTIVE immediately, a status change takes effect immediately, and the
- * well-known endpoint says there is nothing to serve rather than serving something misleading.
- *
- * <p>This is the deployed default in both environments, so it is worth a test of its own: the cutover is a
- * flag flip, and the flag being off has to mean the old behaviour exactly.
+ * With no genesis configured, governance is off: an admission is ACTIVE immediately, a status change takes
+ * effect immediately, and the well-known endpoint says there is nothing to serve. This is the shipped
+ * default.
  */
 @SpringBootTest
 @AutoConfigureMockMvc

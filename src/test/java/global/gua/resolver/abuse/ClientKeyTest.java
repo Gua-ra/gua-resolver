@@ -7,9 +7,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Key derivation from the remote address. Every address below is from the documentation ranges reserved by
- * RFC 5737 (192.0.2/24, 198.51.100/24, 203.0.113/24) and RFC 3849 (2001:db8::/32); none of them routes
- * anywhere. The forwarded chain is resolved by Tomcat's RemoteIpValve before this class runs;
- * {@link ClientKeyThroughTomcatTest} covers that against a real listener.
+ * RFC 5737 (192.0.2/24, 198.51.100/24, 203.0.113/24) and RFC 3849 (2001:db8::/32). The forwarded chain is
+ * resolved by Tomcat's RemoteIpValve before this class runs; {@link ClientKeyThroughTomcatTest} covers that.
  */
 class ClientKeyTest {
 
@@ -25,9 +24,6 @@ class ClientKeyTest {
 
     @Test
     void forwardedHeadersAreNeverReadEvenWhenPresent() {
-        // Regression for the removed header rule. After the valve, whatever is left in X-Forwarded-For is the
-        // caller-supplied part of the chain, so an address named there must neither pick a different bucket
-        // nor reach a victim's.
         MockHttpServletRequest chain = new MockHttpServletRequest();
         chain.setRemoteAddr("198.51.100.7");
         chain.addHeader("X-Forwarded-For", "192.0.2.1, 203.0.113.9");
@@ -67,8 +63,7 @@ class ClientKeyTest {
 
     @Test
     void ipv4MappedIpv6KeysByTheEmbeddedIpv4() {
-        // A dual-stack listener reports IPv4 peers this way; folding them all into 0:0:0:0::/64 would put
-        // every IPv4 client in one bucket.
+        // A dual-stack listener reports IPv4 peers in this form.
         assertThat(ClientKey.normalize("::ffff:203.0.113.9")).isEqualTo("203.0.113.9");
         assertThat(ClientKey.normalize("::ffff:cb00:7109")).isEqualTo("203.0.113.9");
         assertThat(ClientKey.normalize("0:0:0:0:0:ffff:203.0.113.9")).isEqualTo("203.0.113.9");

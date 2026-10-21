@@ -15,11 +15,11 @@ import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 
 /**
- * Thin, dependency-free wrapper over the JDK-native Ed25519 provider (JDK 15+). Used for both directory-
- * authority roster signatures (§5) and homeserver membership credentials (the roster-anchored signing key).
+ * Thin, dependency-free wrapper over the JDK-native Ed25519 provider. Used for both authority roster
+ * signatures and homeserver membership credentials (the roster-anchored signing key).
  *
  * <p>Keys are exchanged as base64: public keys as X.509 {@code SubjectPublicKeyInfo}, private keys as
- * PKCS#8. {@link #generate()} is for tests/bootstrap key generation.
+ * PKCS#8. {@link #generate()} is for tests and bootstrap key generation.
  */
 public final class Ed25519 {
 

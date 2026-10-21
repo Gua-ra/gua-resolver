@@ -7,11 +7,7 @@ import java.util.List;
  *
  * <p>It is a complete statement, not a delta. An epoch that omits a member is an epoch in which that member
  * has no governed status, so the set is always read as a whole and a member cannot be dropped silently
- * between epochs.
- *
- * <p>The epoch object carries only this content's hash. Transporting the content beside the epoch and
- * re-deriving the hash is what lets the resolver check that the signed hash is the membership it actually
- * built, rather than a hash it has no way to interpret.
+ * between epochs. The epoch object carries only this content's hash.
  */
 public record HomeserverRegistryContent(String schema, List<RegistryMember> members) {
 

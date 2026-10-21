@@ -24,7 +24,7 @@ public record RoutingPolicyBundle(
 
     public record FallbackStrategy(String type, boolean enabled) {}
 
-    /** Authority (governance) signature over the whole canonical bundle: threshold k-of-n. */
+    /** Authority signature over the whole canonical bundle: threshold k-of-n. */
     public record PolicySignature(String authorityKeyId, String signatureB64) {}
 
     /**

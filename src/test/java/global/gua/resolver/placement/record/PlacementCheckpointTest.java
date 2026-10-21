@@ -20,12 +20,8 @@ import global.gua.resolver.roster.JdbcTransparencyLog;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The placement state is anchored by a periodic checkpoint, never by a leaf per record.
- *
- * <p>The roster version is the transparency-log size and new-account fallback placement seeds on it
- * (ADM-001 L6 [CODE]), so one leaf per ingest would move placement decisions on every record. The checkpoint
- * appends at most one leaf per interval, and only when the Merkle root over the records actually changed,
- * which is the same idempotent-per-root rule the directory checkpoint follows.
+ * The placement state is anchored by a periodic checkpoint, never by a leaf per record: at most one leaf per
+ * interval, and only when the Merkle root over the records changed.
  */
 @SpringBootTest(properties = "gua.resolver.placement.enabled=true")
 @DirtiesContext
@@ -48,8 +44,6 @@ class PlacementCheckpointTest {
     void signsAndLogsOneLeafPerChangedRootAndNoneForAnEmptyState() {
         int loggedBefore = transparencyLog.eventsOfType(PlacementCheckpointService.EVENT_TYPE).size();
 
-        // An empty placement state commits to nothing, so anchoring it would move fallback placement for
-        // nothing.
         PlacementCheckpoint.Signed empty = service.publish();
         assertThat(empty.checkpoint().size()).isZero();
         assertThat(transparencyLog.eventsOfType(PlacementCheckpointService.EVENT_TYPE))

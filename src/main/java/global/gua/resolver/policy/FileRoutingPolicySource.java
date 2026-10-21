@@ -21,8 +21,8 @@ import global.gua.resolver.roster.RosterStore;
 
 /**
  * File-backed policy source. On refresh failure it keeps serving the last verified bundle, if any, but never
- * serves a bundle that is outside its own signed validity window (an expired/not-yet-active policy degrades
- * to no policy, so placement falls back deterministically rather than applying stale governance data), and
+ * serves a bundle that is outside its own signed validity window (an expired or not-yet-active policy
+ * degrades to no policy, so placement falls back deterministically rather than applying stale data), and
  * never accepts a lower version than the one already loaded (rollback protection).
  */
 @Component
@@ -101,9 +101,9 @@ public class FileRoutingPolicySource implements RoutingPolicySource {
             validator.validate(loaded, rosterStore.current());
             verifier.requireVerified(loaded);
             // Rollback protection is only meaningful against a policy we are actually still serving. If the
-            // current bundle has expired (withinValidityWindow=false), it no longer floors the version, so an
-            // operator can recover by re-adopting a signed, in-window lower/equal version instead of being
-            // deadlocked until a brand-new higher version is minted.
+            // current bundle has expired, it no longer floors the version, so an operator can recover by
+            // re-adopting a signed, in-window lower or equal version instead of being deadlocked until a
+            // brand-new higher version is minted.
             RoutingPolicyBundle existing = current;
             if (existing != null && withinValidityWindow(existing) && loaded.version() < existing.version()) {
                 throw new IllegalStateException("routing policy rollback rejected: loaded v" + loaded.version()

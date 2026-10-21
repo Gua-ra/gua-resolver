@@ -17,8 +17,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * The H2 test schema is mirrored by hand from the Flyway migrations, which is the likeliest source of a
- * test-versus-production divergence (brief risk 10). This applies the real migrations to one database, the
- * hand-written mirror to another, and compares the resulting columns.
+ * test-versus-production divergence. This applies the real migrations to one database, the hand-written
+ * mirror to another, and compares the resulting columns.
  */
 class SchemaParityTest {
 

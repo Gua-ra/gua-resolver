@@ -10,13 +10,9 @@ import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.crypto.Ed25519;
 
 /**
- * Policy-bundle signing, for offline tooling and tests.
- *
- * <p>It used to fall back to the authority signing key when no policy key was configured, which is how the
- * resolver came to sign governance with its operational key. That fallback is gone (ADM-001 L8): a bundle is
- * signed by the governance key, outside this process, through the governance tool. A deployed resolver
- * normally configures no policy signing key at all, so {@link #canSign()} is false and this bean signs
- * nothing.
+ * Policy-bundle signing, for offline tooling and tests. There is no fallback to the authority signing key:
+ * a bundle is signed outside this process, through the governance tool. A deployed resolver normally
+ * configures no policy signing key at all, so {@link #canSign()} is false and this bean signs nothing.
  */
 @Component
 public class RoutingPolicySigner {

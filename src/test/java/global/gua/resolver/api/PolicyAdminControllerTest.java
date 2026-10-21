@@ -21,14 +21,6 @@ import global.gua.resolver.roster.SignedRoster;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * The admin policy surface validates and no longer signs (Phase 2, ADM-001 L8): bundles are signed offline
- * with the governance key. What is checked here is that an operator can still learn, before publishing,
- * everything the resolver will make of a bundle, including whether its signatures verify under the keys this
- * resolver trusts. That last answer is the one that keeps a bundle still signed by the retired operational
- * key from being discovered at startup, when the policy source refuses to load and the service will not come
- * up.
- */
 class PolicyAdminControllerTest {
 
     private static final Ed25519.KeyPairB64 GOVERNANCE = Ed25519.generate();
@@ -111,8 +103,6 @@ class PolicyAdminControllerTest {
 
     @Test
     void aBundleStillSignedByTheRetiredOperationalKeyIsReportedUnverified() {
-        // This is the Phase 2 deploy hazard caught early: the bundle is structurally fine and its zone is
-        // delegate-signed, but its signature is worthless to this resolver, and a restart would fail.
         RoutingPolicyBundle delegateSigned = RoutingPolicySigner.signZone(
                 unsignedBundle("dev2"), "zone-test", "delegate-dev2", DELEGATE.privateKeyB64());
         RoutingPolicyBundle staleSigned = signedBy(delegateSigned, "authority-a", RETIRED_OPERATIONAL);
@@ -136,7 +126,7 @@ class PolicyAdminControllerTest {
 
     @Test
     void refusesToValidateABundleTargetingAHomeserverOutsideTheRoster() {
-        // dev2 is NOT in the roster: validation rejects it regardless of who signed it.
+        // dev2 is not in the roster: validation rejects it regardless of who signed it.
         assertThatThrownBy(() -> controller(roster(DEV), props())
                 .validate(signedBy(unsignedBundle("dev2"), "governance-a", GOVERNANCE)))
                 .isInstanceOf(RoutingPolicyValidator.RoutingPolicyValidationException.class)
@@ -145,8 +135,7 @@ class PolicyAdminControllerTest {
 
     @Test
     void withNoPolicyTrustRootConfiguredEveryBundleIsUnverified() {
-        // No genesis, no policy.trusted-keys and no authority.trusted-keys: there is no key to verify under,
-        // so nothing verifies whatever the flag says.
+        // No genesis, no policy.trusted-keys and no authority.trusted-keys: there is no key to verify under.
         ResolverProperties noKeys = new ResolverProperties();
         noKeys.getPolicy().setRequireSignatures(true);
         noKeys.getPolicy().setSignatureThreshold(1);
@@ -157,11 +146,6 @@ class PolicyAdminControllerTest {
 
     @Test
     void beforeTheCutoverTheSameOperationalKeyBundleIsReportedVerified() {
-        // The honest answer for an environment that has not flipped gua.resolver.governance.required: with no
-        // policy.trusted-keys, the operational key set is still the policy trust root, so this bundle both
-        // verifies here and loads at startup. This is the state the deploy hazard above is measured against,
-        // and validate must describe the resolver the operator is actually running, not the one they are
-        // heading towards.
         ResolverProperties preCutover = new ResolverProperties();
         preCutover.getPolicy().setRequireSignatures(true);
         preCutover.getPolicy().setSignatureThreshold(1);

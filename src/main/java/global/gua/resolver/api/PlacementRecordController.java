@@ -32,22 +32,15 @@ import io.github.resilience4j.ratelimiter.RequestNotPermitted;
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 
 /**
- * Ingest and read surface for generation-1 placement records (migration plan Phase 4).
+ * Ingest and read surface for placement records.
  *
  * <p>{@code POST /placement/records} is public and self-authenticating: the record names a homeserver, and
  * it is accepted only if it verifies under the roster signing key of that homeserver while that homeserver
- * is ACTIVE. There is no caller identity, no token and no admin role, because there is nothing an
- * unauthenticated caller can do with it. Every presented record either verifies under an active roster key
- * or is refused, the storage rules are reached only after that signature check, so the endpoint is not an
- * oracle for what is already stored, and it is rate limited on top.
+ * is ACTIVE. The storage rules are reached only after the signature check, so the endpoint is not an oracle
+ * for what is already stored, and it is rate limited.
  *
- * <p>The reads serve what the shadow reconciler compares against: one record by accountId, and a paged
- * listing per homeserver. An accountId is a 256-bit hash and carries no identifier, so neither read exposes
- * a phone, a phone hash or a Matrix user id. This is still new public state and ADM-008 gates production
- * publishing on the ADM-001 L16 review.
- *
- * <p>Nothing here is on the resolution path. No routing answer reads a placement record in this phase, and
- * there is deliberately no flag that would make one.
+ * <p>The reads serve one record by accountId and a paged listing per homeserver. An accountId is a 256-bit
+ * hash and carries no identifier, so neither read exposes a phone, a phone hash or a Matrix user id.
  */
 @RestController
 @RequestMapping("/placement/records")

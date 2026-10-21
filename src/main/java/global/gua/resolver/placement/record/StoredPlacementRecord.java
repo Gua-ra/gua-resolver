@@ -44,11 +44,10 @@ public record StoredPlacementRecord(
     /**
      * Whether two rows carry the same signed object, compared as bytes rather than as transport spellings.
      *
-     * <p>This is what makes a retry idempotent for a well-behaved signer. The record field has one canonical
-     * spelling and the verifier refuses every other, but the detached signature is plain base64, whose
-     * padding a decoder treats as optional, so one signature can still arrive spelled two ways. Comparing
-     * the strings would read that as a re-issue and refuse the retry as stale, which is the opposite of the
-     * rule ADM-008 decision 7 states: the same homeserver re-presenting the same record changes nothing.
+     * <p>This is what makes a retry idempotent. The record field has one canonical spelling and the verifier
+     * refuses every other, but the detached signature is plain base64, whose padding a decoder treats as
+     * optional, so one signature can still arrive spelled two ways. Comparing the strings would read that as
+     * a re-issue and refuse the retry as stale.
      */
     public boolean sameSignedBytesAs(StoredPlacementRecord other) {
         byte[] mine = recordBytes();
@@ -63,7 +62,6 @@ public record StoredPlacementRecord(
         return Arrays.equals(mine, theirs) && Arrays.equals(mySignature, theirSignature);
     }
 
-    /** The row a verified record becomes. */
     public static StoredPlacementRecord of(PlacementRecordVerifier.Verified verified, Instant receivedAt) {
         PlacementRecord record = verified.record();
         return new StoredPlacementRecord(record.accountId(), record.homeserverId(), record.generation(),

@@ -18,14 +18,12 @@ import global.gua.resolver.roster.RosterEntry;
 
 /**
  * Regenerates the published governance golden vectors (docs/specs/gua-governance-v1-vectors.json), which are
- * the byte-for-byte contract an iOS or Android port checks itself against before it is trusted.
+ * the byte-for-byte contract an iOS or Android port checks itself against.
  *
- * <p>Run it with {@code ./gradlew governanceVectors}. It is a generator, not a test: the test that matters is
- * {@code CanonicalGovernanceTest}, which reproduces every value in the committed file. Regenerating it is
- * therefore a deliberate act, and a diff in that file is a change to a published wire contract.
- *
- * <p>The keys are the RFC 8032 section 7.1 test constants. They are published, so the signatures below are
- * reproducible by anyone, and nothing real may ever be signed with them.
+ * <p>Run it with {@code ./gradlew governanceVectors}. It is a generator, not a test: {@code
+ * CanonicalGovernanceTest} reproduces every value in the committed file, and a diff in that file is a change
+ * to a published wire contract. The keys are the RFC 8032 section 7.1 test constants, so nothing real may
+ * ever be signed with them.
  */
 public final class GovernanceVectorsGenerator {
 
@@ -78,7 +76,7 @@ public final class GovernanceVectorsGenerator {
         vectors.add(genesisVector("one operator, one key, threshold 1: what a deployment ships", single,
                 Map.of("gov-1", TEST1)));
 
-        // Two keys, ONE operator: two valid signatures, and the threshold still counts one.
+        // Two keys, one operator: two valid signatures, and the threshold still counts one.
         FederationGenesis shared = new FederationGenesis(FederationGenesis.SCHEMA, "gua-vectors-shared",
                 Instant.parse("2026-09-01T00:00:00Z"), FederationGenesis.HASH_SUITE, 1,
                 List.of(new GovernanceKey("gov-1", GovernanceKey.ALG, TEST1.publicKeyB64(), "operator-a"),
