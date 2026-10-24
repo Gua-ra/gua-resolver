@@ -67,3 +67,8 @@ Each key has a `GUA_RESOLVER_*` environment override, listed in `src/main/resour
 - [Where the former decision records went](docs/decisions/README.md)
 
 Stack: Java 21, Spring Boot 3.5.6.
+
+## Reporting problems
+
+- Bugs and requests: [GitHub issues](https://github.com/Gua-ra/gua-resolver/issues).
+- Security problems: [SECURITY.md](SECURITY.md), never a public issue.
