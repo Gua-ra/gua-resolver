@@ -67,8 +67,10 @@ These are the only inputs the verifier trusts. Everything else is fetched and ve
    sorted claim predicates, and the `logCheckpoint` (merkle root + size). Each entry includes the
    homeserver's user-search discoverability policy: `searchVisibility` (`GLOBAL` default, `SERVER`, or
    `GROUP`) followed by its sorted `searchGroups` joined by `|` (empty when none), placed between
-   `signingKey` and `admittedAt`. Verifiers reading rosters that predate these fields treat them as
-   `GLOBAL` with no groups.
+   `signingKey` and `admittedAt`. A resolver image from before 2026-08-14 serves entries without either field, and
+   its signature covers bytes without them (`CanonicalRoster.legacyBytes`). When no entry carries
+   `searchVisibility`, encode that older form; when every entry carries it, encode the two fields; refuse a
+   roster that mixes the two. Production served the older form on 2026-10-27.
 2. Count valid `authoritySignatures`: each must be Ed25519-valid over the canonical bytes under a trusted
    authority key, one vote per key. Require at least `k`.
 3. Verify transparency-log consistency: the `logCheckpoint` must be an append-only extension of the last one
@@ -183,8 +185,69 @@ A public client can carry such an envelope but cannot create one.
   not enforced, to be absent from values, and collapses null and empty. Port it byte for byte to verify what
   is served today; do not reuse it as the encoding for any new signed object.
 
+Golden vectors for the roster bytes in both forms, authority signatures and thresholds, the transparency-log
+leaves, roots and consistency proofs, routing-policy bundles with their delegate signatures, reproduced
+placements and the check of a `/resolve` answer against the roster are in
+`docs/specs/gua-client-verification-v1-vectors.json`. `./gradlew clientVerificationVectors` regenerates the
+file and `ClientVerificationVectorsTest` reproduces every value from the production code. A port runs the same
+file before its results are trusted.
+
 ## Failure handling
 
 Any failed signature, threshold shortfall, broken consistency proof, expired artifact, out-of-scope rule, or
 reproduced-decision mismatch means the resolver's answer is not trustworthy: the client must fall back to a
 different mirror or refuse to proceed, never silently accept the unverified answer.
+
+## Report-only verification in the apps
+
+The apps run this protocol in report-only mode first. The outcome never changes what the app connects to; it is
+logged and counted so that enforcement can be turned on once legitimate traffic shows no failures.
+
+Each check has three outcomes, and they are never collapsed:
+
+| Outcome | Meaning |
+| --- | --- |
+| `valid` | Every input was present and the check passed. |
+| `invalid` | An input was present and the check failed: a bad signature, a threshold shortfall, a tampered field, a rollback, a reproduced decision that differs. |
+| `unverifiable` | A check could not run: no trust root configured for this environment, a log endpoint not served (mirror mode), the policy keys unset, a response the client cannot parse, a mixed roster form. |
+
+`unverifiable` is reported as its own count. It is never treated as `valid`, and in enforcement it is a
+failure of the resolver answer, not a pass.
+
+The checks, in order, with what each one needs:
+
+1. **Roster signature.** Needs the authority public keys and threshold pinned per environment in the app
+   build or its configuration. Form is chosen by the presence of `searchVisibility` as described in step 1.
+2. **Returned homeserver is in the roster.** The `/resolve` answer's `serverName`, `baseUrl` and `masIssuer`
+   must equal an `ACTIVE` entry's fields exactly (`ResolverVerifier.locate`). A known server name with a
+   different base URL or issuer is the shape of a redirect to another host and is `invalid`. This check
+   needs nothing beyond check 1 and is the first one to enforce.
+3. **Member self-signature** on the returned entry, when a `member` block is present (section 1a). An absent
+   block is reported as `unattested`, not as a failure, while `gua.resolver.roster.require-member-signature`
+   is off in the deployment.
+4. **Log consistency.** The app pins the last `logCheckpoint` it accepted per environment. A served checkpoint
+   with the same size must have the same root; a larger one must come with a consistency proof from
+   `GET /roster/log/consistency` that verifies; a smaller one is a rollback. When the proof endpoint is not
+   served, the outcome is `unverifiable` and the pin does not move.
+5. **Policy**, when `GET /policy/routing` answers: section 2 under the policy keys pinned for the environment,
+   with no fallback to the authority keys, plus the `POLICY_PUBLISH` leaf check against `GET /roster/log`.
+6. **Reproduced placement.** For an answer the client can attribute to placement, section 3 over the verified
+   artifacts and the context the client sent. Without the decision trace the client cannot tell a directory
+   hit from a placement, so a mismatch is `indeterminate` rather than `invalid`, and is repeated once with
+   fresh artifacts before it is counted.
+
+What is reported: the outcome of each check, the roster `version` and form, whether a policy was present, and
+the environment. Never the phone number, the homeserver, the resolver answer or the request body.
+
+Compatibility boundaries while report-only:
+
+- Both roster forms are accepted. The older form is dropped from the apps once no deployment serves it.
+- A client pointed at a mirror reports checks 4 and 5 as `unverifiable`; it does not skip them silently.
+- Policy keys are listed explicitly per environment even where they are the same key material as the
+  authority keys. An environment with no policy keys reports check 5 as `unverifiable`.
+- A rotation of an authority key needs an app release that lists both keys. Until the apps verify the
+  governance chain, there is no in-band way to learn a new key, and none is attempted.
+
+Enforcement is turned on per check, starting with check 2, after report-only traffic for that check has shown
+no `invalid` outcome from legitimate deployments for a period the operator sets, and it is turned off again by
+configuration without a release.
