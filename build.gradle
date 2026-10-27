@@ -88,3 +88,12 @@ tasks.register('govTool', JavaExec) {
     mainClass = 'global.gua.resolver.tools.GovTool'
     standardInput = System.in
 }
+
+// Regenerate the client-verification golden vectors. A diff in that file changes the contract the web,
+// iOS and Android verifiers test against (ClientVerificationVectorsTest reproduces every value).
+tasks.register('clientVerificationVectors', JavaExec) {
+    group = 'documentation'
+    description = 'Regenerate docs/specs/gua-client-verification-v1-vectors.json'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'global.gua.resolver.verify.ClientVerificationVectorsGenerator'
+}
