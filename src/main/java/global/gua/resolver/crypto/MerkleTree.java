@@ -100,6 +100,9 @@ public final class MerkleTree {
         if (first < 0 || second < first || second > leafHashes.size()) {
             throw new IllegalArgumentException("invalid consistency proof range");
         }
+        if (first == 0 || first == second) {
+            return List.of();   // RFC 6962 defines the proof for 0 < first < second; both edges verify with no nodes
+        }
         List<byte[]> nodes = new ArrayList<>(second);
         for (int i = 0; i < second; i++) {
             nodes.add(HEX.parseHex(leafHashes.get(i)));
