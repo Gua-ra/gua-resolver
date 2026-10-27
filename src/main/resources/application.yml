@@ -115,6 +115,10 @@ gua:
       signing-private-key: ${GUA_RESOLVER_POLICY_PRIVATE_KEY:}
       refresh-interval: ${GUA_RESOLVER_POLICY_REFRESH_INTERVAL:PT1M}
       trusted-keys: []
+    # Browser origins (scheme and host) allowed to read the public endpoints and call POST /resolve, comma
+    # separated. Empty keeps every cross-origin browser request refused.
+    cors:
+      allowed-origins: ${GUA_RESOLVER_CORS_ALLOWED_ORIGINS:}
     authority:
       threshold: ${GUA_RESOLVER_AUTHORITY_THRESHOLD:1}
       signing-key-id: ${GUA_RESOLVER_AUTHORITY_KEY_ID:}

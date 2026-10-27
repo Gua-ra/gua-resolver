@@ -13,6 +13,9 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 /**
  * Explicit public allowlist plus deny by default.
@@ -50,6 +53,7 @@ public class SecurityConfig {
             publicPaths.add("/placement/records/**");
         }
         http
+                .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(publicPaths.toArray(String[]::new)).permitAll()
@@ -57,6 +61,34 @@ public class SecurityConfig {
                         .anyRequest().denyAll())
                 .httpBasic(Customizer.withDefaults());
         return http.build();
+    }
+
+    /**
+     * Cross-origin access for the web app: the public read endpoints and {@code POST /resolve}, only from
+     * {@code gua.resolver.cors.allowed-origins}. With no origin configured nothing is registered and a browser
+     * preflight keeps being refused. {@code /authority/**} and the placement ingest are never exposed.
+     */
+    @Bean
+    CorsConfigurationSource corsConfigurationSource(ResolverProperties props) {
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        List<String> origins = props.getCors().getAllowedOrigins().stream()
+                .filter(o -> o != null && !o.isBlank()).map(String::trim).toList();
+        if (origins.isEmpty()) {
+            return source;
+        }
+        CorsConfiguration read = new CorsConfiguration();
+        read.setAllowedOrigins(origins);
+        read.setAllowedMethods(List.of("GET"));
+        read.setAllowedHeaders(List.of("Accept", "Content-Type"));
+        read.setMaxAge(3600L);
+        for (String path : List.of("/roster", "/roster/log", "/roster/log/consistency", "/policy/routing",
+                "/policy/log", "/directory/checkpoint", "/.well-known/gua-federation")) {
+            source.registerCorsConfiguration(path, read);
+        }
+        CorsConfiguration resolve = new CorsConfiguration(read);
+        resolve.setAllowedMethods(List.of("POST"));
+        source.registerCorsConfiguration("/resolve", resolve);
+        return source;
     }
 
     /**
