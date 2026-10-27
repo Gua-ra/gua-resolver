@@ -7,6 +7,7 @@ import java.util.Optional;
 import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.placement.PlacementContext;
+import global.gua.resolver.placement.PlacementDecision;
 import global.gua.resolver.placement.PlacementEngine;
 import global.gua.resolver.placement.PlacementRule;
 import global.gua.resolver.placement.rules.ClaimRule;
@@ -16,6 +17,7 @@ import global.gua.resolver.policy.CompositeRoutingPolicyProvider;
 import global.gua.resolver.policy.RoutingPolicyBundle;
 import global.gua.resolver.policy.RoutingPolicySource;
 import global.gua.resolver.policy.RoutingPolicyVerifier;
+import global.gua.resolver.roster.RosterEntry;
 import global.gua.resolver.roster.RosterStore;
 import global.gua.resolver.roster.RosterVerifier;
 import global.gua.resolver.roster.SignedRoster;
@@ -80,6 +82,12 @@ public final class ResolverVerifier {
      */
     public Homeserver reproduceNewAccountPlacement(PlacementContext context, SignedRoster roster,
                                                    RoutingPolicyBundle policy) {
+        return reproduceNewAccountDecision(context, roster, policy).homeserver();
+    }
+
+    /** The same reproduction, with the rule and policy coordinates that produced it. */
+    public PlacementDecision reproduceNewAccountDecision(PlacementContext context, SignedRoster roster,
+                                                         RoutingPolicyBundle policy) {
         rosterVerifier.requireVerified(roster);
         RosterStore store = fixedRoster(roster);
         List<PlacementRule> rules = new ArrayList<>();
@@ -90,7 +98,7 @@ public final class ResolverVerifier {
         }
         rules.add(new ClaimRule(store));
         rules.add(new WeightedFallbackRule(store));
-        return new PlacementEngine(rules).decide(context);
+        return new PlacementEngine(rules).decideWithTrace(context);
     }
 
     /**
@@ -100,6 +108,39 @@ public final class ResolverVerifier {
     public boolean verifyRegisterDecision(String returnedHomeserverId, PlacementContext context,
                                           SignedRoster roster, RoutingPolicyBundle policy) {
         return reproduceNewAccountPlacement(context, roster, policy).id().equals(returnedHomeserverId);
+    }
+
+    /** How a {@code /resolve} answer relates to the verified roster. */
+    public enum HomeserverMatch {
+        /** An ACTIVE entry has exactly this server name, base URL and auth issuer. */
+        ACTIVE_MATCH,
+        /** The entry with this server name is not ACTIVE. */
+        INACTIVE,
+        /** An entry with this server name exists, but its base URL or auth issuer differs. */
+        FIELD_MISMATCH,
+        /** No entry has this server name. */
+        NOT_IN_ROSTER
+    }
+
+    /**
+     * Locate a returned homeserver in a verified roster. Only an {@link HomeserverMatch#ACTIVE_MATCH} may be
+     * connected to: a different base URL or issuer under a known server name is the shape of a redirect to
+     * an attacker's host.
+     */
+    public static HomeserverMatch locate(String serverName, String baseUrl, String masIssuer, SignedRoster roster) {
+        HomeserverMatch best = HomeserverMatch.NOT_IN_ROSTER;
+        for (RosterEntry entry : roster.entries()) {
+            Homeserver hs = entry.homeserver();
+            if (!hs.serverName().equals(serverName)) {
+                continue;
+            }
+            boolean sameEndpoint = hs.baseUrl().equals(baseUrl) && java.util.Objects.equals(hs.masIssuer(), masIssuer);
+            if (sameEndpoint && entry.isActive()) {
+                return HomeserverMatch.ACTIVE_MATCH;
+            }
+            best = sameEndpoint ? HomeserverMatch.INACTIVE : HomeserverMatch.FIELD_MISMATCH;
+        }
+        return best;
     }
 
     private static RosterStore fixedRoster(SignedRoster roster) {
