@@ -4,7 +4,7 @@ import java.time.Instant;
 
 /**
  * A signed window that opens at {@code notBefore} and closes at {@code expiresAt}. A missing bound is open, and so
- * is one at the epoch, because the canonical policy bytes write both as 0.
+ * is one in the epoch's first millisecond, because the canonical policy bytes write both as 0.
  */
 final class ValidityWindow {
 
@@ -15,6 +15,6 @@ final class ValidityWindow {
     }
 
     private static boolean isOpen(Instant bound) {
-        return bound == null || bound.equals(Instant.EPOCH);
+        return bound == null || bound.toEpochMilli() == 0;
     }
 }

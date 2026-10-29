@@ -754,6 +754,8 @@ public final class ClientVerificationVectorsGenerator {
         window(out, "inside both bounds", notBefore, expiresAt, inside);
         window(out, "no expiresAt", notBefore, null, Instant.parse("2040-01-01T00:00:00Z"));
         window(out, "an expiresAt at the epoch, which is signed as no expiresAt", notBefore, Instant.EPOCH, inside);
+        window(out, "an expiresAt in the epoch's first millisecond, which is also signed as no expiresAt", notBefore,
+                Instant.parse("1970-01-01T00:00:00.000001Z"), inside);
         window(out, "a notBefore at the epoch, which is signed as no notBefore", Instant.EPOCH, expiresAt, inside);
         window(out, "no bounds at all", null, null, inside);
         window(out, "after expiresAt", notBefore, expiresAt, Instant.parse("2031-01-01T00:00:00Z"));
