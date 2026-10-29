@@ -68,6 +68,12 @@ Each key has a `GUA_RESOLVER_*` environment override, listed in `src/main/resour
 
 Stack: Java 21, Spring Boot 3.5.6.
 
+## License
+
+gua-resolver is licensed under the [GNU Affero General Public License v3.0 only](LICENSE) (`AGPL-3.0-only`). If you run a modified version as a network service, section 13 of the license requires you to offer its source code to the people who use it.
+
+Contributions are accepted under the same license. There is no contributor license agreement. Dependencies keep their own licenses. The Gua name and logo are not covered by this license; see the [copyright and trademark notice](https://gua.global/copyright).
+
 ## Reporting problems
 
 - Bugs and requests: [GitHub issues](https://github.com/Gua-ra/gua-resolver/issues).
