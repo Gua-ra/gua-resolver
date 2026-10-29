@@ -3,6 +3,8 @@ package global.gua.resolver.config;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.springframework.boot.autoconfigure.security.SecurityProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -14,8 +16,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
 
 /**
  * Explicit public allowlist plus deny by default.
@@ -53,7 +55,6 @@ public class SecurityConfig {
             publicPaths.add("/placement/records/**");
         }
         http
-                .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(publicPaths.toArray(String[]::new)).permitAll()
@@ -65,17 +66,24 @@ public class SecurityConfig {
 
     /**
      * Cross-origin access for the web app: the public read endpoints and {@code POST /resolve}, only from
-     * {@code gua.resolver.cors.allowed-origins}. With no origin configured nothing is registered and a browser
-     * preflight keeps being refused. {@code /authority/**} and the placement ingest are never exposed.
+     * {@code gua.resolver.cors.allowed-origins}. With no origin configured every preflight is refused.
+     * {@code /authority/**} and the placement ingest are never exposed.
      */
     @Bean
-    CorsConfigurationSource corsConfigurationSource(ResolverProperties props) {
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+    FilterRegistrationBean<CorsFilter> resolverCorsFilter(ResolverProperties props) {
         List<String> origins = props.getCors().getAllowedOrigins().stream()
                 .filter(o -> o != null && !o.isBlank()).map(String::trim).toList();
-        if (origins.isEmpty()) {
-            return source;
-        }
+        FilterRegistrationBean<CorsFilter> registration =
+                new FilterRegistrationBean<>(new CorsFilter(corsSource(origins)));
+        registration.setName("resolverCorsFilter");
+        registration.setEnabled(!origins.isEmpty());
+        // Ahead of the /resolve rate limiter, so a preflight spends no token and a 429 still carries the header.
+        registration.setOrder(SecurityProperties.DEFAULT_FILTER_ORDER - 2);
+        return registration;
+    }
+
+    private static UrlBasedCorsConfigurationSource corsSource(List<String> origins) {
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         CorsConfiguration read = new CorsConfiguration();
         read.setAllowedOrigins(origins);
         read.setAllowedMethods(List.of("GET"));
@@ -87,6 +95,7 @@ public class SecurityConfig {
         }
         CorsConfiguration resolve = new CorsConfiguration(read);
         resolve.setAllowedMethods(List.of("POST"));
+        resolve.setExposedHeaders(List.of("Retry-After"));
         source.registerCorsConfiguration("/resolve", resolve);
         return source;
     }

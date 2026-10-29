@@ -417,10 +417,8 @@ public class ResolverProperties {
         public String getSigningKey() { return signingKey; }
         public void setSigningKey(String signingKey) { this.signingKey = signingKey; }
     }
-    /**
-     * Browser origins allowed to call the public read endpoints and {@code POST /resolve} cross-origin. Empty
-     * (the default) keeps browsers out: a preflight from any origin is refused.
-     */
+
+    /** Browser origins allowed to call the public endpoints cross-origin. Empty, the default, refuses them all. */
     public static class Cors {
         private List<String> allowedOrigins = new ArrayList<>();
 
