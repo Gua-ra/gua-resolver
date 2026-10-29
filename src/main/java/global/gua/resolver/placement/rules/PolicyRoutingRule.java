@@ -9,6 +9,7 @@ import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -37,7 +38,7 @@ public class PolicyRoutingRule implements PlacementRule {
     private final CompositeRoutingPolicyProvider policies;
     private final RosterStore rosterStore;
     private final RoutingPolicyVerifier verifier;
-    private final Clock clock = Clock.systemUTC();
+    private final Clock clock;
 
     // Cache the delegate-verified zone set per (policyId, version) so signatures are not re-verified per call.
     // A single immutable holder published through one volatile write, so concurrent request threads always
@@ -46,11 +47,18 @@ public class PolicyRoutingRule implements PlacementRule {
 
     private volatile VerifiedZoneCache zoneCache = new VerifiedZoneCache(null, Set.of());
 
+    @Autowired
     public PolicyRoutingRule(CompositeRoutingPolicyProvider policies, RosterStore rosterStore,
                              RoutingPolicyVerifier verifier) {
+        this(policies, rosterStore, verifier, Clock.systemUTC());
+    }
+
+    public PolicyRoutingRule(CompositeRoutingPolicyProvider policies, RosterStore rosterStore,
+                             RoutingPolicyVerifier verifier, Clock clock) {
         this.policies = policies;
         this.rosterStore = rosterStore;
         this.verifier = verifier;
+        this.clock = clock;
     }
 
     @Override
@@ -95,13 +103,7 @@ public class PolicyRoutingRule implements PlacementRule {
 
     /** A delegated zone only routes while its signed validity window is open (defence against stale scope). */
     private static boolean zoneActive(DelegationZone zone, Instant now) {
-        if (zone == null) {
-            return false;
-        }
-        if (zone.notBefore() != null && zone.notBefore().isAfter(now)) {
-            return false;
-        }
-        return zone.expiresAt() == null || zone.expiresAt().isAfter(now);
+        return zone != null && zone.inEffectAt(now);
     }
 
     private Optional<PlacementDecision> decision(RoutingPolicyBundle policy, RoutingPolicyRule rule,
@@ -115,7 +117,7 @@ public class PolicyRoutingRule implements PlacementRule {
                 rule.effectiveAssignmentPolicy().name()));
     }
 
-    private static boolean matches(RoutingPolicyRule rule, PlacementContext context) {
+    public static boolean matches(RoutingPolicyRule rule, PlacementContext context) {
         return switch (rule.matchType()) {
             case PHONE_PREFIX -> context.e164Phone() != null
                     && context.e164Phone().startsWith(rule.matchValue());

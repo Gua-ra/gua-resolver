@@ -1,5 +1,10 @@
 package global.gua.resolver.roster;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+
+import global.gua.resolver.crypto.MerkleTree;
+
 /**
  * Append-only, Merkle-hash-chained log of every federation membership change (admit / update / suspend /
  * revoke / authority-set change), plus POLICY_PUBLISH and DIRECTORY_CHECKPOINT leaves. Appended history
@@ -32,7 +37,15 @@ public interface TransparencyLog {
     String STATUS_INTENT = "STATUS_INTENT";
 
     /** A single membership event (the leaf that gets hashed into the tree). */
-    record Event(long index, String type, String homeserverId, String payloadHash, String recordedAt) {}
+    record Event(long index, String type, String homeserverId, String payloadHash, String recordedAt) {
+
+        /** The leaf a reader recomputes: {@code index|type|homeserverId|payloadHash|recordedAt in epoch ms}. */
+        public String leafHash() {
+            String data = index + "|" + type + "|" + (homeserverId == null ? "" : homeserverId) + "|" + payloadHash
+                    + "|" + Instant.parse(recordedAt).toEpochMilli();
+            return MerkleTree.leafHash(data.getBytes(StandardCharsets.UTF_8));
+        }
+    }
 
     /**
      * Append an event at a caller-supplied time; returns its checkpoint (root + size) after inclusion. The

@@ -46,12 +46,20 @@ public class RosterVerifier {
     }
 
     public boolean isVerified(SignedRoster roster) {
-        return countValidSignatures(roster) >= threshold;
+        return isVerified(roster, RosterForm.V1);
+    }
+
+    public boolean isVerified(SignedRoster roster, RosterForm form) {
+        return countValidSignatures(roster, form) >= threshold;
     }
 
     /** Verify or throw; use on the trust boundary (mirror pull, roster load). */
     public void requireVerified(SignedRoster roster) {
-        int valid = countValidSignatures(roster);
+        requireVerified(roster, RosterForm.V1);
+    }
+
+    public void requireVerified(SignedRoster roster, RosterForm form) {
+        int valid = countValidSignatures(roster, form);
         if (valid < threshold) {
             throw new RosterVerificationException(
                     "roster v" + roster.version() + " has " + valid
@@ -59,21 +67,18 @@ public class RosterVerifier {
         }
     }
 
-    private int countValidSignatures(SignedRoster roster) {
-        byte[] canonical = CanonicalRoster.bytes(roster);
-        Set<String> counted = new HashSet<>();   // one vote per authority key
-        int valid = 0;
+    /** Trusted key ids with a signature that verifies over the bytes of this form. Each id counts once. */
+    public int countValidSignatures(SignedRoster roster, RosterForm form) {
+        byte[] canonical = CanonicalRoster.bytes(roster, form);
+        Set<String> counted = new HashSet<>();
         for (SignedRoster.AuthoritySignature sig : roster.authoritySignatures()) {
             PublicKey key = trustedKeys.get(sig.authorityKeyId());
-            if (key == null || counted.contains(sig.authorityKeyId())) {
-                continue;
-            }
-            if (Ed25519.verify(key, canonical, sig.signatureB64())) {
+            if (key != null && !counted.contains(sig.authorityKeyId())
+                    && Ed25519.verify(key, canonical, sig.signatureB64())) {
                 counted.add(sig.authorityKeyId());
-                valid++;
             }
         }
-        return valid;
+        return counted.size();
     }
 
     public int threshold() {

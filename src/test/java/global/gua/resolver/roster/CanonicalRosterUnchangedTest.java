@@ -61,8 +61,8 @@ class CanonicalRosterUnchangedTest {
     @Test
     void theLegacyFormCarriesNoSearchFields() {
         RosterEntry entry = new RosterEntry(homeserver(), List.of(), ADMITTED, RosterEntry.Status.ACTIVE);
-        byte[] bytes = CanonicalRoster.legacyBytes(3, 1_789_084_800_000L,
-                new SignedRoster.LogCheckpoint("deadbeef", 3), List.of(entry));
+        byte[] bytes = CanonicalRoster.bytes(3, 1_789_084_800_000L,
+                new SignedRoster.LogCheckpoint("deadbeef", 3), List.of(entry), RosterForm.LEGACY);
 
         String unit = Character.toString(0x1F);
         String expected = "gua-roster.v1\n"

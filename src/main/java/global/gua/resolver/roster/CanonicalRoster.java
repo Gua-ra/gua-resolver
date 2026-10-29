@@ -23,31 +23,20 @@ public final class CanonicalRoster {
     /** Canonical bytes over (version, issuedAt, logCheckpoint, sorted entries). Excludes signatures. */
     public static byte[] bytes(long version, long issuedAtEpochMs, SignedRoster.LogCheckpoint checkpoint,
                                List<RosterEntry> entries) {
-        return bytes(version, issuedAtEpochMs, checkpoint, entries, true);
+        return bytes(version, issuedAtEpochMs, checkpoint, entries, RosterForm.V1);
     }
 
     public static byte[] bytes(SignedRoster roster) {
-        return bytes(roster.version(), roster.issuedAt().toEpochMilli(), roster.logCheckpoint(),
-                roster.entries());
+        return bytes(roster, RosterForm.V1);
     }
 
-    /**
-     * The {@code gua-roster.v1} bytes as signed by resolver images before 2026-08-14, whose entries carry no
-     * {@code searchVisibility} or {@code searchGroups} field. A verifier uses this form when the served JSON
-     * has neither field on any entry, and the current form when every entry has {@code searchVisibility}.
-     */
-    public static byte[] legacyBytes(long version, long issuedAtEpochMs, SignedRoster.LogCheckpoint checkpoint,
-                                     List<RosterEntry> entries) {
-        return bytes(version, issuedAtEpochMs, checkpoint, entries, false);
+    public static byte[] bytes(SignedRoster roster, RosterForm form) {
+        return bytes(roster.version(), roster.issuedAt().toEpochMilli(), roster.logCheckpoint(), roster.entries(),
+                form);
     }
 
-    public static byte[] legacyBytes(SignedRoster roster) {
-        return legacyBytes(roster.version(), roster.issuedAt().toEpochMilli(), roster.logCheckpoint(),
-                roster.entries());
-    }
-
-    private static byte[] bytes(long version, long issuedAtEpochMs, SignedRoster.LogCheckpoint checkpoint,
-                                List<RosterEntry> entries, boolean searchFields) {
+    public static byte[] bytes(long version, long issuedAtEpochMs, SignedRoster.LogCheckpoint checkpoint,
+                               List<RosterEntry> entries, RosterForm form) {
         StringBuilder sb = new StringBuilder();
         sb.append("gua-roster.v1\n");
         sb.append("version=").append(version).append('\n');
@@ -55,13 +44,13 @@ public final class CanonicalRoster {
         sb.append("log=").append(checkpoint.merkleRoot()).append(':').append(checkpoint.size()).append('\n');
         entries.stream()
                 .sorted(Comparator.comparing(e -> e.homeserver().id()))
-                .forEach(e -> sb.append(entry(e, searchFields)).append('\n'));
+                .forEach(e -> sb.append(entry(e, form)).append('\n'));
         return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
 
-    private static String entry(RosterEntry e, boolean searchFields) {
+    private static String entry(RosterEntry e, RosterForm form) {
         Homeserver h = e.homeserver();
-        StringJoiner j = new StringJoiner("\u001f");  // unit separator; cannot appear in the fields
+        StringJoiner j = new StringJoiner("\u001f");  // values are not escaped
         j.add(h.id());
         j.add(h.serverName());
         j.add(h.baseUrl());
@@ -70,7 +59,7 @@ public final class CanonicalRoster {
         j.add(Integer.toString(h.weight()));
         j.add(Boolean.toString(h.acceptsNew()));
         j.add(nz(h.signingKey()));
-        if (searchFields) {
+        if (form == RosterForm.V1) {
             j.add(h.searchVisibility().name());
             j.add(h.searchGroups().stream().sorted().reduce((a, b) -> a + "|" + b).orElse(""));
         }
