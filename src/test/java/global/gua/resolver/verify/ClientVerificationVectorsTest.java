@@ -3,11 +3,18 @@ package global.gua.resolver.verify;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.TreeSet;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -26,16 +33,19 @@ import global.gua.resolver.policy.CanonicalDelegatedRules;
 import global.gua.resolver.policy.CanonicalRoutingPolicy;
 import global.gua.resolver.policy.RoutingPolicyBundle;
 import global.gua.resolver.policy.RoutingPolicyVerifier;
+import global.gua.resolver.policy.RoutingPolicyVerifier.RoutingPolicyVerificationException;
 import global.gua.resolver.roster.CanonicalRoster;
 import global.gua.resolver.roster.RosterEntry;
+import global.gua.resolver.roster.RosterForm;
 import global.gua.resolver.roster.RosterVerifier;
 import global.gua.resolver.roster.SignedRoster;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * The committed client-verification vectors are the contract the web, iOS and Android verifiers test against.
- * Every value in the file is reproduced here with the production code, so the file cannot drift from it.
+ * Checks every value in the committed client-verification vectors against the production code, so the file
+ * the apps test against cannot drift from the server.
  */
 class ClientVerificationVectorsTest {
 
@@ -45,6 +55,16 @@ class ClientVerificationVectorsTest {
 
     private static JsonNode vectors() throws Exception {
         return JSON.readTree(Files.readString(VECTORS));
+    }
+
+    private static Map<String, JsonNode> byRef(JsonNode vectors) {
+        Map<String, JsonNode> out = new HashMap<>();
+        vectors.forEach(v -> {
+            if (v.has("ref")) {
+                out.put(v.get("ref").asText(), v);
+            }
+        });
+        return out;
     }
 
     private static List<ResolverProperties.TrustedKey> trustedKeys(JsonNode list) {
@@ -65,12 +85,8 @@ class ClientVerificationVectorsTest {
         return new RosterVerifier(props);
     }
 
-    private static RoutingPolicyVerifier policyVerifier(JsonNode v) {
-        ResolverProperties props = new ResolverProperties();
-        props.getPolicy().setRequireSignatures(true);
-        props.getPolicy().setSignatureThreshold(v.get("threshold").asInt());
-        props.getPolicy().setTrustedKeys(trustedKeys(v.get("trustedKeys")));
-        return new RoutingPolicyVerifier(props);
+    private static RosterForm form(JsonNode v) {
+        return RosterForm.valueOf(v.get("form").asText().toUpperCase(Locale.ROOT));
     }
 
     private static Ed25519.KeyPairB64 key(JsonNode root, String ref) {
@@ -78,16 +94,22 @@ class ClientVerificationVectorsTest {
         return Rfc8032Keys.pair(k.get("seedHex").asText(), k.get("publicKeyHex").asText());
     }
 
-    private static byte[] canonical(JsonNode v, SignedRoster roster) {
-        return "legacy".equals(v.get("form").asText()) ? CanonicalRoster.legacyBytes(roster) : CanonicalRoster.bytes(roster);
+    private static String text(JsonNode n, String field) {
+        JsonNode v = n.get(field);
+        return v == null || v.isNull() ? null : v.asText();
+    }
+
+    @Test
+    void theCommittedFileIsWhatTheGeneratorWrites() throws Exception {
+        assertThat(Files.readString(VECTORS)).isEqualTo(ClientVerificationVectorsGenerator.render());
     }
 
     @Test
     void everyKeyMatchesItsSeedAndSpkiEncoding() throws Exception {
         JsonNode root = vectors();
-        root.get("keys").fields().forEachRemaining(entry -> {
+        root.get("keys").properties().forEach(entry -> {
             JsonNode k = entry.getValue();
-            byte[] spki = java.util.Base64.getDecoder().decode(k.get("publicKeySpkiB64").asText());
+            byte[] spki = Base64.getDecoder().decode(k.get("publicKeySpkiB64").asText());
             assertThat(HEX.formatHex(spki, 12, 44)).as(entry.getKey()).isEqualTo(k.get("publicKeyHex").asText());
             if (k.has("seedHex")) {
                 Ed25519.KeyPairB64 pair = key(root, entry.getKey());
@@ -108,36 +130,31 @@ class ClientVerificationVectorsTest {
     }
 
     @Test
-    void everyRosterVectorReproducesItsBytesAndVerdict() throws Exception {
+    void everyRosterVectorReproducesItsFormBytesAndVerdict() throws Exception {
         JsonNode root = vectors();
         for (JsonNode v : root.get("rosters")) {
             String name = v.get("name").asText();
             SignedRoster roster = JSON.treeToValue(v.get("roster"), SignedRoster.class);
-            byte[] canonical = canonical(v, roster);
-            assertThat(new String(canonical, StandardCharsets.UTF_8)).as(name).isEqualTo(v.get("canonicalUtf8").asText());
+            RosterForm form = form(v);
+            assertThat(RosterForm.of(v.get("roster"))).as(name).hasValue(form);
+
+            byte[] canonical = CanonicalRoster.bytes(roster, form);
+            assertThat(new String(canonical, StandardCharsets.UTF_8)).as(name)
+                    .isEqualTo(v.get("canonicalUtf8").asText());
             assertThat(HEX.formatHex(canonical)).as(name).isEqualTo(v.get("canonicalHex").asText());
             assertThat(MerkleTree.sha256Hex(canonical)).as(name).isEqualTo(v.get("sha256Hex").asText());
 
-            int valid = 0;
-            TreeSet<String> counted = new TreeSet<>();
-            for (SignedRoster.AuthoritySignature s : roster.authoritySignatures()) {
-                for (ResolverProperties.TrustedKey k : trustedKeys(v.get("trustedKeys"))) {
-                    if (k.getId().equals(s.authorityKeyId()) && counted.add(k.getId())
-                            && Ed25519.verify(Ed25519.publicKey(k.getPublicKey()), canonical, s.signatureB64())) {
-                        valid++;
-                    }
-                }
-            }
-            assertThat(valid).as(name).isEqualTo(v.get("validSignatures").asInt());
-            assertThat(valid >= v.get("threshold").asInt()).as(name).isEqualTo(v.get("verified").asBoolean());
-            if ("v1".equals(v.get("form").asText())) {
-                assertThat(rosterVerifier(v).isVerified(roster)).as(name).isEqualTo(v.get("verified").asBoolean());
-            }
-            v.get("signatureKeyRefs").fields().forEachRemaining(ref -> {
+            RosterVerifier verifier = rosterVerifier(v);
+            assertThat(verifier.countValidSignatures(roster, form)).as(name)
+                    .isEqualTo(v.get("validSignatures").asInt());
+            assertThat(verifier.isVerified(roster, form)).as(name).isEqualTo(v.get("verified").asBoolean());
+
+            v.path("signatureKeyRefs").properties().forEach(ref -> {
                 Ed25519.KeyPairB64 pair = key(root, ref.getValue().asText());
                 String expected = roster.authoritySignatures().stream()
                         .filter(s -> s.authorityKeyId().equals(ref.getKey())).findFirst().orElseThrow().signatureB64();
-                assertThat(Ed25519.sign(Ed25519.privateKey(pair.privateKeyB64()), canonical)).as(name).isEqualTo(expected);
+                assertThat(Ed25519.sign(Ed25519.privateKey(pair.privateKeyB64()), canonical)).as(name)
+                        .isEqualTo(expected);
             });
         }
     }
@@ -146,27 +163,13 @@ class ClientVerificationVectorsTest {
     void everyRosterRejectionIsRefused() throws Exception {
         for (JsonNode v : vectors().get("rosterRejections")) {
             String name = v.get("name").asText();
-            if (v.path("clientOnly").asBoolean(false)) {
-                assertThat(v.get("form").asText()).as(name).isEqualTo("mixed");
+            assertThat(v.path("verified").asBoolean(false)).as(name).isFalse();
+            if ("mixed".equals(v.get("form").asText())) {
+                assertThat(RosterForm.of(v.get("roster"))).as(name).isEmpty();
                 continue;
             }
             SignedRoster roster = JSON.treeToValue(v.get("roster"), SignedRoster.class);
-            byte[] canonical = canonical(v, roster);
-            int valid = 0;
-            TreeSet<String> counted = new TreeSet<>();
-            for (SignedRoster.AuthoritySignature s : roster.authoritySignatures()) {
-                for (ResolverProperties.TrustedKey k : trustedKeys(v.get("trustedKeys"))) {
-                    if (k.getId().equals(s.authorityKeyId()) && counted.add(k.getId())
-                            && Ed25519.verify(Ed25519.publicKey(k.getPublicKey()), canonical, s.signatureB64())) {
-                        valid++;
-                    }
-                }
-            }
-            assertThat(valid).as(name).isLessThan(v.get("threshold").asInt());
-            assertThat(v.get("verified").asBoolean()).as(name).isFalse();
-            if ("v1".equals(v.get("form").asText())) {
-                assertThat(rosterVerifier(v).isVerified(roster)).as(name).isFalse();
-            }
+            assertThat(rosterVerifier(v).isVerified(roster, form(v))).as(name).isFalse();
         }
     }
 
@@ -192,7 +195,8 @@ class ClientVerificationVectorsTest {
             int second = p.get("second").asInt();
             List<String> proof = new ArrayList<>();
             p.get("proof").forEach(n -> proof.add(n.asText()));
-            assertThat(MerkleTree.consistencyProof(leafHashes, first, second)).as(first + "," + second).isEqualTo(proof);
+            assertThat(MerkleTree.consistencyProof(leafHashes, first, second)).as(first + "," + second)
+                    .isEqualTo(proof);
             assertThat(MerkleTree.verifyConsistency(first, second, p.get("oldRootHex").asText(),
                     p.get("newRootHex").asText(), proof)).as(first + "," + second).isTrue();
         }
@@ -215,15 +219,18 @@ class ClientVerificationVectorsTest {
             String name = v.get("name").asText();
             RoutingPolicyBundle bundle = JSON.treeToValue(v.get("bundle"), RoutingPolicyBundle.class);
             byte[] canonical = CanonicalRoutingPolicy.bytes(bundle);
-            assertThat(new String(canonical, StandardCharsets.UTF_8)).as(name).isEqualTo(v.get("canonicalUtf8").asText());
+            assertThat(new String(canonical, StandardCharsets.UTF_8)).as(name)
+                    .isEqualTo(v.get("canonicalUtf8").asText());
             assertThat(HEX.formatHex(canonical)).as(name).isEqualTo(v.get("canonicalHex").asText());
             assertThat(MerkleTree.sha256Hex(canonical)).as(name).isEqualTo(v.get("sha256Hex").asText());
             for (JsonNode z : v.get("delegatedRules")) {
                 byte[] delegated = CanonicalDelegatedRules.bytes(bundle.policyId(), bundle.version(),
                         z.get("zoneId").asText(), bundle.rules());
-                assertThat(HEX.formatHex(delegated)).as(name + " " + z.get("zoneId")).isEqualTo(z.get("canonicalHex").asText());
+                assertThat(HEX.formatHex(delegated)).as(name + " " + z.get("zoneId"))
+                        .isEqualTo(z.get("canonicalHex").asText());
             }
-            RoutingPolicyVerifier verifier = policyVerifier(v);
+            RoutingPolicyVerifier verifier = RoutingPolicyVerifier.forKeys(trustedKeys(v.get("trustedKeys")),
+                    v.get("threshold").asInt());
             assertThat(verifier.isVerified(bundle)).as(name).isEqualTo(v.get("verified").asBoolean());
             List<String> zones = new ArrayList<>();
             v.get("delegateVerifiedZones").forEach(z -> zones.add(z.asText()));
@@ -235,13 +242,48 @@ class ClientVerificationVectorsTest {
     }
 
     @Test
+    void everyPolicyValidityVectorFollowsTheWindowRule() throws Exception {
+        JsonNode root = vectors();
+        Map<String, JsonNode> policies = byRef(root.get("policies"));
+        for (JsonNode v : root.get("policyValidity")) {
+            String name = v.get("name").asText();
+            JsonNode pv = policies.get(v.get("policyRef").asText());
+            RoutingPolicyBundle bundle = JSON.treeToValue(pv.get("bundle"), RoutingPolicyBundle.class);
+            Instant at = Instant.parse(v.get("evaluatedAt").asText());
+            assertThat(bundle.inEffectAt(at)).as(name).isEqualTo(v.get("inEffect").asBoolean());
+
+            ResolverVerifier verifier = new ResolverVerifier(List.of(), 1, trustedKeys(pv.get("trustedKeys")),
+                    pv.get("threshold").asInt(), Clock.fixed(at, ZoneOffset.UTC));
+            if (v.get("inEffect").asBoolean()) {
+                verifier.verifyPolicy(bundle);
+            } else {
+                assertThatThrownBy(() -> verifier.verifyPolicy(bundle)).as(name)
+                        .isInstanceOf(RoutingPolicyVerificationException.class);
+            }
+        }
+    }
+
+    @Test
+    void everyWindowVectorFollowsTheWindowRule() throws Exception {
+        for (JsonNode v : vectors().get("windows")) {
+            RoutingPolicyBundle bounds = new RoutingPolicyBundle(RoutingPolicyBundle.SCHEMA_VERSION, "window", 1,
+                    Instant.EPOCH, instant(v, "notBefore"), instant(v, "expiresAt"), List.of(), List.of(), null,
+                    List.of(), List.of());
+            assertThat(bounds.inEffectAt(Instant.parse(v.get("evaluatedAt").asText()))).as(v.get("name").asText())
+                    .isEqualTo(v.get("inEffect").asBoolean());
+        }
+    }
+
+    private static Instant instant(JsonNode n, String field) {
+        String value = text(n, field);
+        return value == null ? null : Instant.parse(value);
+    }
+
+    @Test
     void everyPlacementVectorReproducesTheReferenceDecision() throws Exception {
         JsonNode root = vectors();
-        Map<String, JsonNode> rosters = Map.of(
-                "r1", root.get("rosters").get(0), "r2", root.get("rosters").get(1));
-        Map<String, JsonNode> policies = Map.of(
-                "br-policy v3", root.get("policies").get(0),
-                "br-policy v3 without the sp-zone delegate signature", root.get("policies").get(1));
+        Map<String, JsonNode> rosters = byRef(root.get("rosters"));
+        Map<String, JsonNode> policies = byRef(root.get("policies"));
         for (JsonNode v : root.get("placements")) {
             String name = v.get("name").asText();
             JsonNode rv = rosters.get(v.get("rosterRef").asText());
@@ -256,42 +298,46 @@ class ClientVerificationVectorsTest {
             JsonNode c = v.get("context");
             List<String> affiliations = new ArrayList<>();
             c.path("affiliations").forEach(a -> affiliations.add(a.asText()));
-            Map<String, String> attributes = new java.util.TreeMap<>();
-            c.path("attributes").fields().forEachRemaining(e -> attributes.put(e.getKey(), e.getValue().asText()));
+            Map<String, String> attributes = new TreeMap<>();
+            c.path("attributes").properties().forEach(e -> attributes.put(e.getKey(), e.getValue().asText()));
             PlacementContext ctx = new PlacementContext(c.get("phone").asText(), text(c, "country"), text(c, "mccmnc"),
                     text(c, "carrier"), text(c, "regionHint"), affiliations, attributes, false);
 
+            Clock at = Clock.fixed(Instant.parse(v.get("evaluatedAt").asText()), ZoneOffset.UTC);
             ResolverVerifier verifier = new ResolverVerifier(trustedKeys(rv.get("trustedKeys")),
-                    rv.get("threshold").asInt(), policyKeys, 1);
-            PlacementDecision d = verifier.reproduceNewAccountDecision(ctx, roster, policy);
+                    rv.get("threshold").asInt(), policyKeys, 1, at);
+            PlacementDecision d = verifier.reproduceNewAccountDecision(ctx, roster, form(rv), policy);
             assertThat(d.homeserver().id()).as(name).isEqualTo(v.get("expectedHomeserverId").asText());
             assertThat(d.rule()).as(name).isEqualTo(v.get("expectedRule").asText());
             assertThat(d.ruleId()).as(name).isEqualTo(v.get("expectedRuleId").asText());
+            assertThat(policy != null && verifier.unsignedRuleOutranks(ctx, policy, d)).as(name)
+                    .isEqualTo(v.get("unsignedRuleAbove").asBoolean());
             if (v.has("fallback")) {
                 JsonNode f = v.get("fallback");
-                assertThat(ctx.canonicalRoutingKey()).as(name).isEqualTo(f.get("routingKeyUtf8").asText());
+                PlacementContext placed = ctx.withoutUnverifiedClaims();
+                assertThat(placed.canonicalRoutingKey()).as(name).isEqualTo(f.get("routingKeyUtf8").asText());
                 List<Homeserver> candidates = roster.activeEntries().stream().map(RosterEntry::homeserver)
-                        .filter(Homeserver::acceptsNew).sorted(java.util.Comparator.comparing(Homeserver::id)).toList();
-                assertThat(WeightedFallbackRule.stableHash(ctx, roster.version(), candidates)).as(name)
+                        .filter(Homeserver::acceptsNew).sorted(Comparator.comparing(Homeserver::id)).toList();
+                assertThat(WeightedFallbackRule.stableHash(placed, roster.version(), candidates)).as(name)
                         .isEqualTo(f.get("stableHash").asInt());
             }
         }
     }
 
     @Test
-    void everyResolveAnswerVectorLocatesAsExpected() throws Exception {
+    void everyResolveAnswerVectorLocatesTheExpectedEntry() throws Exception {
         JsonNode root = vectors();
-        Map<String, JsonNode> rosters = Map.of("r2", root.get("rosters").get(1), "prod-2026-10-27", root.get("rosters").get(3));
+        Map<String, JsonNode> rosters = byRef(root.get("rosters"));
         for (JsonNode v : root.get("resolveAnswers")) {
-            SignedRoster roster = JSON.treeToValue(rosters.get(v.get("rosterRef").asText()).get("roster"), SignedRoster.class);
+            String name = v.get("name").asText();
+            SignedRoster roster = JSON.treeToValue(rosters.get(v.get("rosterRef").asText()).get("roster"),
+                    SignedRoster.class);
             JsonNode a = v.get("answer");
-            assertThat(ResolverVerifier.locate(a.get("serverName").asText(), a.get("baseUrl").asText(),
-                    text(a, "masIssuer"), roster).name()).as(v.get("name").asText()).isEqualTo(v.get("expected").asText());
+            ResolverVerifier.Located located = ResolverVerifier.locate(a.get("serverName").asText(),
+                    a.get("baseUrl").asText(), text(a, "masIssuer"), roster);
+            assertThat(located.match().name()).as(name).isEqualTo(v.get("expected").asText());
+            assertThat(located.entry() == null ? null : located.entry().homeserver().id()).as(name)
+                    .isEqualTo(text(v, "expectedEntryId"));
         }
-    }
-
-    private static String text(JsonNode n, String field) {
-        JsonNode v = n.get(field);
-        return v == null || v.isNull() ? null : v.asText();
     }
 }

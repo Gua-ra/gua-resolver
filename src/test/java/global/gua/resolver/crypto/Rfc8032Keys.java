@@ -30,18 +30,6 @@ public final class Rfc8032Keys {
         return pair(TEST2_SEED_HEX, TEST2_PUBLIC_HEX);
     }
 
-    public static Ed25519.KeyPairB64 test3() {
-        return pair(TEST3_SEED_HEX, TEST3_PUBLIC_HEX);
-    }
-
-    public static Ed25519.KeyPairB64 test1024() {
-        return pair(TEST1024_SEED_HEX, TEST1024_PUBLIC_HEX);
-    }
-
-    public static Ed25519.KeyPairB64 testShaAbc() {
-        return pair(TEST_SHA_ABC_SEED_HEX, TEST_SHA_ABC_PUBLIC_HEX);
-    }
-
     public static Ed25519.KeyPairB64 pair(String seedHex, String publicHex) {
         HexFormat hex = HexFormat.of();
         Base64.Encoder b64 = Base64.getEncoder();
