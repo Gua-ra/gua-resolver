@@ -17,8 +17,9 @@
 Date: 2026-07-08
 
 This is the canonical algorithm a Gua client (or any third party) uses to verify a resolver's answer without
-trusting the resolver. The Java reference implementation is
-`global.gua.resolver.verify.ResolverVerifier`; platform verifiers (web / iOS / Android) port this spec.
+trusting the resolver. `global.gua.resolver.verify.ResolverVerifier` is the Java reference for the roster and
+policy signatures, the policy validity window, locating an answer in the roster, and placement. The member
+block and transparency-log checks are specified here and run in the web, iOS and Android apps.
 
 ## Trust roots
 
@@ -36,30 +37,24 @@ A verifier is configured out of band with:
   how far the governance key chain has run: the genesis id with no transition applied, the hash of the last
   applied transition after that. It is signed by the keys it enumerates, so
   fetching it proves nothing on its own: it is a trust root only once its fingerprint has been compared
-  against an independent channel and pinned. Clients pin it per environment as data; **no client enforces
-  the chain yet**.
+  against an independent channel and pinned. **No client fetches or pins it yet.**
 
 These are the only inputs the verifier trusts. Everything else is fetched and verified against them.
 
 ## Artifacts the client fetches
 
 - `GET /roster` -> `SignedRoster` (version, entries, `logCheckpoint`, `authoritySignatures`).
-- `GET /policy/routing` -> `RoutingPolicyBundle` (or none if policy is disabled).
+- `GET /policy/routing` -> `RoutingPolicyBundle`, or `404` when no bundle is in effect.
 - `GET /roster/log` and `GET /roster/log/consistency?first=&second=` -> transparency-log events + proofs.
   Served by the authority node only; a mirror does not relay them, so a client pointed at a mirror cannot
   run the log steps below today.
 - `GET /policy/log` -> the `POLICY_PUBLISH` history + checkpoint.
-- `POST /resolve` with `trace: true` -> the decision plus the artifact coordinates it used
-  (`rosterVersion`, `policyId`, `policyVersion`), only where the deployment has opted in with
-  `gua.resolver.abuse.trace-enabled=true`. It is off by default because the trace names policy internals to
-  anonymous callers (`gua.resolver.abuse.trace-enabled`); with it off the response carries no `trace` field
-  and is otherwise unchanged. Without the trace, the verifier takes the coordinates from the artifacts it
-  fetched and verified itself (the roster's `version`, the bundle's `policyId` and `version`) and
-  reproduces the decision in section 3 against those. They can be newer than the ones the resolver decided
-  against, since the roster version moves with every transparency-log leaf, so a mismatch is repeated once
-  with a fresh `/resolve` call and freshly fetched artifacts before it counts as a failure under "Failure
-  handling". `/resolve` is also rate-limited per client (20 per minute by default, `429` with
-  `Retry-After`); a verifier that loops over it honours that header.
+- `POST /resolve` -> the answer, with `rosterVersion`: the roster version the answer was made against, left out
+  when the roster changed while the answer was being made. With
+  `trace: true` it also returns the decision trace (rule, policy id and version, zone), but only where
+  `gua.resolver.abuse.trace-enabled` is on. That is off by default, because the trace shows policy internals
+  to anonymous callers. `/resolve` is rate limited per client (20 per minute by default, `429` with
+  `Retry-After`).
 
 ## 1. Verify the roster
 
@@ -68,7 +63,7 @@ These are the only inputs the verifier trusts. Everything else is fetched and ve
    homeserver's user-search discoverability policy: `searchVisibility` (`GLOBAL` default, `SERVER`, or
    `GROUP`) followed by its sorted `searchGroups` joined by `|` (empty when none), placed between
    `signingKey` and `admittedAt`. A resolver image from before 2026-08-14 serves entries without either field, and
-   its signature covers bytes without them (`CanonicalRoster.legacyBytes`). When no entry carries
+   its signature covers bytes without them (`RosterForm.LEGACY`). When no entry carries
    `searchVisibility`, encode that older form; when every entry carries it, encode the two fields; refuse a
    roster that mixes the two. Production served the older form on 2026-10-27.
 2. Count valid `authoritySignatures`: each must be Ed25519-valid over the canonical bytes under a trusted
@@ -83,8 +78,9 @@ An entry may carry a `member` block: the homeserver's own signature over the fie
 ([signed federation objects](../specs/federation-signed-objects.md)). It is additive JSON, absent on
 entries that have not been attested, and outside `CanonicalRoster`, so step 1 above is unchanged either way.
 
-1. Parse the `member` block strictly. Unknown fields, duplicate keys and trailing content are refused rather
-   than ignored, so a signature cannot cover fewer fields than you go on to read. Require
+1. Parse the `member` block strictly. Unknown fields and trailing content are refused rather than ignored, so
+   a signature cannot cover fewer fields than you go on to read. The resolver also refuses duplicate keys,
+   which it detects while parsing the whole roster, so a duplicate refuses the roster. Require
    `schema` = `gua-member-entry.v1` and `alg` = `Ed25519`.
 2. Recompute the canonical bytes with the `gua-lp.v1` rules (length-prefixed, no delimiters): the schema tag,
    then `homeserver.id`, `serverName`, `baseUrl`, `masIssuer`, `member.alg`, `homeserver.signingKey`,
@@ -94,9 +90,8 @@ entries that have not been attested, and outside `CanonicalRoster`, so step 1 ab
    `admittedAt` and `status` are authority attributes and are not covered.
 3. Require a `signatures[]` element whose `keyId` equals `member.keyId` and that verifies under
    `homeserver.signingKey`. A substituted `baseUrl`, `masIssuer`, `signingKey` or search policy fails here.
-4. Require the acceptance time to lie in `[notBefore, notAfter]`, and the window to be no longer than the
-   published maximum entry lifetime (400 days). The authoritative acceptance time is the one sequenced in the
-   `MEMBER_ATTEST` leaf; your own clock is a staleness guard, not the decision.
+4. Require the verifier's current time to lie in `[notBefore, notAfter]`, and the window to be no longer than
+   the published maximum entry lifetime (400 days).
 5. If you already hold an accepted entry for that homeserver id: the sequence must not go backwards, one
    sequence must name one entry, and a changed `signingKey` must also be signed by the previous `keyId` under
    the previous key, with a new key id. With no prior state, step 3 plus the authority signature and log
@@ -125,11 +120,12 @@ environments that have not finished attesting.
    `delegatePublicKey`. A rule is trusted only if its zone is BOTH authority-attested and delegate-signed, so
    a delegate controls its own rules within an authority-granted scope. This constrains delegates, not the
    authority: the authority attests the delegate key and this protocol pins none.
-3. **Validity + scope.** A zone applies only while `notBefore <= now < expiresAt`. A rule must target a
-   homeserver in its zone's `allowedHomeserverIds` and match within the zone scope (phone prefix / subdomain /
-   OIDC issuer). Reject the bundle otherwise. **Not performed by the Java reference verifier today:**
-   `ResolverVerifier` does not run `RoutingPolicyValidator`; scope and allowed-homeserver checks run only when
-   a bundle is loaded from file and at `/authority/policy/validate`.
+3. **Validity + scope.** The bundle applies only while `notBefore <= now < expiresAt`, and so does each zone;
+   a missing bound is open, and so is a bound at `1970-01-01T00:00:00Z`, which the canonical bytes cannot tell
+   from a missing one. A rule must target a homeserver in its zone's `allowedHomeserverIds` and match
+   within the zone scope (phone prefix / subdomain / OIDC issuer). Reject the bundle otherwise.
+   `ResolverVerifier` and the apps check both windows. Only `RoutingPolicyValidator` checks scope and allowed
+   homeservers, when a bundle is loaded from file and at `/authority/policy/validate`.
 4. **Transparency.** The policy version's content hash (SHA-256 of the canonical bytes) must appear as a
    `POLICY_PUBLISH` leaf in the transparency log, so the served policy is the publicly logged one.
 
@@ -149,8 +145,8 @@ policy or directory-checkpoint leaf is appended even when membership did not cha
      context + roster version + candidate ids/weights).
 - **Existing account (`exists=true`, `homeserver`).** The client cannot reproduce a directory lookup (the
   phone graph is private), and no per-lookup inclusion proof is served today, so this branch is not
-  verifiable in the current implementation. What a client can check is that the returned homeserver id is
-  currently ACTIVE in the verified roster. The signed **directory checkpoint** (`GET /directory/checkpoint`)
+  verifiable in the current implementation. What a client can check is that the returned homeserver is an
+  ACTIVE entry of the verified roster. The signed **directory checkpoint** (`GET /directory/checkpoint`)
   commits the authority node to a directory state as a whole and carries no proof for an individual mapping.
 
 ### Verified vs self-asserted claims
@@ -182,15 +178,19 @@ A public client can carry such an envelope but cannot create one.
   [signed federation objects](../specs/federation-signed-objects.md), and the vectors in
   `docs/specs/gua-lp-v1-vectors.json` pin it.
 - Only the routing-claims encoding escapes. `CanonicalRoster` joins fields with a raw `0x1F` that is asserted,
-  not enforced, to be absent from values, and collapses null and empty. Port it byte for byte to verify what
-  is served today; do not reuse it as the encoding for any new signed object.
+  not enforced, to be absent from values, and collapses null and empty, except that a null `id`, `serverName`,
+  `baseUrl` or `masIssuer` is the text `null`. `CanonicalRoutingPolicy` writes a missing instant and the epoch
+  both as 0. Whoever serves a roster can therefore
+  turn a null claim field into an empty string, or split a list element on `|`, without breaking the
+  signature, and that changes which claims match. Port it byte for byte to verify what is served today; do
+  not reuse it as the encoding for any new signed object.
 
 Golden vectors for the roster bytes in both forms, authority signatures and thresholds, the transparency-log
-leaves, roots and consistency proofs, routing-policy bundles with their delegate signatures, reproduced
-placements and the check of a `/resolve` answer against the roster are in
-`docs/specs/gua-client-verification-v1-vectors.json`. `./gradlew clientVerificationVectors` regenerates the
-file and `ClientVerificationVectorsTest` reproduces every value from the production code. A port runs the same
-file before its results are trusted.
+leaves, roots and consistency proofs, routing-policy bundles with their delegate signatures and validity
+windows, the policy's log step, reproduced placements and the check of a `/resolve` answer against the roster
+are in `docs/specs/gua-client-verification-v1-vectors.json`. `./gradlew clientVerificationVectors` writes the
+file from the production code, and `ClientVerificationVectorsTest` fails when the committed file differs. A port
+runs the same file before its results are trusted.
 
 ## Failure handling
 
@@ -200,54 +200,103 @@ different mirror or refuse to proceed, never silently accept the unverified answ
 
 ## Report-only verification in the apps
 
-The apps run this protocol in report-only mode first. The outcome never changes what the app connects to; it is
-logged and counted so that enforcement can be turned on once legitimate traffic shows no failures.
+The web, iOS and Android apps run the six checks below after each `/resolve` answer. The result never changes
+what the app connects to and never delays sign-in. Each run logs one line, so enforcement can be turned on per
+check once real traffic shows no failures.
 
-Each check has three outcomes, and they are never collapsed:
+**Inputs and limits.** Each build carries its environment's authority keys and threshold, and its policy keys
+and threshold. A run has 10 seconds on a monotonic clock. A fetch that fails or answers anything but a 2xx is
+`unverifiable(roster_unavailable)`, `unverifiable(log_unavailable)` or `unverifiable(policy_unavailable)`, except
+a `404` from `/policy/routing` (check 5). A response over 2 MiB, nested more than 64 levels, or not of the
+expected shape makes the checks that need it `unverifiable(parse_error)`. The expected shape includes:
+timestamps in the resolver's form (ISO-8601 UTC with an uppercase `T` and `Z`), sizes and indexes that fit in 31
+bits, and consistency proof hashes of 64 lowercase hex characters. A signature entry without a key id or a value
+counts as a signature that does not verify. The apps do not look for duplicate keys: every signature is checked
+over the values the app parsed, so a duplicate cannot get unsigned data accepted. On the web, checks 1, 4 and 5 start when the phone step opens, and the report is logged just
+before the browser leaves for sign-in, with any check still running as `unverifiable(timeout)`.
 
-| Outcome | Meaning |
-| --- | --- |
-| `valid` | Every input was present and the check passed. |
-| `invalid` | An input was present and the check failed: a bad signature, a threshold shortfall, a tampered field, a rollback, a reproduced decision that differs. |
-| `unverifiable` | A check could not run: no trust root configured for this environment, a log endpoint not served (mirror mode), the policy keys unset, a response the client cannot parse, a mixed roster form. |
+**Outcomes.** Each check reports one outcome. `invalid`, `unverifiable` and `indeterminate` carry one reason,
+written `outcome(reason)`.
 
-`unverifiable` is reported as its own count. It is never treated as `valid`, and in enforcement it is a
-failure of the resolver answer, not a pass.
+1. **rosterSignature.** The form comes from the served JSON (section 1, step 1), and a mixed roster is
+   `unverifiable(mixed_roster_form)`. Too few valid signatures is `invalid(unknown_key_id)` when no signature
+   names a trusted key, `invalid(bad_signature)` when some do and none verifies, and
+   `invalid(threshold_not_met)` otherwise. Unless this check is `valid`, whatever its reason, the other five are
+   `unverifiable(roster_unverified)` and nothing more is fetched.
+2. **homeserverMatch** locates the answer's `serverName`, `baseUrl` and `masIssuer` in the roster with
+   `ResolverVerifier.locate`: `ACTIVE_MATCH`, `INACTIVE`, `FIELD_MISMATCH` or `NOT_IN_ROSTER`. Only
+   `ACTIVE_MATCH` passes.
+3. **memberEntry** checks the member block (section 1a) of the entry that check 2 located, when it is
+   `ACTIVE_MATCH` or `INACTIVE`. An entry without a block is `unattested`, which passes while the deployment
+   does not require one. `FIELD_MISMATCH` and `NOT_IN_ROSTER` give `unverifiable(no_matching_entry)`. A block
+   that fails is `invalid` with one of `parse_error` (an unknown field, or a field of the wrong type, null
+   included, or a bound that does not parse), `unsupported_schema`, `unsupported_alg`, `bad_key_id`,
+   `bad_sequence`, `bad_window` (a missing bound, sub-millisecond precision, `notAfter` not after `notBefore`,
+   or more than 400 days), `outside_window`, `malformed_signature`, `no_canonical_encoding`,
+   `bad_signing_key`, `missing_signature` or `bad_signature`.
+4. **logConsistency** compares the roster's checkpoint with the last one the app accepted from this resolver
+   base URL. With no pin yet it is `firstSeen` and pins the checkpoint. The same size needs the same root. A
+   larger size needs a proof from `/roster/log/consistency` that verifies, as RFC 9162 section 2.1.4.2 checks it,
+   and then moves the pin. Those are `consistent`, or `inconsistent` when they fail. A smaller size is `rollback`. A pin store that cannot be
+   read or written is `unverifiable(storage_unavailable)`. Runs against one resolver never overlap, so the pin
+   only moves forward.
+5. **policy.** The first `checkpoint.size` leaves of `/roster/log` must hash to the signed root, whether a
+   policy is served or not (`invalid(log_mismatch)`). A `404` from `/policy/routing` is then `notPresent`, which
+   passes, when none of those leaves is a `POLICY_PUBLISH`, and `unverifiable(policy_not_served)` when one is.
+   A served bundle must:
+   - verify under the policy keys, with the same three reasons as check 1, or be
+     `unverifiable(no_policy_keys)` when none is configured;
+   - be in effect now, else `invalid(outside_window)`;
+   - have its `POLICY_PUBLISH` leaf among those leaves. No matching leaf is `invalid(policy_not_logged)`. A
+     leaf only past the checkpoint, as right after an honest publish, is
+     `unverifiable(policy_newer_than_checkpoint)`;
+   - be the newest version of its `policyId` within the checkpoint, read from the leaf subjects
+     `<policyId>:v<version>`, else `unverifiable(policy_superseded)`.
 
-The checks, in order, with what each one needs:
+   A checkpoint of more than 4,096 leaves is `unverifiable(log_too_large)`, and the log is not fetched.
+6. **placement**, in this order:
+   - an answer whose `exists` is true or missing is `indeterminate(existing_account)`, since a directory lookup
+     cannot be reproduced;
+   - a check 5 that is neither `valid` nor `notPresent` makes it `unverifiable(policy_unverified)`;
+   - otherwise section 3 runs for the phone number alone. When a rule that matches the phone and ranks above
+     the rule that decided sits in a zone without a valid delegate signature, the result is
+     `indeterminate(unsigned_rule)`. Delegate signatures are covered by neither the bundle signatures nor its
+     log leaf, so a missing one cannot be told from a removed one. Policy rules rank by priority, then id, and
+     all of them rank above roster claims and the fallback;
+   - a reproduced entry with the answer's `serverName`, `baseUrl` and `masIssuer` is `match`. Any other result
+     is `mismatch` when the answer's `rosterVersion` equals the verified roster's, and
+     `indeterminate(unattributed)` when it differs or is missing.
 
-1. **Roster signature.** Needs the authority public keys and threshold pinned per environment in the app
-   build or its configuration. Form is chosen by the presence of `searchVisibility` as described in step 1.
-2. **Returned homeserver is in the roster.** The `/resolve` answer's `serverName`, `baseUrl` and `masIssuer`
-   must equal an `ACTIVE` entry's fields exactly (`ResolverVerifier.locate`). A known server name with a
-   different base URL or issuer is the shape of a redirect to another host and is `invalid`. This check
-   needs nothing beyond check 1 and is the first one to enforce.
-3. **Member self-signature** on the returned entry, when a `member` block is present (section 1a). An absent
-   block is reported as `unattested`, not as a failure, while `gua.resolver.roster.require-member-signature`
-   is off in the deployment.
-4. **Log consistency.** The app pins the last `logCheckpoint` it accepted per environment. A served checkpoint
-   with the same size must have the same root; a larger one must come with a consistency proof from
-   `GET /roster/log/consistency` that verifies; a smaller one is a rollback. When the proof endpoint is not
-   served, the outcome is `unverifiable` and the pin does not move.
-5. **Policy**, when `GET /policy/routing` answers: section 2 under the policy keys pinned for the environment,
-   with no fallback to the authority keys, plus the `POLICY_PUBLISH` leaf check against `GET /roster/log`.
-6. **Reproduced placement.** For an answer the client can attribute to placement, section 3 over the verified
-   artifacts and the context the client sent. Without the decision trace the client cannot tell a directory
-   hit from a placement, so a mismatch is `indeterminate` rather than `invalid`, and is repeated once with
-   fresh artifacts before it is counted.
+A check still working when the 10 seconds run out is `unverifiable(timeout)`, and an unexpected error is
+`unverifiable(internal_error)`. With no usable authority key every check is `unverifiable(no_trust_roots)`,
+and on a platform without Ed25519 every check is `unverifiable(crypto_unsupported)`. Nothing is fetched in
+those two cases, and the report is still logged.
 
-What is reported: the outcome of each check, the roster `version` and form, whether a policy was present, and
-the environment. Never the phone number, the homeserver, the resolver answer or the request body.
+**Overall and the report line.** `overall` is `failed(<check>)` for the first check that is `invalid`,
+`INACTIVE`, `FIELD_MISMATCH`, `NOT_IN_ROSTER`, `rollback`, `inconsistent` or `mismatch`. Otherwise it is
+`unverifiable(<check>)` for the first check that is `unverifiable` or `indeterminate`, and otherwise
+`verified`. Every app logs the same line at info level, with no phone number, URL, server name or answer:
 
-Compatibility boundaries while report-only:
+```
+Resolver verification environment=dev rosterVersion=4 rosterForm=v1 rosterSignature=valid homeserverMatch=ACTIVE_MATCH memberEntry=unattested logConsistency=consistent policy=valid placement=indeterminate(existing_account) overall=unverifiable(placement) durationMs=640
+```
 
-- Both roster forms are accepted. The older form is dropped from the apps once no deployment serves it.
-- A client pointed at a mirror reports checks 4 and 5 as `unverifiable`; it does not skip them silently.
-- Policy keys are listed explicitly per environment even where they are the same key material as the
-  authority keys. An environment with no policy keys reports check 5 as `unverifiable`.
+`rosterVersion` is `none` unless the roster signature is valid. `rosterForm` is `v1`, `legacy` or `mixed` as
+detected from the served JSON, and `none` when no roster was read.
+
+**Compatibility while report-only.**
+
+- Production serves the legacy roster form, no routing policy and no `rosterVersion` in its answers, so a
+  placement that differs there is `indeterminate(unattributed)`.
+- Each environment lists its policy keys explicitly. Dev lists its authority key, because that key signs its
+  policy. Production lists none until governance keys exist, so a policy served there would be
+  `unverifiable(no_policy_keys)`.
+- A mirror serves no transparency log. Check 4 still passes or fails while the checkpoint has not grown, and is
+  `unverifiable(log_unavailable)` once it has. Check 5 is always `unverifiable(log_unavailable)`.
+- The pin survives sign-out and is cleared only with the app's data. After a log is recreated, as in a dev
+  reset, every run reports `rollback` until then.
 - A rotation of an authority key needs an app release that lists both keys. Until the apps verify the
   governance chain, there is no in-band way to learn a new key, and none is attempted.
 
 Enforcement is turned on per check, starting with check 2, after report-only traffic for that check has shown
-no `invalid` outcome from legitimate deployments for a period the operator sets, and it is turned off again by
-configuration without a release.
+no `invalid` outcome from legitimate deployments for a period the operator sets.
