@@ -109,7 +109,7 @@ public final class ResolverVerifier {
         if (valid >= threshold) {
             return "valid";
         }
-        if (signedBy.stream().noneMatch(trustedIds::contains)) {
+        if (signedBy.stream().filter(Objects::nonNull).noneMatch(trustedIds::contains)) {
             return "invalid(unknown_key_id)";
         }
         return valid == 0 ? "invalid(bad_signature)" : "invalid(threshold_not_met)";

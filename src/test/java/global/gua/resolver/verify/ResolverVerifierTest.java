@@ -158,6 +158,9 @@ class ResolverVerifierTest {
         assertThat(verifier().rosterSignatureOutcome(roster, RosterForm.LEGACY)).isEqualTo("invalid(bad_signature)");
         assertThat(new ResolverVerifier(authorityKeys(), 1, List.of(), 1).policySignatureOutcome(signedPolicy(true)))
                 .isEqualTo("unverifiable(no_policy_keys)");
+        SignedRoster unnamed = new SignedRoster(roster.version(), roster.issuedAt(), roster.entries(),
+                roster.logCheckpoint(), List.of(new SignedRoster.AuthoritySignature(null, "AAAA")));
+        assertThat(verifier().rosterSignatureOutcome(unnamed, RosterForm.V1)).isEqualTo("invalid(unknown_key_id)");
     }
 
     @Test
