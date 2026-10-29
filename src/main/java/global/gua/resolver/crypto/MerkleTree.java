@@ -156,7 +156,7 @@ public final class MerkleTree {
             path.add(HEX.parseHex(p));
         }
 
-        // RFC 6962 §2.1.2 verification algorithm.
+        // RFC 9162 section 2.1.4.2.
         boolean firstIsPowerOfTwo = (first & (first - 1)) == 0;
         int idx = 0;
         List<byte[]> seed = new ArrayList<>();
@@ -175,6 +175,9 @@ public final class MerkleTree {
             sn >>= 1;
         }
         while (idx < path.size()) {
+            if (sn == 0) {
+                return false;
+            }
             byte[] node = path.get(idx++);
             if ((fn & 1) == 1 || fn == sn) {
                 fr = nodeHash(node, fr);
