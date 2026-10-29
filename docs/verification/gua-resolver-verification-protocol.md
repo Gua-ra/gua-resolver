@@ -121,8 +121,8 @@ environments that have not finished attesting.
    a delegate controls its own rules within an authority-granted scope. This constrains delegates, not the
    authority: the authority attests the delegate key and this protocol pins none.
 3. **Validity + scope.** The bundle applies only while `notBefore <= now < expiresAt`, and so does each zone;
-   a missing bound is open, and so is a bound at `1970-01-01T00:00:00Z`, which the canonical bytes cannot tell
-   from a missing one. A rule must target a homeserver in its zone's `allowedHomeserverIds` and match
+   a missing bound is open, and so is a bound in the first millisecond of `1970-01-01T00:00:00Z`, which the
+   canonical bytes cannot tell from a missing one. A rule must target a homeserver in its zone's `allowedHomeserverIds` and match
    within the zone scope (phone prefix / subdomain / OIDC issuer). Reject the bundle otherwise.
    `ResolverVerifier` and the apps check both windows. Only `RoutingPolicyValidator` checks scope and allowed
    homeservers, when a bundle is loaded from file and at `/authority/policy/validate`.
@@ -208,10 +208,15 @@ check once real traffic shows no failures.
 and threshold. A run has 10 seconds on a monotonic clock. A fetch that fails or answers anything but a 2xx is
 `unverifiable(roster_unavailable)`, `unverifiable(log_unavailable)` or `unverifiable(policy_unavailable)`, except
 a `404` from `/policy/routing` (check 5). A response over 2 MiB, nested more than 64 levels, or not of the
-expected shape makes the checks that need it `unverifiable(parse_error)`. The expected shape includes:
-timestamps in the resolver's form (ISO-8601 UTC with an uppercase `T` and `Z`), sizes and indexes that fit in 31
-bits, and consistency proof hashes of 64 lowercase hex characters. A signature entry without a key id or a value
-counts as a signature that does not verify. The apps do not look for duplicate keys: every signature is checked
+expected shape makes the checks that need it `unverifiable(parse_error)`. The expected shape means:
+- every field has the JSON type the contract gives it, so a number or boolean sent as a string is refused;
+- these fields are never null: `version`, `issuedAt`, `logCheckpoint`, `entries` and `authoritySignatures`, and in
+  each entry `homeserver`, `status`, `weight` and `acceptsNew`;
+- timestamps are in the resolver's form: ISO-8601 UTC, four year digits with no sign, an uppercase `T` and `Z`;
+- sizes and indexes fit in 31 bits, and consistency proof hashes are 64 lowercase hex characters;
+- every event of `/roster/log` is well formed, past the checkpoint too.
+
+A signature entry without a key id or a value counts as a signature that does not verify. The apps do not look for duplicate keys: every signature is checked
 over the values the app parsed, so a duplicate cannot get unsigned data accepted. On the web, checks 1, 4 and 5 start when the phone step opens, and the report is logged just
 before the browser leaves for sign-in, with any check still running as `unverifiable(timeout)`.
 
@@ -229,28 +234,30 @@ written `outcome(reason)`.
 3. **memberEntry** checks the member block (section 1a) of the entry that check 2 located, when it is
    `ACTIVE_MATCH` or `INACTIVE`. An entry without a block is `unattested`, which passes while the deployment
    does not require one. `FIELD_MISMATCH` and `NOT_IN_ROSTER` give `unverifiable(no_matching_entry)`. A block
-   that fails is `invalid` with one of `parse_error` (an unknown field, or a field of the wrong type, null
-   included, or a bound that does not parse), `unsupported_schema`, `unsupported_alg`, `bad_key_id`,
-   `bad_sequence`, `bad_window` (a missing bound, sub-millisecond precision, `notAfter` not after `notBefore`,
-   or more than 400 days), `outside_window`, `malformed_signature`, `no_canonical_encoding`,
-   `bad_signing_key`, `missing_signature` or `bad_signature`.
+   with an unknown field, or a field of the wrong type or null, is `invalid(parse_error)`. Otherwise the first
+   step that fails decides, in this order: `unsupported_schema`, `unsupported_alg`, `bad_key_id`,
+   `bad_sequence`, then the window, which is `parse_error` for a bound that does not parse and `bad_window` for
+   a missing bound, sub-millisecond precision, `notAfter` not after `notBefore` or more than 400 days, then
+   `outside_window`, `malformed_signature`, `no_canonical_encoding`, `bad_signing_key`, `missing_signature` and
+   `bad_signature`.
 4. **logConsistency** compares the roster's checkpoint with the last one the app accepted from this resolver
    base URL. With no pin yet it is `firstSeen` and pins the checkpoint. The same size needs the same root. A
    larger size needs a proof from `/roster/log/consistency` that verifies, as RFC 9162 section 2.1.4.2 checks it,
    and then moves the pin. Those are `consistent`, or `inconsistent` when they fail. A smaller size is `rollback`. A pin store that cannot be
    read or written is `unverifiable(storage_unavailable)`. Runs against one resolver never overlap, so the pin
    only moves forward.
-5. **policy.** The first `checkpoint.size` leaves of `/roster/log` must hash to the signed root, whether a
-   policy is served or not (`invalid(log_mismatch)`). A `404` from `/policy/routing` is then `notPresent`, which
-   passes, when none of those leaves is a `POLICY_PUBLISH`, and `unverifiable(policy_not_served)` when one is.
-   A served bundle must:
-   - verify under the policy keys, with the same three reasons as check 1, or be
+5. **policy.** A `404` from `/policy/routing` is `notPresent`, which passes, once the first `checkpoint.size`
+   leaves of `/roster/log` hash to the signed root (`invalid(log_mismatch)`) and none of them is a
+   `POLICY_PUBLISH` (`unverifiable(policy_not_served)` otherwise). For a served bundle these must hold, checked
+   in this order:
+   - its signatures verify under the policy keys, with the same three reasons as check 1, or it is
      `unverifiable(no_policy_keys)` when none is configured;
-   - be in effect now, else `invalid(outside_window)`;
-   - have its `POLICY_PUBLISH` leaf among those leaves. No matching leaf is `invalid(policy_not_logged)`. A
+   - it is in effect now, else `invalid(outside_window)`;
+   - the first `checkpoint.size` leaves of `/roster/log` hash to the signed root, else `invalid(log_mismatch)`;
+   - its `POLICY_PUBLISH` leaf is among those leaves. No matching leaf is `invalid(policy_not_logged)`, and a
      leaf only past the checkpoint, as right after an honest publish, is
      `unverifiable(policy_newer_than_checkpoint)`;
-   - be the newest version of its `policyId` within the checkpoint, read from the leaf subjects
+   - it is the newest version of its `policyId` within the checkpoint, read from the leaf subjects
      `<policyId>:v<version>`, else `unverifiable(policy_superseded)`.
 
    A checkpoint of more than 4,096 leaves is `unverifiable(log_too_large)`, and the log is not fetched.
