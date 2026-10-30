@@ -52,16 +52,13 @@ import global.gua.resolver.roster.SignedRoster;
 import global.gua.resolver.roster.TransparencyLog;
 
 /**
- * Regenerates docs/specs/gua-client-verification-v1-vectors.json, which the web, iOS and Android verifiers test
- * against. Run it with {@code ./gradlew clientVerificationVectors}. {@code ClientVerificationVectorsTest}
- * checks every value in the committed file against the production code, so a diff in that file changes what
- * the apps must accept.
+ * {@code ./gradlew clientVerificationVectors} regenerates docs/specs/gua-client-verification-v1-vectors.json. The
+ * web, iOS and Android verifiers test against that file, so a diff in it changes what the apps must accept.
  */
 public final class ClientVerificationVectorsGenerator {
 
     static final Path OUT = Path.of("docs/specs/gua-client-verification-v1-vectors.json");
     static final Path PROD_SNAPSHOT = Path.of("src/test/resources/vectors/prod-roster-2026-10-27.json");
-    /** The production authority key, published out of band. The snapshot is public data served at resolver.gua.global. */
     static final String PROD_AUTHORITY_KEY_ID = "gua-authority-prod";
     static final String PROD_AUTHORITY_PUBLIC_KEY = "MCowBQYDK2VwAyEAmrJntRXbxGkoPe92j1epyM3RBXcx4nmr2wIzL6eb0a0=";
 
@@ -132,7 +129,6 @@ public final class ClientVerificationVectorsGenerator {
         System.out.println("wrote " + OUT);
     }
 
-    /** The vectors file exactly as it must be committed. */
     static String render() throws Exception {
         return JSON.writerWithDefaultPrettyPrinter().writeValueAsString(build()) + "\n";
     }
@@ -214,8 +210,6 @@ public final class ClientVerificationVectorsGenerator {
         root.set("resolveAnswers", resolveAnswers(r2.roster(), prod, r5.roster(), r7.roster()));
         return root;
     }
-
-    // ---- fixtures -------------------------------------------------------------------------------------------
 
     static void selfCheckKeys() {
         for (NamedKey k : KEYS) {
@@ -380,8 +374,6 @@ public final class ClientVerificationVectorsGenerator {
         return new ResolverVerifier(trusted(authority), threshold, trusted(List.of(GOVERNANCE_A)), 1,
                 Clock.fixed(now, ZoneOffset.UTC));
     }
-
-    // ---- sections -------------------------------------------------------------------------------------------
 
     static ObjectNode keys() {
         ObjectNode keys = JSON.createObjectNode();
@@ -689,25 +681,29 @@ public final class ClientVerificationVectorsGenerator {
 
     static ArrayNode policyRejections(RoutingPolicyBundle policy) {
         ArrayNode out = JSON.createArrayNode();
-        ObjectNode a = policyVector("signed by the roster authority key, which is not a policy key", null,
-                policy(AUTHORITY_A, true, true), List.of(GOVERNANCE_A), 1);
-        a.put("reason", "Policies are checked against the policy keys only. The roster authority key does not count.");
-        a.put("expectedOutcome", policySignatureOutcome(policy(AUTHORITY_A, true, true), List.of(GOVERNANCE_A)));
-        out.add(a);
+        ObjectNode operationalKey = policyVector("signed by the roster authority key, which is not a policy key",
+                null, policy(AUTHORITY_A, true, true), List.of(GOVERNANCE_A), 1);
+        operationalKey.put("reason",
+                "Policies are checked against the policy keys only. The roster authority key does not count.");
+        operationalKey.put("expectedOutcome",
+                policySignatureOutcome(policy(AUTHORITY_A, true, true), List.of(GOVERNANCE_A)));
+        out.add(operationalKey);
         RoutingPolicyBundle retargeted = withRules(policy, retargetedRules(policy));
-        ObjectNode b = policyVector("a rule target changed after signing", null, retargeted, List.of(GOVERNANCE_A), 1);
-        b.put("reason", "The signed bytes changed, so the signature fails.");
-        b.put("expectedOutcome", policySignatureOutcome(retargeted, List.of(GOVERNANCE_A)));
-        out.add(b);
+        ObjectNode retargetedRule = policyVector("a rule target changed after signing", null, retargeted,
+                List.of(GOVERNANCE_A), 1);
+        retargetedRule.put("reason", "The signed bytes changed, so the signature fails.");
+        retargetedRule.put("expectedOutcome", policySignatureOutcome(retargeted, List.of(GOVERNANCE_A)));
+        out.add(retargetedRule);
         RoutingPolicyBundle unsigned = withPolicySignatures(policy, null);
-        ObjectNode d = policyVector("a bundle with no signatures list", null, unsigned, List.of(GOVERNANCE_A), 1);
-        d.put("reason", "A missing signatures list is the same as an empty one.");
-        d.put("expectedOutcome", policySignatureOutcome(unsigned, List.of(GOVERNANCE_A)));
-        out.add(d);
-        ObjectNode c = policyVector("no policy keys configured", null, policy, List.of(), 1);
-        c.put("reason", "With no trusted policy keys, no bundle can verify.");
-        c.put("expectedOutcome", policySignatureOutcome(policy, List.of()));
-        out.add(c);
+        ObjectNode noSignatures = policyVector("a bundle with no signatures list", null, unsigned,
+                List.of(GOVERNANCE_A), 1);
+        noSignatures.put("reason", "A missing signatures list is the same as an empty one.");
+        noSignatures.put("expectedOutcome", policySignatureOutcome(unsigned, List.of(GOVERNANCE_A)));
+        out.add(noSignatures);
+        ObjectNode noPolicyKeys = policyVector("no policy keys configured", null, policy, List.of(), 1);
+        noPolicyKeys.put("reason", "With no trusted policy keys, no bundle can verify.");
+        noPolicyKeys.put("expectedOutcome", policySignatureOutcome(policy, List.of()));
+        out.add(noPolicyKeys);
         for (JsonNode n : out) {
             if (n.get("verified").asBoolean()) {
                 throw new IllegalStateException("policy rejection verifies: " + n.get("name"));
@@ -767,6 +763,10 @@ public final class ClientVerificationVectorsGenerator {
         window(out, "an expiresAt in the epoch's first millisecond, which is also signed as no expiresAt", notBefore,
                 Instant.parse("1970-01-01T00:00:00.000001Z"), inside);
         window(out, "a notBefore at the epoch, which is signed as no notBefore", Instant.EPOCH, expiresAt, inside);
+        window(out, "a notBefore later in the same millisecond, compared in whole milliseconds",
+                Instant.parse("2030-01-01T00:00:00.000500Z"), null, Instant.parse("2030-01-01T00:00:00.000200Z"));
+        window(out, "an expiresAt later in the same millisecond, compared in whole milliseconds", notBefore,
+                Instant.parse("2030-01-01T00:00:00.000500Z"), Instant.parse("2030-01-01T00:00:00.000200Z"));
         window(out, "no bounds at all", null, null, inside);
         window(out, "after expiresAt", notBefore, expiresAt, Instant.parse("2031-01-01T00:00:00Z"));
         window(out, "before notBefore", notBefore, expiresAt, Instant.parse("2025-01-01T00:00:00Z"));
