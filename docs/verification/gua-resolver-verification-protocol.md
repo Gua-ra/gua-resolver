@@ -180,11 +180,13 @@ A public client can carry such an envelope but cannot create one.
   `docs/specs/gua-lp-v1-vectors.json` pin it.
 - Only the routing-claims encoding escapes. `CanonicalRoster` joins fields with a raw `0x1F` that is asserted, not
   enforced, to be absent from values, and collapses null and empty, except that a null `id`, `serverName`, `baseUrl`
-  or `masIssuer` is the text `null`. `CanonicalRoutingPolicy` writes instants in whole milliseconds, and writes a
-  missing instant and one in the epoch's first millisecond both as 0. Whoever serves a roster can therefore turn a
-  null claim field into an empty string, or split a list element on `|`, without breaking the signature, and that
-  changes which claims match. Port it byte for byte to verify what is served today; do not reuse it as the encoding
-  for any new signed object.
+  or `masIssuer` is the text `null`. Whoever serves a roster can therefore turn a null claim field into an empty
+  string, or split a list element on `|`, without breaking the signature, and that changes which claims match.
+  `CanonicalRoutingPolicy` writes instants in whole milliseconds, and writes a missing instant and one in the
+  epoch's first millisecond both as 0. Whoever serves a bundle can therefore change the digits of its instants past
+  the millisecond, or turn a bound in the epoch's first millisecond into a missing one, without breaking the
+  signature. Port both byte for byte to verify what is served today; do not reuse either as the encoding for any
+  new signed object.
 
 Golden vectors for the roster bytes in both forms, authority signatures and thresholds, the transparency-log
 leaves, roots and consistency proofs, routing-policy bundles with their delegate signatures and validity
@@ -212,9 +214,9 @@ a `404` from `/policy/routing` (check 5). A response over 2 MiB, nested more tha
 expected shape makes the checks that need it `unverifiable(parse_error)`. Outside the `member` blocks, which
 check 3 parses with its own outcomes, the expected shape means:
 - every field has the JSON type the contract gives it, so a number or boolean sent as a string is refused;
-- these fields are present and not null: `version`, `issuedAt`, `logCheckpoint`, `entries` and
-  `authoritySignatures`, in each entry `homeserver` and `status`, and in each `homeserver` `weight` and
-  `acceptsNew`;
+- these `/roster` fields are present and not null: `version`, `issuedAt`, `logCheckpoint` with its `merkleRoot`
+  and `size`, `entries` and `authoritySignatures`, in each entry `homeserver` and `status`, and in each
+  `homeserver` `weight` and `acceptsNew`;
 - timestamps are ISO-8601 UTC with four year digits and no sign, and an uppercase `T` and `Z`. The resolver writes
   a year past 9999 with a sign, and the apps refuse it;
 - sizes and indexes fit in 31 bits, and consistency proof hashes are 64 lowercase hex characters;
