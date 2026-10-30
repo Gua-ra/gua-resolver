@@ -57,4 +57,23 @@ class CanonicalRosterUnchangedTest {
 
         assertThat(new String(bytes, StandardCharsets.UTF_8)).isEqualTo(expected);
     }
+
+    @Test
+    void theLegacyFormCarriesNoSearchFields() {
+        RosterEntry entry = new RosterEntry(homeserver(), List.of(), ADMITTED, RosterEntry.Status.ACTIVE);
+        byte[] bytes = CanonicalRoster.bytes(3, 1_789_084_800_000L,
+                new SignedRoster.LogCheckpoint("deadbeef", 3), List.of(entry), RosterForm.LEGACY);
+
+        String unit = Character.toString(0x1F);
+        String expected = "gua-roster.v1\n"
+                + "version=3\n"
+                + "issuedAt=1789084800000\n"
+                + "log=deadbeef:3\n"
+                + String.join(unit, "dev", "example.test", "https://example.test",
+                        "https://mas.example.test", "br", "5", "true", "MCowBQYDK2VwAyEA",
+                        "1789084800000", "ACTIVE", "[]")
+                + "\n";
+
+        assertThat(new String(bytes, StandardCharsets.UTF_8)).isEqualTo(expected);
+    }
 }

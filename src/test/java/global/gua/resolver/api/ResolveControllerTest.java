@@ -7,6 +7,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -34,6 +36,17 @@ class ResolveControllerTest {
                 .andExpect(jsonPath("$.registerAt.baseUrl").value("https://matrix.gua.local"))
                 .andExpect(jsonPath("$.registerAt.masIssuer").value("https://account.gua.local"))
                 .andExpect(jsonPath("$.trace").doesNotExist());
+    }
+
+    @Test
+    void theAnswerNamesTheRosterVersionItWasMadeAgainst() throws Exception {
+        String roster = mockMvc.perform(get("/roster")).andReturn().getResponse().getContentAsString();
+        long version = new ObjectMapper().readTree(roster).get("version").asLong();
+
+        mockMvc.perform(post("/resolve").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"phone\":\"+5511987654321\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rosterVersion").value(version));
     }
 
     @Test

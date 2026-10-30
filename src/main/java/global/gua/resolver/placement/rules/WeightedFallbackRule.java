@@ -41,14 +41,14 @@ public class WeightedFallbackRule implements PlacementRule {
         if (candidates.isEmpty()) {
             return Optional.empty();
         }
-        int totalWeight = candidates.stream().mapToInt(hs -> Math.max(0, hs.weight())).sum();
-        if (totalWeight <= 0) {
-            int index = positiveModulo(stableHash(context, roster.version(), candidates), candidates.size());
+        long totalWeight = candidates.stream().mapToLong(hs -> Math.max(0, hs.weight())).sum();
+        if (totalWeight == 0) {
+            int index = Math.floorMod(stableHash(context, roster.version(), candidates), candidates.size());
             return Optional.of(PlacementDecision.of(candidates.get(index), name(), "weighted-fallback",
                     "stable fallback over equal-weight homeservers"));
         }
-        int target = positiveModulo(stableHash(context, roster.version(), candidates), totalWeight);
-        int cumulative = 0;
+        long target = Math.floorMod((long) stableHash(context, roster.version(), candidates), totalWeight);
+        long cumulative = 0;
         for (Homeserver hs : candidates) {
             cumulative += Math.max(0, hs.weight());
             if (target < cumulative) {
@@ -65,7 +65,7 @@ public class WeightedFallbackRule implements PlacementRule {
         return Integer.MAX_VALUE;
     }
 
-    private static int stableHash(PlacementContext context, long rosterVersion, List<Homeserver> candidates) {
+    public static int stableHash(PlacementContext context, long rosterVersion, List<Homeserver> candidates) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             digest.update(("weighted-fallback.v1\nroster=" + rosterVersion + "\n")
@@ -83,9 +83,5 @@ public class WeightedFallbackRule implements PlacementRule {
         } catch (Exception e) {
             throw new IllegalStateException("SHA-256 unavailable", e);
         }
-    }
-
-    private static int positiveModulo(int value, int modulo) {
-        return Math.floorMod(value, modulo);
     }
 }

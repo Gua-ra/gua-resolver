@@ -36,6 +36,12 @@ public record PlacementContext(
         return new PlacementContext(e164, null, null, null, null, java.util.List.of(), Map.of(), false);
     }
 
+    public PlacementContext withoutUnverifiedClaims() {
+        return claimsVerified ? this
+                : new PlacementContext(e164Phone, country, mccmnc, carrier, regionHint, java.util.List.of(), Map.of(),
+                        false);
+    }
+
     /**
      * A stable, deterministic key that seeds the weighted-fallback bucketing hash so all nodes place the same
      * context identically. This is a plain (non-injective) bucketing key, not a signed or canonical form: it

@@ -88,3 +88,10 @@ tasks.register('govTool', JavaExec) {
     mainClass = 'global.gua.resolver.tools.GovTool'
     standardInput = System.in
 }
+
+tasks.register('clientVerificationVectors', JavaExec) {
+    group = 'documentation'
+    description = 'Regenerate docs/specs/gua-client-verification-v1-vectors.json'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'global.gua.resolver.verify.ClientVerificationVectorsGenerator'
+}
