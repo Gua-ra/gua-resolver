@@ -192,7 +192,7 @@ public final class ClientVerificationVectorsGenerator {
         notes.add("The production roster is a copy of https://resolver.gua.global/roster as served on 2026-10-27. It is signed with the production authority key listed under keys.");
         notes.add("Each expected placement is the homeserver the Java reference verifier chooses for a new account from the verified roster and policy. No context carries verified claims, so an affiliation the client states without proof never changes the result.");
         notes.add("Placements are evaluated at their evaluatedAt instant, not at the current time. Weights are summed in 64 bits, so weights whose total passes 2^31 do not wrap.");
-        notes.add("A policy bundle or delegation zone is in effect from notBefore, inclusive, until expiresAt, exclusive. A missing bound leaves that side open, and so does a bound at 1970-01-01T00:00:00Z, because the signed bytes write both as 0. policyValidity checks a bundle at its edges and windows checks the rule itself.");
+        notes.add("A policy bundle or delegation zone is in effect from notBefore, inclusive, until expiresAt, exclusive, compared in whole milliseconds as the signed bytes carry them. A missing bound leaves that side open, and so does a bound in the first millisecond of 1970-01-01T00:00:00Z, because the signed bytes write both as 0. policyValidity checks a bundle at its edges and windows checks the rule itself.");
         notes.add("A resolve answer is located by the strongest match in the roster, whatever the entry order: an ACTIVE entry with the same serverName, baseUrl and masIssuer, then any entry with all three, then any entry with the serverName. Ties go to the entry served first. expectedEntryId names the entry that decided the match.");
         notes.add("In the signed roster bytes a null id, serverName, baseUrl or masIssuer is the text null. The other optional fields are empty.");
         notes.add("expectedOutcome is the outcome a client reports for a rejected roster or policy. A placement's unsignedRuleAbove says whether a matching rule in a zone without a valid delegate signature outranks the rule that decided, which makes the placement check indeterminate(unsigned_rule).");
@@ -515,6 +515,11 @@ public final class ClientVerificationVectorsGenerator {
                 trusted(List.of(AUTHORITY_A, AUTHORITY_B)), 2,
                 "A key counts once however often it appears, so the second required signature is missing."));
 
+        SignedRoster unnamed = withSignatures(r1, List.of(
+                new SignedRoster.AuthoritySignature(null, r1.authoritySignatures().get(0).signatureB64())));
+        out.add(rejection("a signature without a key id", RosterForm.V1, unnamed, trusted(List.of(AUTHORITY_A)), 1,
+                "A signature that names no key counts for none."));
+
         out.add(rejection("a v1 roster checked against its legacy bytes", RosterForm.LEGACY, r1,
                 trusted(List.of(AUTHORITY_A)), 1, "The signature covers the v1 bytes, so the legacy bytes fail."
                         + " Check this vector with the form it names, not the form its JSON implies."));
@@ -694,6 +699,11 @@ public final class ClientVerificationVectorsGenerator {
         b.put("reason", "The signed bytes changed, so the signature fails.");
         b.put("expectedOutcome", policySignatureOutcome(retargeted, List.of(GOVERNANCE_A)));
         out.add(b);
+        RoutingPolicyBundle unsigned = withPolicySignatures(policy, null);
+        ObjectNode d = policyVector("a bundle with no signatures list", null, unsigned, List.of(GOVERNANCE_A), 1);
+        d.put("reason", "A missing signatures list is the same as an empty one.");
+        d.put("expectedOutcome", policySignatureOutcome(unsigned, List.of(GOVERNANCE_A)));
+        out.add(d);
         ObjectNode c = policyVector("no policy keys configured", null, policy, List.of(), 1);
         c.put("reason", "With no trusted policy keys, no bundle can verify.");
         c.put("expectedOutcome", policySignatureOutcome(policy, List.of()));
