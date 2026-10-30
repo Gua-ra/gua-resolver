@@ -36,7 +36,6 @@ public record PlacementContext(
         return new PlacementContext(e164, null, null, null, null, java.util.List.of(), Map.of(), false);
     }
 
-    /** This context as placement sees it: affiliations and attributes count only when the claims were verified. */
     public PlacementContext withoutUnverifiedClaims() {
         return claimsVerified ? this
                 : new PlacementContext(e164Phone, country, mccmnc, carrier, regionHint, java.util.List.of(), Map.of(),

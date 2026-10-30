@@ -65,9 +65,8 @@ public class SecurityConfig {
     }
 
     /**
-     * Cross-origin access for the web app: the public read endpoints and {@code POST /resolve}, only from
-     * {@code gua.resolver.cors.allowed-origins}. With no origin configured every preflight is refused.
-     * {@code /authority/**} and the placement ingest are never exposed.
+     * Only the public read endpoints and {@code POST /resolve} are exposed cross-origin, never
+     * {@code /authority/**} or the placement ingest. With no origin configured every preflight is refused.
      */
     @Bean
     FilterRegistrationBean<CorsFilter> resolverCorsFilter(ResolverProperties props) {

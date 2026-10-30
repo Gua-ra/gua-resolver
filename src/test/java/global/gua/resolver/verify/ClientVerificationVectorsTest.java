@@ -43,10 +43,6 @@ import global.gua.resolver.roster.SignedRoster;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * Checks every value in the committed client-verification vectors against the production code, so the file
- * the apps test against cannot drift from the server.
- */
 class ClientVerificationVectorsTest {
 
     private static final Path VECTORS = Path.of("docs/specs/gua-client-verification-v1-vectors.json");

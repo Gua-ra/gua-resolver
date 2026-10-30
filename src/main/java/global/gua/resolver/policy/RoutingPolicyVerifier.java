@@ -61,7 +61,7 @@ public class RoutingPolicyVerifier {
         this(props, (GovernanceKeySet) null);
     }
 
-    /** An offline verifier that trusts exactly these keys: no fallback to another key set, nothing logged. */
+    /** Trusts exactly these keys, with no fallback to another key set. */
     public static RoutingPolicyVerifier forKeys(List<ResolverProperties.TrustedKey> keys, int threshold) {
         return new RoutingPolicyVerifier(publicKeys(keys), threshold);
     }
@@ -184,7 +184,6 @@ public class RoutingPolicyVerifier {
         return s == null || s.isBlank();
     }
 
-    /** Trusted key ids with a signature that verifies over the bundle's canonical bytes. Each id counts once. */
     public int countValidSignatures(RoutingPolicyBundle bundle) {
         byte[] canonical = CanonicalRoutingPolicy.bytes(bundle);
         Set<String> counted = new HashSet<>();

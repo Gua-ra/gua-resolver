@@ -38,12 +38,8 @@ import global.gua.resolver.roster.SignedRoster;
 import global.gua.resolver.roster.TransparencyLog;
 
 /**
- * Reference for the checks a client runs on what a resolver serves: the roster's authority signatures, the
- * policy bundle's signatures and validity window, where a {@code /resolve} answer sits in the roster, and the
- * placement of a new account. It reuses the server's encoders and placement rules. The member block and
- * transparency-log checks are specified in the protocol and run only in the apps.
- *
- * <p>A reproduced placement holds for one roster version, because the weighted fallback seeds on it.
+ * Reference for the verification protocol's client checks. Only the apps check member blocks and log consistency.
+ * A reproduced placement holds for one roster version, because the weighted fallback seeds on it.
  */
 public final class ResolverVerifier {
 
@@ -59,10 +55,7 @@ public final class ResolverVerifier {
         this(authorityKeys, authorityThreshold, policyKeys, policyThreshold, Clock.systemUTC());
     }
 
-    /**
-     * @param policyKeys the only keys a policy bundle may be signed under. An empty list verifies no bundle; there
-     *                   is no fallback to the authority keys, which the server still has.
-     */
+    /** @param policyKeys the only keys a policy bundle may be signed under, so an empty list verifies no bundle. */
     public ResolverVerifier(List<ResolverProperties.TrustedKey> authorityKeys, int authorityThreshold,
                             List<ResolverProperties.TrustedKey> policyKeys, int policyThreshold, Clock clock) {
         ResolverProperties rosterProps = new ResolverProperties();
@@ -83,12 +76,10 @@ public final class ResolverVerifier {
                         .collect(Collectors.toUnmodifiableSet());
     }
 
-    /** Throws unless enough trusted authority keys signed the bytes of this roster form. */
     public void verifyRoster(SignedRoster roster, RosterForm form) {
         rosterVerifier.requireVerified(roster, form);
     }
 
-    /** The rosterSignature outcome a client reports for this roster, in the report's {@code outcome(reason)} form. */
     public String rosterSignatureOutcome(SignedRoster roster, RosterForm form) {
         List<SignedRoster.AuthoritySignature> signatures =
                 Objects.requireNonNullElse(roster.authoritySignatures(), List.of());
@@ -96,7 +87,6 @@ public final class ResolverVerifier {
                 authorityKeyIds, rosterVerifier.countValidSignatures(roster, form), rosterVerifier.threshold());
     }
 
-    /** The signature step of the policy check, in the report's {@code outcome(reason)} form. */
     public String policySignatureOutcome(RoutingPolicyBundle policy) {
         if (policyKeyIds.isEmpty()) {
             return "unverifiable(no_policy_keys)";
@@ -117,11 +107,7 @@ public final class ResolverVerifier {
         return valid == 0 ? "invalid(bad_signature)" : "invalid(threshold_not_met)";
     }
 
-    /**
-     * The policy check's log step for a served bundle whose signatures and window passed, or for a {@code 404} when
-     * {@code served} is null. The leaves the checkpoint signs must hash to its root, and the bundle must be the newest
-     * version of its policy among them. A 404 passes only while none of them publishes a policy.
-     */
+    /** For a bundle whose signatures and window passed, or for a {@code 404} when {@code served} is null. */
     public static String policyLogOutcome(List<TransparencyLog.Event> events, SignedRoster.LogCheckpoint checkpoint,
                                           RoutingPolicyBundle served) {
         int size = Math.toIntExact(checkpoint.size());
@@ -161,7 +147,6 @@ public final class ResolverVerifier {
         }
     }
 
-    /** Throws unless enough policy keys signed the bundle and it is in effect now. */
     public void verifyPolicy(RoutingPolicyBundle policy) {
         policyVerifier.requireVerified(policy);
         if (!policy.inEffectAt(clock.instant())) {
@@ -170,7 +155,6 @@ public final class ResolverVerifier {
         }
     }
 
-    /** The server's placement for a new account with this context, after verifying the roster and the policy. */
     public PlacementDecision reproduceNewAccountDecision(PlacementContext context, SignedRoster roster,
                                                          RosterForm form, RoutingPolicyBundle policy) {
         verifyRoster(roster, form);
@@ -187,9 +171,8 @@ public final class ResolverVerifier {
     }
 
     /**
-     * Whether a rule that matches this context but sits in a zone without a valid delegate signature ranks above
-     * the rule that decided. Neither the bundle signatures nor its log leaf cover delegate signatures, so a
-     * client cannot tell a missing one from a removed one.
+     * Neither the bundle signatures nor its log leaf cover delegate signatures, so a client cannot tell a missing
+     * one from a removed one.
      */
     public boolean unsignedRuleOutranks(PlacementContext context, RoutingPolicyBundle policy,
                                         PlacementDecision decision) {
@@ -211,24 +194,19 @@ public final class ResolverVerifier {
                 .anyMatch(r -> decided.isEmpty() || rank.compare(r, decided.get()) < 0);
     }
 
-    /** How a {@code /resolve} answer relates to a roster. */
     public enum HomeserverMatch {
-        /** An ACTIVE entry has the answer's server name, base URL and auth issuer. */
         ACTIVE_MATCH,
-        /** Only entries that are not ACTIVE have all three. */
         INACTIVE,
-        /** An entry has the server name, but none has all three. */
         FIELD_MISMATCH,
-        /** No entry has the server name. */
         NOT_IN_ROSTER
     }
 
-    /** A classification and the entry that decided it, which is null for NOT_IN_ROSTER. */
+    /** {@code entry} is null for NOT_IN_ROSTER. */
     public record Located(HomeserverMatch match, RosterEntry entry) {}
 
     /**
-     * Where a {@code /resolve} answer sits in a roster the caller has verified. The strongest classification
-     * wins whatever the entry order, and a tie goes to the entry served first. Region is not compared.
+     * The roster must already be verified. The strongest classification wins whatever the entry order, and a tie
+     * goes to the entry served first.
      */
     public static Located locate(String serverName, String baseUrl, String masIssuer, SignedRoster roster) {
         List<RosterEntry> named = roster.entries().stream()

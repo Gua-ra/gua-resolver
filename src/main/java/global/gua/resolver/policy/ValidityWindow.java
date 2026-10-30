@@ -3,7 +3,6 @@ package global.gua.resolver.policy;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
-/** A signed window that opens at {@code notBefore} and closes at {@code expiresAt}. A missing bound is open. */
 final class ValidityWindow {
 
     private ValidityWindow() {}

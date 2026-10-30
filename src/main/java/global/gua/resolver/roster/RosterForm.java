@@ -12,10 +12,7 @@ public enum RosterForm {
     V1,
     LEGACY;
 
-    /**
-     * The form of a served roster, read from its JSON because parsing fills in the search fields: LEGACY when
-     * no entry has a {@code searchVisibility} key, V1 when every entry has one, and empty for a mix.
-     */
+    /** Reads the JSON because parsing a roster fills in the search fields. */
     public static Optional<RosterForm> of(JsonNode roster) {
         int entries = 0;
         int withSearchFields = 0;

@@ -68,7 +68,6 @@ public class RosterVerifier {
         }
     }
 
-    /** Trusted key ids with a signature that verifies over the bytes of this form. Each id counts once. */
     public int countValidSignatures(SignedRoster roster, RosterForm form) {
         byte[] canonical = CanonicalRoster.bytes(roster, form);
         Set<String> counted = new HashSet<>();

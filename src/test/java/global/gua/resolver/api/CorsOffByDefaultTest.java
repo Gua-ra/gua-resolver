@@ -11,7 +11,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** With no allowed origin configured, a browser preflight is refused and reads carry no CORS header. */
 @SpringBootTest
 @AutoConfigureMockMvc
 class CorsOffByDefaultTest {

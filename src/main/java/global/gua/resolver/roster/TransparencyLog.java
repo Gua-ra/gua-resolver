@@ -39,7 +39,6 @@ public interface TransparencyLog {
     /** A single membership event (the leaf that gets hashed into the tree). */
     record Event(long index, String type, String homeserverId, String payloadHash, String recordedAt) {
 
-        /** The leaf a reader recomputes: {@code index|type|homeserverId|payloadHash|recordedAt in epoch ms}. */
         public String leafHash() {
             String data = index + "|" + type + "|" + (homeserverId == null ? "" : homeserverId) + "|" + payloadHash
                     + "|" + Instant.parse(recordedAt).toEpochMilli();

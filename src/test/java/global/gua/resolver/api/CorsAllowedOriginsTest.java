@@ -13,7 +13,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** A configured web origin may call the public endpoints cross-origin; anything else stays refused. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @DirtiesContext

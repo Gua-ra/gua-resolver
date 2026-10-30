@@ -65,7 +65,6 @@ public class WeightedFallbackRule implements PlacementRule {
         return Integer.MAX_VALUE;
     }
 
-    /** The pick's seed: the first four bytes of SHA-256 over the roster version, the routing key and the candidates. */
     public static int stableHash(PlacementContext context, long rosterVersion, List<Homeserver> candidates) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
