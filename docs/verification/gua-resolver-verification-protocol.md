@@ -120,12 +120,13 @@ environments that have not finished attesting.
    `delegatePublicKey`. A rule is trusted only if its zone is BOTH authority-attested and delegate-signed, so
    a delegate controls its own rules within an authority-granted scope. This constrains delegates, not the
    authority: the authority attests the delegate key and this protocol pins none.
-3. **Validity + scope.** The bundle applies only while `notBefore <= now < expiresAt`, and so does each zone;
-   a missing bound is open, and so is a bound in the first millisecond of `1970-01-01T00:00:00Z`, which the
-   canonical bytes cannot tell from a missing one. A rule must target a homeserver in its zone's `allowedHomeserverIds` and match
-   within the zone scope (phone prefix / subdomain / OIDC issuer). Reject the bundle otherwise.
-   `ResolverVerifier` and the apps check both windows. Only `RoutingPolicyValidator` checks scope and allowed
-   homeservers, when a bundle is loaded from file and at `/authority/policy/validate`.
+3. **Validity + scope.** The bundle applies only while `notBefore <= now < expiresAt`, and so does each zone; a
+   missing bound is open, and so is a bound in the first millisecond of `1970-01-01T00:00:00Z`, which the canonical
+   bytes cannot tell from a missing one. Bounds compare in whole milliseconds, as they are signed. A rule must target
+   a homeserver in its zone's `allowedHomeserverIds` and match within the zone scope (phone prefix / subdomain / OIDC
+   issuer). Reject the bundle otherwise. `ResolverVerifier` and the apps check both windows. Only
+   `RoutingPolicyValidator` checks scope and allowed homeservers, when a bundle is loaded from file and at
+   `/authority/policy/validate`.
 4. **Transparency.** The policy version's content hash (SHA-256 of the canonical bytes) must appear as a
    `POLICY_PUBLISH` leaf in the transparency log, so the served policy is the publicly logged one.
 
@@ -177,13 +178,13 @@ A public client can carry such an envelope but cannot create one.
   UTF-8 byte order. It is the encoding for every newer signed object, specified in
   [signed federation objects](../specs/federation-signed-objects.md), and the vectors in
   `docs/specs/gua-lp-v1-vectors.json` pin it.
-- Only the routing-claims encoding escapes. `CanonicalRoster` joins fields with a raw `0x1F` that is asserted,
-  not enforced, to be absent from values, and collapses null and empty, except that a null `id`, `serverName`,
-  `baseUrl` or `masIssuer` is the text `null`. `CanonicalRoutingPolicy` writes a missing instant and the epoch
-  both as 0. Whoever serves a roster can therefore
-  turn a null claim field into an empty string, or split a list element on `|`, without breaking the
-  signature, and that changes which claims match. Port it byte for byte to verify what is served today; do
-  not reuse it as the encoding for any new signed object.
+- Only the routing-claims encoding escapes. `CanonicalRoster` joins fields with a raw `0x1F` that is asserted, not
+  enforced, to be absent from values, and collapses null and empty, except that a null `id`, `serverName`, `baseUrl`
+  or `masIssuer` is the text `null`. `CanonicalRoutingPolicy` writes instants in whole milliseconds, and writes a
+  missing instant and one in the epoch's first millisecond both as 0. Whoever serves a roster can therefore turn a
+  null claim field into an empty string, or split a list element on `|`, without breaking the signature, and that
+  changes which claims match. Port it byte for byte to verify what is served today; do not reuse it as the encoding
+  for any new signed object.
 
 Golden vectors for the roster bytes in both forms, authority signatures and thresholds, the transparency-log
 leaves, roots and consistency proofs, routing-policy bundles with their delegate signatures and validity
@@ -208,11 +209,14 @@ check once real traffic shows no failures.
 and threshold. A run has 10 seconds on a monotonic clock. A fetch that fails or answers anything but a 2xx is
 `unverifiable(roster_unavailable)`, `unverifiable(log_unavailable)` or `unverifiable(policy_unavailable)`, except
 a `404` from `/policy/routing` (check 5). A response over 2 MiB, nested more than 64 levels, or not of the
-expected shape makes the checks that need it `unverifiable(parse_error)`. The expected shape means:
+expected shape makes the checks that need it `unverifiable(parse_error)`. Outside the `member` blocks, which
+check 3 parses with its own outcomes, the expected shape means:
 - every field has the JSON type the contract gives it, so a number or boolean sent as a string is refused;
-- these fields are never null: `version`, `issuedAt`, `logCheckpoint`, `entries` and `authoritySignatures`, and in
-  each entry `homeserver`, `status`, `weight` and `acceptsNew`;
-- timestamps are in the resolver's form: ISO-8601 UTC, four year digits with no sign, an uppercase `T` and `Z`;
+- these fields are present and not null: `version`, `issuedAt`, `logCheckpoint`, `entries` and
+  `authoritySignatures`, in each entry `homeserver` and `status`, and in each `homeserver` `weight` and
+  `acceptsNew`;
+- timestamps are ISO-8601 UTC with four year digits and no sign, and an uppercase `T` and `Z`. The resolver writes
+  a year past 9999 with a sign, and the apps refuse it;
 - sizes and indexes fit in 31 bits, and consistency proof hashes are 64 lowercase hex characters;
 - every event of `/roster/log` is well formed, past the checkpoint too.
 
@@ -299,7 +303,9 @@ detected from the served JSON, and `none` when no roster was read.
   policy. Production lists none until governance keys exist, so a policy served there would be
   `unverifiable(no_policy_keys)`.
 - A mirror serves no transparency log. Check 4 still passes or fails while the checkpoint has not grown, and is
-  `unverifiable(log_unavailable)` once it has. Check 5 is always `unverifiable(log_unavailable)`.
+  `unverifiable(log_unavailable)` once it has. Check 5 is `unverifiable(log_unavailable)` whenever it reads the
+  log: for a `404`, and for a served bundle that passes its signature and window steps. A bundle that fails
+  either step is reported without the log being read.
 - The pin survives sign-out and is cleared only with the app's data. After a log is recreated, as in a dev
   reset, every run reports `rollback` until then.
 - A rotation of an authority key needs an app release that lists both keys. Until the apps verify the
