@@ -90,8 +90,9 @@ public final class ResolverVerifier {
 
     /** The rosterSignature outcome a client reports for this roster, in the report's {@code outcome(reason)} form. */
     public String rosterSignatureOutcome(SignedRoster roster, RosterForm form) {
-        return signatureOutcome(roster.authoritySignatures().stream()
-                        .map(SignedRoster.AuthoritySignature::authorityKeyId).toList(),
+        List<SignedRoster.AuthoritySignature> signatures =
+                Objects.requireNonNullElse(roster.authoritySignatures(), List.of());
+        return signatureOutcome(signatures.stream().map(SignedRoster.AuthoritySignature::authorityKeyId).toList(),
                 authorityKeyIds, rosterVerifier.countValidSignatures(roster, form), rosterVerifier.threshold());
     }
 
@@ -100,8 +101,9 @@ public final class ResolverVerifier {
         if (policyKeyIds.isEmpty()) {
             return "unverifiable(no_policy_keys)";
         }
-        return signatureOutcome(policy.signatures().stream()
-                        .map(RoutingPolicyBundle.PolicySignature::authorityKeyId).toList(),
+        List<RoutingPolicyBundle.PolicySignature> signatures =
+                Objects.requireNonNullElse(policy.signatures(), List.of());
+        return signatureOutcome(signatures.stream().map(RoutingPolicyBundle.PolicySignature::authorityKeyId).toList(),
                 policyKeyIds, policyVerifier.countValidSignatures(policy), policyThreshold);
     }
 

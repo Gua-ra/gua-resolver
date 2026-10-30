@@ -8,6 +8,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -71,7 +72,9 @@ public class RosterVerifier {
     public int countValidSignatures(SignedRoster roster, RosterForm form) {
         byte[] canonical = CanonicalRoster.bytes(roster, form);
         Set<String> counted = new HashSet<>();
-        for (SignedRoster.AuthoritySignature sig : roster.authoritySignatures()) {
+        List<SignedRoster.AuthoritySignature> signatures =
+                Objects.requireNonNullElse(roster.authoritySignatures(), List.of());
+        for (SignedRoster.AuthoritySignature sig : signatures) {
             PublicKey key = trustedKeys.get(sig.authorityKeyId());
             if (key != null && !counted.contains(sig.authorityKeyId())
                     && Ed25519.verify(key, canonical, sig.signatureB64())) {

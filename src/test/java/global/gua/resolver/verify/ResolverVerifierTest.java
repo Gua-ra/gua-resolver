@@ -164,6 +164,21 @@ class ResolverVerifierTest {
     }
 
     @Test
+    void aMissingSignatureListVerifiesNothing() {
+        SignedRoster roster = signedRoster();
+        SignedRoster unsignedRoster = new SignedRoster(roster.version(), roster.issuedAt(), roster.entries(),
+                roster.logCheckpoint(), null);
+        RoutingPolicyBundle policy = signedPolicy(true);
+        RoutingPolicyBundle unsignedPolicy = new RoutingPolicyBundle(policy.schemaVersion(), policy.policyId(),
+                policy.version(), policy.issuedAt(), policy.notBefore(), policy.expiresAt(), policy.delegationZones(),
+                policy.rules(), policy.fallback(), null, policy.delegateSignatures());
+
+        assertThat(verifier().rosterSignatureOutcome(unsignedRoster, RosterForm.V1))
+                .isEqualTo("invalid(unknown_key_id)");
+        assertThat(verifier().policySignatureOutcome(unsignedPolicy)).isEqualTo("invalid(unknown_key_id)");
+    }
+
+    @Test
     void aPolicyLogStepNeedsTheBundleLoggedUnderTheCheckpoint() {
         RoutingPolicyBundle policy = signedPolicy(true);
         TransparencyLog.Event admit = event(0, "ADMIT", "carrier", MerkleTree.sha256Hex("admit"));
