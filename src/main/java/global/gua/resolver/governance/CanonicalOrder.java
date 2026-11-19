@@ -16,12 +16,12 @@ import global.gua.resolver.crypto.CanonicalEncoder;
  * makes the bytes independent of the order a list arrived in; refusing duplicates keeps one operator's key
  * or one homeserver from appearing twice and being counted twice.
  */
-final class CanonicalOrder {
+public final class CanonicalOrder {
 
     private CanonicalOrder() {}
 
     /** {@code values} sorted by {@code key}, with a duplicate key refused as an encoding error. */
-    static <T> List<T> sortedUnique(Collection<T> values, Function<T, String> key, String what) {
+    public static <T> List<T> sortedUnique(Collection<T> values, Function<T, String> key, String what) {
         if (values == null) {
             throw new CanonicalEncoder.CanonicalEncodingException(what + " list must not be null");
         }
