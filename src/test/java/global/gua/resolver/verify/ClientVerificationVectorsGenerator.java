@@ -15,10 +15,13 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
+import com.fasterxml.jackson.core.util.DefaultIndenter;
+import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -116,6 +119,17 @@ public final class ClientVerificationVectorsGenerator {
     static final Homeserver HS_HEAVY_B = new Homeserver("hs-heavy-b", "heavy-b.gua.test",
             "https://matrix.heavy-b.gua.test", "https://account.heavy-b.gua.test", null, 2_000_000_000, true, "",
             Homeserver.SearchVisibility.GLOBAL, List.of());
+    static final Homeserver HS_LIMIT_A = fallbackHomeserver("hs-limit-a", 1 << 23, true);
+    static final Homeserver HS_LIMIT_B = fallbackHomeserver("hs-limit-b", 1 << 23, true);
+    static final Homeserver HS_SUSPENDED_HEAVY = fallbackHomeserver("hs-suspended-heavy", Integer.MAX_VALUE, true);
+    static final Homeserver HS_CLOSED_HEAVY = fallbackHomeserver("hs-closed-heavy", Integer.MAX_VALUE, false);
+    static final Homeserver HS_OVER = fallbackHomeserver("hs-over", (1 << 24) - 4, true);
+    static final Homeserver HS_ZERO_A = fallbackHomeserver("hs-zero-a", 0, true);
+    static final Homeserver HS_ZERO_B = fallbackHomeserver("hs-zero-b", 0, true);
+    static final Homeserver HS_ZERO_C = fallbackHomeserver("hs-zero-c", 0, true);
+    static final Homeserver HS_FIVE = fallbackHomeserver("hs-five", 5, true);
+    static final Homeserver HS_TWO = fallbackHomeserver("hs-two", 2, true);
+    static final Homeserver HS_NEGATIVE = fallbackHomeserver("hs-negative", -3, true);
 
     record RosterFixture(String ref, SignedRoster roster, List<NamedKey> trustedKeys, int threshold) {}
 
@@ -123,14 +137,22 @@ public final class ClientVerificationVectorsGenerator {
 
     private ClientVerificationVectorsGenerator() {}
 
+    static Homeserver fallbackHomeserver(String id, int weight, boolean acceptsNew) {
+        String host = id.substring("hs-".length()) + ".gua.test";
+        return new Homeserver(id, host, "https://matrix." + host, "https://account." + host, null, weight,
+                acceptsNew, "", Homeserver.SearchVisibility.GLOBAL, List.of());
+    }
+
     public static void main(String[] args) throws Exception {
         Files.createDirectories(OUT.getParent());
         Files.writeString(OUT, render());
         System.out.println("wrote " + OUT);
     }
 
+    /** Byte-identical on every platform: the default printer ends lines with the system separator. */
     static String render() throws Exception {
-        return JSON.writerWithDefaultPrettyPrinter().writeValueAsString(build()) + "\n";
+        DefaultPrettyPrinter printer = new DefaultPrettyPrinter().withObjectIndenter(new DefaultIndenter("  ", "\n"));
+        return JSON.writer(printer).writeValueAsString(build()) + "\n";
     }
 
     static ObjectNode build() throws Exception {
@@ -172,6 +194,22 @@ public final class ClientVerificationVectorsGenerator {
                 checkpoint(leafHashes, 7),
                 List.of(new RosterEntry(HS_NO_ISSUER, List.of(), ADMIT_CA, RosterEntry.Status.ACTIVE)),
                 RosterForm.V1, AUTHORITY_A), List.of(AUTHORITY_A), 1);
+        RosterFixture r8 = fallbackRoster("r8", Instant.parse("2026-10-06T00:00:00Z"), leafHashes,
+                new RosterEntry(HS_LIMIT_A, List.of(), ADMIT_CA, RosterEntry.Status.ACTIVE),
+                new RosterEntry(HS_LIMIT_B, List.of(), ADMIT_CA, RosterEntry.Status.ACTIVE),
+                new RosterEntry(HS_SUSPENDED_HEAVY, List.of(), ADMIT_CA, RosterEntry.Status.SUSPENDED),
+                new RosterEntry(HS_CLOSED_HEAVY, List.of(), ADMIT_CA, RosterEntry.Status.ACTIVE));
+        RosterFixture r9 = fallbackRoster("r9", Instant.parse("2026-10-07T00:00:00Z"), leafHashes,
+                new RosterEntry(HS_BR, brClaims(), ADMIT_BR, RosterEntry.Status.ACTIVE),
+                new RosterEntry(HS_OVER, List.of(), ADMIT_CA, RosterEntry.Status.ACTIVE));
+        RosterFixture r10 = fallbackRoster("r10", Instant.parse("2026-10-08T00:00:00Z"), leafHashes,
+                new RosterEntry(HS_ZERO_A, List.of(), ADMIT_CA, RosterEntry.Status.ACTIVE),
+                new RosterEntry(HS_ZERO_B, List.of(), ADMIT_CA, RosterEntry.Status.ACTIVE),
+                new RosterEntry(HS_ZERO_C, List.of(), ADMIT_CA, RosterEntry.Status.ACTIVE));
+        RosterFixture r11 = fallbackRoster("r11", Instant.parse("2026-10-09T00:00:00Z"), leafHashes,
+                new RosterEntry(HS_FIVE, List.of(), ADMIT_CA, RosterEntry.Status.ACTIVE),
+                new RosterEntry(HS_TWO, List.of(), ADMIT_CA, RosterEntry.Status.ACTIVE),
+                new RosterEntry(HS_NEGATIVE, List.of(), ADMIT_CA, RosterEntry.Status.ACTIVE));
         PolicyFixture brPolicy = new PolicyFixture("br-policy v3", policy);
         PolicyFixture spUnsigned = new PolicyFixture("br-policy v3 without the sp-zone delegate signature",
                 policy(GOVERNANCE_A, false, true));
@@ -179,26 +217,9 @@ public final class ClientVerificationVectorsGenerator {
         ObjectNode root = JSON.createObjectNode();
         root.put("vectors", "gua-client-verification.v1");
         root.put("protocol", "docs/verification/gua-resolver-verification-protocol.md");
-        ArrayNode notes = root.putArray("notes");
-        notes.add("The test keys are the Ed25519 example keys from RFC 8032, section 7.1. They are public, so never use them outside tests.");
-        notes.add("The signatures were made with deterministic Ed25519, so they can be reproduced exactly. Some libraries, Apple CryptoKit among them, randomize Ed25519 signatures. With those, verify the signatures here and do not compare their bytes.");
-        notes.add("canonicalUtf8 is the exact byte string that gets signed, written as a JSON string, and canonicalHex is the same bytes in hex. gua-roster.v1 separates fields with the control character U+001F.");
-        notes.add("Timestamps appear in JSON as ISO-8601 UTC strings with 0 to 9 fractional digits. The signed bytes carry them as epoch milliseconds. Digits past the millisecond are dropped, not rounded.");
-        notes.add("Rosters come in two forms. If no entry has searchVisibility, verify the legacy bytes, which leave out the search fields. If every entry has it, verify the v1 bytes. If only some entries have it, refuse the roster.");
-        notes.add("The production roster is a copy of https://resolver.gua.global/roster as served on 2026-10-27. It is signed with the production authority key listed under keys.");
-        notes.add("Each expected placement is the homeserver the Java reference verifier chooses for a new account from the verified roster and policy. No context carries verified claims, so an affiliation the client states without proof never changes the result.");
-        notes.add("Placements are evaluated at their evaluatedAt instant, not at the current time. Weights are summed in 64 bits, so weights whose total passes 2^31 do not wrap.");
-        notes.add("A policy bundle or delegation zone is in effect from notBefore, inclusive, until expiresAt, exclusive, compared in whole milliseconds as the signed bytes carry them. A missing bound leaves that side open, and so does a bound in the first millisecond of 1970-01-01T00:00:00Z, because the signed bytes write both as 0. policyValidity checks a bundle at its edges and windows checks the rule itself.");
-        notes.add("A resolve answer is located by the strongest match in the roster, whatever the entry order: an ACTIVE entry with the same serverName, baseUrl and masIssuer, then any entry with all three, then any entry with the serverName. Ties go to the entry served first. expectedEntryId names the entry that decided the match.");
-        notes.add("In the signed roster bytes a null id, serverName, baseUrl or masIssuer is the text null. The other optional fields are empty.");
-        notes.add("expectedOutcome is the outcome a client reports for a rejected roster or policy. A placement's unsignedRuleAbove says whether a matching rule in a zone without a valid delegate signature outranks the rule that decided, which makes the placement check indeterminate(unsigned_rule).");
-        notes.add("policyLog cases check a served bundle, or a 404 when servedPolicy is null, against all events in log.events and the checkpoint given in each case.");
-        notes.add("Consistency proofs are checked as RFC 9162 section 2.1.4.2 describes, including its rule that a proof fails when hashes remain after the path is complete.");
-        notes.add("Vectors refer to rosters and policies by their ref field.");
-
         root.set("keys", keys());
         root.set("instants", instants());
-        root.set("rosters", rosters(r1, r2, r4, prod, prodJson, r5, r6, r7));
+        root.set("rosters", rosters(r1, r2, r4, prod, prodJson, r5, r6, r7, List.of(r8, r9, r10, r11)));
         root.set("rosterRejections", rosterRejections(r1.roster(), r2.roster(), brMember));
         root.set("log", log(events, leafHashes));
         root.set("policies", policies(brPolicy, spUnsigned));
@@ -206,7 +227,7 @@ public final class ClientVerificationVectorsGenerator {
         root.set("policyValidity", policyValidity(brPolicy));
         root.set("windows", windows());
         root.set("policyLog", policyLog(events, policy, withRules(policy, retargetedRules(policy))));
-        root.set("placements", placements(r1, r2, r6, brPolicy, spUnsigned));
+        root.set("placements", placements(r1, r2, r6, r8, r9, r10, r11, brPolicy, spUnsigned));
         root.set("resolveAnswers", resolveAnswers(r2.roster(), prod, r5.roster(), r7.roster()));
         return root;
     }
@@ -233,6 +254,11 @@ public final class ClientVerificationVectorsGenerator {
                 new ClaimPredicate("BR", "72411", "Vivo", List.of("+5519", "+5511"), null, Map.of(), null, 10),
                 new ClaimPredicate(null, null, null, null, "usp.br",
                         new TreeMap<>(Map.of("hd", "usp.br", "email_domain", "usp.br")), null, 5));
+    }
+
+    static RosterFixture fallbackRoster(String ref, Instant issuedAt, List<String> leafHashes, RosterEntry... entries) {
+        return new RosterFixture(ref, signRoster(7, issuedAt, checkpoint(leafHashes, 7), List.of(entries),
+                RosterForm.V1, AUTHORITY_A), List.of(AUTHORITY_A), 1);
     }
 
     static SignedRoster signRoster(long version, Instant issuedAt, SignedRoster.LogCheckpoint checkpoint,
@@ -389,7 +415,6 @@ public final class ClientVerificationVectorsGenerator {
         prod.put("usedAsKeyId", PROD_AUTHORITY_KEY_ID);
         prod.put("publicKeySpkiB64", PROD_AUTHORITY_PUBLIC_KEY);
         prod.put("publicKeyHex", HEX.formatHex(B64.decode(PROD_AUTHORITY_PUBLIC_KEY), 12, 44));
-        prod.put("note", "Production authority public key. This file holds no private key for it.");
         return keys;
     }
 
@@ -453,11 +478,11 @@ public final class ClientVerificationVectorsGenerator {
     }
 
     static ArrayNode rosters(RosterFixture r1, RosterFixture r2, SignedRoster r4, SignedRoster prod, JsonNode prodJson,
-                             RosterFixture r5, RosterFixture r6, RosterFixture r7) {
+                             RosterFixture r5, RosterFixture r6, RosterFixture r7, List<RosterFixture> weightRosters) {
         ArrayNode out = JSON.createArrayNode();
         out.add(rosterVector("one homeserver that signs its own entry; one authority signature required", r1));
-        out.add(rosterVector("three homeservers with routing claims, group search visibility and one suspended entry;"
-                + " two of two authority signatures required", r2));
+        out.add(rosterVector("three homeservers with claims, group search and a suspended entry; two signatures "
+                + "required", r2));
         out.add(rosterVector("legacy form: no entry has search fields", "r4", RosterForm.LEGACY, r4,
                 stripSearchFields(r4), trusted(List.of(AUTHORITY_A)), 1, keyRefs(List.of(AUTHORITY_A))));
         out.add(rosterVector("legacy form: the production roster of 2026-10-27", "prod-2026-10-27", RosterForm.LEGACY,
@@ -477,6 +502,15 @@ public final class ClientVerificationVectorsGenerator {
         retried.put("reason", "A signature that fails does not use up its key, so the valid one still counts.");
         retried.remove("signatureKeyRefs");
         out.add(retried);
+
+        List<String> weightNames = List.of(
+                "weights that add up to the fallback limit, beside heavy entries that take no new accounts",
+                "a homeserver with routing claims, and weights one past the fallback limit",
+                "three homeservers of weight 0",
+                "weights 5, 2 and -3");
+        for (int i = 0; i < weightRosters.size(); i++) {
+            out.add(rosterVector(weightNames.get(i), weightRosters.get(i)));
+        }
         return out;
     }
 
@@ -494,7 +528,7 @@ public final class ClientVerificationVectorsGenerator {
                 RosterForm.V1, AUTHORITY_B);
         out.add(rejection("signed by a key the client does not trust", RosterForm.V1, signedByB,
                 trusted(List.of(AUTHORITY_A)), 1,
-                "Only authority-b signed and the client trusts only authority-a, so no signature counts."));
+                "Only authority-b signed, and the client trusts only authority-a."));
 
         SignedRoster aOnly = signRoster(r2.version(), r2.issuedAt(), r2.logCheckpoint(), r2.entries(),
                 RosterForm.V1, AUTHORITY_A);
@@ -505,7 +539,7 @@ public final class ClientVerificationVectorsGenerator {
         twice.add(aOnly.authoritySignatures().get(0));
         out.add(rejection("the same signature listed twice", RosterForm.V1, withSignatures(aOnly, twice),
                 trusted(List.of(AUTHORITY_A, AUTHORITY_B)), 2,
-                "A key counts once however often it appears, so the second required signature is missing."));
+                "A key counts once, however often it appears."));
 
         SignedRoster unnamed = withSignatures(r1, List.of(
                 new SignedRoster.AuthoritySignature(null, r1.authoritySignatures().get(0).signatureB64())));
@@ -513,8 +547,7 @@ public final class ClientVerificationVectorsGenerator {
                 "A signature that names no key counts for none."));
 
         out.add(rejection("a v1 roster checked against its legacy bytes", RosterForm.LEGACY, r1,
-                trusted(List.of(AUTHORITY_A)), 1, "The signature covers the v1 bytes, so the legacy bytes fail."
-                        + " Check this vector with the form it names, not the form its JSON implies."));
+                trusted(List.of(AUTHORITY_A)), 1, "The signature covers the v1 bytes, not the legacy bytes."));
 
         ObjectNode mixed = JSON.valueToTree(r2);
         ((ObjectNode) mixed.get("entries").get(1).get("homeserver")).remove("searchVisibility");
@@ -545,8 +578,6 @@ public final class ClientVerificationVectorsGenerator {
 
     static ObjectNode log(List<LogEvent> events, List<String> leafHashes) {
         ObjectNode log = JSON.createObjectNode();
-        log.put("leafData", "Each leaf is the UTF-8 string index|type|homeserverId|payloadHash|recordedAt. homeserverId holds the event subject, such as hs-br or br-policy:v3, and is empty when null. recordedAt is in epoch milliseconds.");
-        log.put("hashing", "RFC 6962 hashing: a leaf is SHA-256(0x00 || data), an inner node is SHA-256(0x01 || left || right), and the root of the empty tree is the SHA-256 of zero bytes.");
         ArrayNode ev = log.putArray("events");
         for (LogEvent e : events) {
             ObjectNode n = ev.addObject();
@@ -605,7 +636,7 @@ public final class ClientVerificationVectorsGenerator {
                 nodeHashHex(leafHashes.get(4), nodeHashHex(leafHashes.get(5), filler)));
         invalidProof(invalid, "a proof with hashes left after the path ends", 6, 8, root6, forgedRoot8,
                 List.of(leafHashes.get(5), filler, leafHashes.get(4), MerkleTree.root(leafHashes.subList(0, 4))),
-                "RFC 9162 fails a proof once the path is complete and hashes remain. Without that rule this one proves a root no 8-leaf log has.");
+                "Hashes remain after the path is complete, which RFC 9162 refuses.");
         return log;
     }
 
@@ -684,7 +715,7 @@ public final class ClientVerificationVectorsGenerator {
         ObjectNode operationalKey = policyVector("signed by the roster authority key, which is not a policy key",
                 null, policy(AUTHORITY_A, true, true), List.of(GOVERNANCE_A), 1);
         operationalKey.put("reason",
-                "Policies are checked against the policy keys only. The roster authority key does not count.");
+                "Only policy keys count, not the roster authority key.");
         operationalKey.put("expectedOutcome",
                 policySignatureOutcome(policy(AUTHORITY_A, true, true), List.of(GOVERNANCE_A)));
         out.add(operationalKey);
@@ -810,7 +841,8 @@ public final class ClientVerificationVectorsGenerator {
         n.put("inEffect", policy.bundle().inEffectAt(at));
     }
 
-    static ArrayNode placements(RosterFixture r1, RosterFixture r2, RosterFixture r6, PolicyFixture policy,
+    static ArrayNode placements(RosterFixture r1, RosterFixture r2, RosterFixture r6, RosterFixture r8,
+                                RosterFixture r9, RosterFixture r10, RosterFixture r11, PolicyFixture policy,
                                 PolicyFixture spUnsigned) {
         ArrayNode out = JSON.createArrayNode();
         out.add(placement("a signed policy rule decides", r2, policy, ctx("+5511987654321", null, null, null)));
@@ -832,14 +864,32 @@ public final class ClientVerificationVectorsGenerator {
         out.add(placement("only one homeserver accepts new accounts", r1, null,
                 ctx("+5511987654321", null, null, null)));
         for (int i = 0; i < 8; i++) {
-            out.add(placement("weighted fallback sample " + i, r2, policy,
-                    ctx("+552199000" + String.format("%04d", i * 1237), null, null, null)));
+            out.add(placement("weighted fallback sample " + i, r2, policy, sample(i)));
         }
         for (int i = 0; i < 4; i++) {
-            out.add(placement("weights that add up past 2^31, sample " + i, r6, null,
-                    ctx("+552199000" + String.format("%04d", i * 1237), null, null, null)));
+            out.add(placement("weights past the fallback limit make no decision, sample " + i, r6, null, sample(i)));
+        }
+        for (int i : new int[] {0, 3, 6, 8}) {
+            out.add(placement("weights at the fallback limit, sample " + i, r8, null, sample(i)));
+        }
+        out.add(placement("past the fallback limit a roster claim still decides", r9, null,
+                ctx("+5519991112222", "BR", "72411", "Vivo")));
+        out.add(placement("past the fallback limit a signed policy rule still decides", r9, policy,
+                ctx("+5511987654321", null, null, null)));
+        out.add(placement("past the fallback limit, without the sp-zone delegate signature, nothing decides", r9,
+                spUnsigned, ctx("+5511987654321", null, null, null)));
+        out.add(placement("past the fallback limit the fallback makes no decision", r9, null, sample(0)));
+        for (int i = 0; i < 4; i++) {
+            out.add(placement("weights all 0, sample " + i, r10, null, sample(i)));
+        }
+        for (int i = 0; i < 4; i++) {
+            out.add(placement("weights 5, 2 and -3, sample " + i, r11, null, sample(i)));
         }
         return out;
+    }
+
+    static PlacementContext sample(int i) {
+        return ctx("+552199000" + String.format(Locale.ROOT, "%04d", i * 1237), null, null, null);
     }
 
     static PlacementContext ctx(String phone, String country, String mccmnc, String carrier) {
@@ -851,7 +901,7 @@ public final class ClientVerificationVectorsGenerator {
         SignedRoster roster = rosterFixture.roster();
         RoutingPolicyBundle policy = policyFixture == null ? null : policyFixture.bundle();
         ResolverVerifier verifier = verifierAt(EVALUATED_AT, rosterFixture.trustedKeys(), rosterFixture.threshold());
-        PlacementDecision d = verifier.reproduceNewAccountDecision(ctx, roster, RosterForm.V1, policy);
+        Optional<PlacementDecision> d = verifier.reproduceNewAccountDecision(ctx, roster, RosterForm.V1, policy);
         PlacementContext placed = ctx.withoutUnverifiedClaims();
         ObjectNode v = JSON.createObjectNode();
         v.put("name", name);
@@ -875,11 +925,11 @@ public final class ClientVerificationVectorsGenerator {
             new TreeMap<>(ctx.attributes()).forEach(a::put);
         }
         v.put("evaluatedAt", EVALUATED_AT.toString());
-        v.put("expectedHomeserverId", d.homeserver().id());
-        v.put("expectedRule", d.rule());
-        v.put("expectedRuleId", d.ruleId());
+        v.put("expectedHomeserverId", d.map(x -> x.homeserver().id()).orElse(null));
+        v.put("expectedRule", d.map(PlacementDecision::rule).orElse(null));
+        v.put("expectedRuleId", d.map(PlacementDecision::ruleId).orElse(null));
         v.put("unsignedRuleAbove", policy != null && verifier.unsignedRuleOutranks(ctx, policy, d));
-        if ("weighted-fallback".equals(d.ruleId())) {
+        if (d.isEmpty() || "weighted-fallback".equals(d.get().ruleId())) {
             List<Homeserver> candidates = roster.activeEntries().stream().map(RosterEntry::homeserver)
                     .filter(Homeserver::acceptsNew).sorted(Comparator.comparing(Homeserver::id)).toList();
             ObjectNode f = v.putObject("fallback");
@@ -889,6 +939,7 @@ public final class ClientVerificationVectorsGenerator {
             for (Homeserver h : candidates) {
                 cands.addObject().put("id", h.id()).put("weight", Math.max(0, h.weight()));
             }
+            f.put("totalWeight", WeightedFallbackRule.totalWeight(candidates));
             f.put("stableHash", WeightedFallbackRule.stableHash(placed, roster.version(), candidates));
         }
         return v;

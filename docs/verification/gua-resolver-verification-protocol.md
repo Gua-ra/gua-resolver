@@ -70,7 +70,11 @@ These are the only inputs the verifier trusts. Everything else is fetched and ve
    authority key, one vote per key. Require at least `k`.
 3. Verify transparency-log consistency: the `logCheckpoint` must be an append-only extension of the last one
    the client saw (`verifyConsistency`). This detects a history rewritten since this client's own last
-   checkpoint; it does not by itself rule out a split view between clients.
+   checkpoint; it does not by itself rule out a split view between clients. Each leaf is the UTF-8 text
+   `index|type|subject|payloadHash|recordedAt`, where the subject is a homeserver id or `<policyId>:v<version>`
+   and is empty when there is none, and `recordedAt` is in epoch milliseconds. The tree is the RFC 9162
+   section 2.1.1 Merkle tree hash with SHA-256: a leaf hashes as SHA-256(0x00 || data), a node as
+   SHA-256(0x01 || left || right), and the empty tree as the SHA-256 of no bytes.
 
 ## 1a. Verify a member self-signature
 
@@ -137,13 +141,25 @@ fallback seeds on the roster version, which is the transparency-log size, so its
 policy or directory-checkpoint leaf is appended even when membership did not change. To verify a `/resolve` answer:
 
 - **New account (`exists=false`, `registerAt`).** Run the placement pipeline over the verified artifacts and
-  confirm it yields the same homeserver id the resolver returned:
+  confirm it yields the homeserver the resolver returned. A pipeline that decides nothing matches no answer:
   1. **Signed policy rules** (priority order) whose zone is delegate-verified and currently valid, and whose
      match holds. Institution-domain / OIDC rules require the context's claims to be verified (see below).
   2. **Legacy signed-roster claim predicates** (carrier/geo may be self-asserted; affiliation/attribute
      require verified claims).
-  3. **Stable weighted fallback** across active homeservers accepting new accounts (deterministic hash of the
-     context + roster version + candidate ids/weights).
+  3. **Stable weighted fallback** (`weighted-fallback.v1`). The candidates are the ACTIVE entries with
+     `acceptsNew`, ordered by `id` in UTF-16 code unit order. A candidate's weight `w` is `max(0, weight)`, and
+     `T` is the exact sum of `w`. With no candidate, or with `T` above 16,777,216 (2^24), the fallback decides
+     nothing and `/resolve` answers `503 no_placement_available`. Otherwise `h` is the first four bytes of
+     SHA-256, read big-endian as a signed 32-bit integer, over the UTF-8 of `weighted-fallback.v1`, LF,
+     `roster=<version>`, LF, the routing key, then LF and `<id>:<w>` for each candidate in order. For a phone
+     number alone the routing key is `phone=<e164>`, LF, `country=`, LF, `mccmnc=`, LF, `carrier=`, LF,
+     `region=`, LF, `affiliations=`, LF, `attrs=`. When `T` is 0 the pick is the candidate at index
+     `floorMod(h, count)`; otherwise it is the first candidate whose running sum of `w` exceeds
+     `floorMod(h, T)`, where `floorMod` is the remainder in `[0, m)`. Up to the limit each candidate's chance is
+     within 1/256 of `w/T`. Past it the 32-bit hash skews the split (weights of 1,000,000,000 and 3,000,000,000
+     split 23.3% and 76.7%) and, past 2^32, leaves candidates unreachable, so admission, status changes and
+     membership epochs refuse weights that would cross it. The limit is part of `weighted-fallback.v1`: raising
+     it would change the decision for totals in between.
 - **Existing account (`exists=true`, `homeserver`).** The client cannot reproduce a directory lookup (the
   phone graph is private), and no per-lookup inclusion proof is served today, so this branch is not
   verifiable in the current implementation. What a client can check is that the returned homeserver is an
@@ -172,7 +188,8 @@ A public client can carry such an envelope but cannot create one.
 
 - `CanonicalRoster`, `CanonicalRoutingPolicy`, `CanonicalDelegatedRules`, `CanonicalRoutingClaims` are the
   authoritative serializations. Routing-claims use backslash-escaped delimiters so the encoding is injective.
-  All timestamps are epoch milliseconds; all maps/lists are sorted; all bytes are UTF-8.
+  All timestamps are epoch milliseconds, with digits past the millisecond dropped, not rounded; all maps/lists
+  are sorted; all bytes are UTF-8.
 - `gua-member-entry.v1` uses `gua-lp.v1`, a length-prefixed encoding with no delimiters at all: `u32`
   big-endian lengths, `int64` big-endian integers, a presence byte for optionals, sets sorted by unsigned
   UTF-8 byte order. It is the encoding for every newer signed object, specified in
@@ -188,12 +205,28 @@ A public client can carry such an envelope but cannot create one.
   signature. Port both byte for byte to verify what is served today; do not reuse either as the encoding for any
   new signed object.
 
-Golden vectors for the roster bytes in both forms, authority signatures and thresholds, the transparency-log
-leaves, roots and consistency proofs, routing-policy bundles with their delegate signatures and validity
-windows, the policy's log step, reproduced placements and the check of a `/resolve` answer against the roster
-are in `docs/specs/gua-client-verification-v1-vectors.json`. `./gradlew clientVerificationVectors` writes the
-file from the production code, and `ClientVerificationVectorsTest` fails when the committed file differs. A port
-runs the same file before its results are trusted.
+## Test vectors
+
+`docs/specs/gua-client-verification-v1-vectors.json` holds golden vectors for the roster bytes in both forms,
+authority signatures and thresholds, the transparency-log leaves, roots and consistency proofs, routing-policy
+bundles with their delegate signatures and validity windows, the policy's log step, reproduced placements and the
+check of a `/resolve` answer against the roster. `./gradlew clientVerificationVectors` writes the file from the
+production code, and `ClientVerificationVectorsTest` fails when the committed file differs. The apps carry
+byte-identical copies, and a port runs the file before its results are trusted.
+
+- The test keys are the RFC 8032 section 7.1 example keys. They are public, so never use them outside tests.
+  The production authority key is listed without a private key.
+- Signatures use deterministic Ed25519. With a library that randomizes signatures, such as Apple CryptoKit,
+  verify them rather than compare their bytes.
+- `canonicalUtf8` is the signed byte string written as a JSON string, and `canonicalHex` is the same bytes in hex.
+- Vectors refer to rosters and policies by `ref`. A `rosterRejections` case is checked with the `form` it names,
+  which can differ from the form its JSON implies.
+- A placement is the Java reference's decision for a new account at `evaluatedAt`, with no verified claims. A
+  null `expectedHomeserverId` means no rule decides, and `fallback` lists the inputs whenever the weighted
+  fallback is reached.
+- In `policyLog`, a null `servedPolicy` stands for a `404`, and each case is checked against all of `log.events`
+  with its own checkpoint.
+- The production roster is a copy of what `https://resolver.gua.global/roster` served on 2026-10-27.
 
 ## Failure handling
 
@@ -216,15 +249,15 @@ check 3 parses with its own outcomes, the expected shape means:
 - every field has the JSON type the contract gives it, so a number or boolean sent as a string is refused;
 - these `/roster` fields are present and not null: `version`, `issuedAt`, `logCheckpoint` with its `merkleRoot`
   and `size`, `entries` and `authoritySignatures`, in each entry `homeserver` and `status`, and in each
-  `homeserver` `weight` and `acceptsNew`;
-- timestamps are ISO-8601 UTC with four year digits and no sign, and an uppercase `T` and `Z`. The resolver writes
-  a year past 9999 with a sign, and the apps refuse it;
+  `homeserver` `weight`, a signed 32-bit integer, and `acceptsNew`;
+- timestamps are ISO-8601 UTC with four year digits and no sign, an uppercase `T` and `Z`, and 0 to 9 fractional
+  digits. The resolver writes a year past 9999 with a sign, and the apps refuse it;
 - sizes and indexes fit in 31 bits, and consistency proof hashes are 64 lowercase hex characters;
 - every event of `/roster/log` is well formed, past the checkpoint too.
 
 A signature entry without a key id or a value counts as a signature that does not verify. The apps do not look for duplicate keys: every signature is checked
 over the values the app parsed, so a duplicate cannot get unsigned data accepted. On the web, checks 1, 4 and 5 start when the phone step opens, and the report is logged just
-before the browser leaves for sign-in, with any check still running as `unverifiable(timeout)`.
+before the browser leaves for sign-in.
 
 **Outcomes.** Each check reports one outcome. `invalid`, `unverifiable` and `indeterminate` carry one reason,
 written `outcome(reason)`.
@@ -236,7 +269,9 @@ written `outcome(reason)`.
    `unverifiable(roster_unverified)` and nothing more is fetched.
 2. **homeserverMatch** locates the answer's `serverName`, `baseUrl` and `masIssuer` in the roster with
    `ResolverVerifier.locate`: `ACTIVE_MATCH`, `INACTIVE`, `FIELD_MISMATCH` or `NOT_IN_ROSTER`. Only
-   `ACTIVE_MATCH` passes.
+   `ACTIVE_MATCH` passes. The strongest match decides, whatever the entry order: an ACTIVE entry with all three
+   fields, then any entry with all three, then any entry with the `serverName`. A tie goes to the entry served
+   first.
 3. **memberEntry** checks the member block (section 1a) of the entry that check 2 located, when it is
    `ACTIVE_MATCH` or `INACTIVE`. An entry without a block is `unattested`, which passes while the deployment
    does not require one. `FIELD_MISMATCH` and `NOT_IN_ROSTER` give `unverifiable(no_matching_entry)`. A block
@@ -273,14 +308,17 @@ written `outcome(reason)`.
    - a check 5 that is neither `valid` nor `notPresent` makes it `unverifiable(policy_unverified)`;
    - otherwise section 3 runs for the phone number alone. When a rule that matches the phone and ranks above
      the rule that decided sits in a zone without a valid delegate signature, the result is
-     `indeterminate(unsigned_rule)`. Delegate signatures are covered by neither the bundle signatures nor its
-     log leaf, so a missing one cannot be told from a removed one. Policy rules rank by priority, then id, and
-     all of them rank above roster claims and the fallback;
-   - a reproduced entry with the answer's `serverName`, `baseUrl` and `masIssuer` is `match`. Any other result
-     is `mismatch` when the answer's `rosterVersion` equals the verified roster's, and
+     `indeterminate(unsigned_rule)`. When no rule decides, any such matching rule counts. Delegate signatures
+     are covered by neither the bundle signatures nor its log leaf, so a missing one cannot be told from a
+     removed one. Policy rules rank by priority, then id, and all of them rank above roster claims and the
+     fallback;
+   - a reproduced entry with the answer's `serverName`, `baseUrl` and `masIssuer` is `match`. Any other result,
+     no decision included, is `mismatch` when the answer's `rosterVersion` equals the verified roster's, and
      `indeterminate(unattributed)` when it differs or is missing.
 
-A check still working when the 10 seconds run out is `unverifiable(timeout)`, and an unexpected error is
+A check still working when the 10 seconds run out is `unverifiable(timeout)`. On the web, a check still running
+when the report is logged before the browser leaves for sign-in is `unverifiable(interrupted)`; the iOS and Android
+apps log a run only once it has finished or run out of time. An unexpected error is
 `unverifiable(internal_error)`. With no usable authority key every check is `unverifiable(no_trust_roots)`,
 and on a platform without Ed25519 every check is `unverifiable(crypto_unsupported)`. Nothing is fetched in
 those two cases, and the report is still logged.
@@ -301,6 +339,8 @@ detected from the served JSON, and `none` when no roster was read.
 
 - Production serves the legacy roster form, no routing policy and no `rosterVersion` in its answers, so a
   placement that differs there is `indeterminate(unattributed)`.
+- A resolver built before the weighted fallback's limit still decides past it, so against such a resolver an app
+  reports `mismatch` for a roster over the limit. No deployed roster is near it.
 - Each environment lists its policy keys explicitly. Dev lists its authority key, because that key signs its
   policy. Production lists none until governance keys exist, so a policy served there would be
   `unverifiable(no_policy_keys)`.

@@ -19,6 +19,7 @@ import global.gua.resolver.admission.AdmissionService;
 import global.gua.resolver.crypto.Ed25519;
 import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.placement.ClaimPredicate;
+import global.gua.resolver.placement.rules.WeightedFallbackRule;
 import global.gua.resolver.roster.JdbcTransparencyLog;
 import global.gua.resolver.roster.RosterEntry;
 import global.gua.resolver.roster.RosterStore;
@@ -192,6 +193,25 @@ class RegistryEpochFlowTest {
 
         assertThat(entries.findById("dev").orElseThrow().status()).isEqualTo(RosterEntry.Status.SUSPENDED);
         assertThat(rosterStore.current().activeEntries()).isEmpty();
+    }
+
+    @Test
+    void anEpochThatWouldTakeTheFallbackPastItsLimitIsRefused() {
+        // Written straight to the table, as rows from before the limit could be: admission refuses this weight.
+        entries.insert(new RosterEntry(new Homeserver("heavy", "heavy.gua.global", "https://heavy.gua.global",
+                "https://account.heavy.gua.global", "BR", (int) WeightedFallbackRule.MAX_TOTAL_WEIGHT, true, ""),
+                List.of(), Instant.now(), RosterEntry.Status.PENDING));
+        RegistryService.PendingEpoch pending = registry.pending();
+
+        assertThatThrownBy(() -> registry.commit(signPending(List.of(GOVERNANCE)), pending.content()))
+                .isInstanceOf(GovernanceException.class)
+                .hasMessageContaining("limit");
+
+        admission.setStatus("heavy", RosterEntry.Status.SUSPENDED);
+        registry.commit(signPending(List.of(GOVERNANCE)), registry.pending().content());
+
+        assertThat(entries.findById("dev").orElseThrow().status()).isEqualTo(RosterEntry.Status.ACTIVE);
+        assertThat(entries.findById("heavy").orElseThrow().status()).isEqualTo(RosterEntry.Status.SUSPENDED);
     }
 
     @Test

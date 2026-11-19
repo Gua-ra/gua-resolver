@@ -155,8 +155,8 @@ public final class ResolverVerifier {
         }
     }
 
-    public PlacementDecision reproduceNewAccountDecision(PlacementContext context, SignedRoster roster,
-                                                         RosterForm form, RoutingPolicyBundle policy) {
+    public Optional<PlacementDecision> reproduceNewAccountDecision(PlacementContext context, SignedRoster roster,
+                                                                   RosterForm form, RoutingPolicyBundle policy) {
         verifyRoster(roster, form);
         RosterStore store = fixedRoster(roster);
         List<PlacementRule> rules = new ArrayList<>();
@@ -167,23 +167,22 @@ public final class ResolverVerifier {
         }
         rules.add(new ClaimRule(store));
         rules.add(new WeightedFallbackRule(store));
-        return new PlacementEngine(rules).decideWithTrace(context.withoutUnverifiedClaims());
+        return new PlacementEngine(rules).firstDecision(context.withoutUnverifiedClaims());
     }
 
     /**
      * Neither the bundle signatures nor its log leaf cover delegate signatures, so a client cannot tell a missing
-     * one from a removed one.
+     * one from a removed one. With no decision, any matching rule in an unsigned zone outranks it.
      */
     public boolean unsignedRuleOutranks(PlacementContext context, RoutingPolicyBundle policy,
-                                        PlacementDecision decision) {
+                                        Optional<PlacementDecision> decision) {
         Set<String> signedZones = policyVerifier.delegateVerifiedZones(policy);
         Map<String, DelegationZone> zones = policy.delegationZones().stream()
                 .collect(Collectors.toMap(DelegationZone::id, Function.identity(), (a, b) -> a));
         Comparator<RoutingPolicyRule> rank = Comparator.comparingInt(RoutingPolicyRule::priority)
                 .thenComparing(RoutingPolicyRule::id);
-        Optional<RoutingPolicyRule> decided = policy.rules().stream()
-                .filter(r -> decision.policyId() != null && r.id().equals(decision.ruleId()))
-                .findFirst();
+        Optional<RoutingPolicyRule> decided = decision.filter(d -> d.policyId() != null)
+                .flatMap(d -> policy.rules().stream().filter(r -> r.id().equals(d.ruleId())).findFirst());
         Instant now = clock.instant();
         PlacementContext placed = context.withoutUnverifiedClaims();
         return policy.rules().stream()

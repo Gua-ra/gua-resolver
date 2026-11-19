@@ -14,6 +14,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
@@ -302,10 +303,11 @@ class ClientVerificationVectorsTest {
             Clock at = Clock.fixed(Instant.parse(v.get("evaluatedAt").asText()), ZoneOffset.UTC);
             ResolverVerifier verifier = new ResolverVerifier(trustedKeys(rv.get("trustedKeys")),
                     rv.get("threshold").asInt(), policyKeys, 1, at);
-            PlacementDecision d = verifier.reproduceNewAccountDecision(ctx, roster, form(rv), policy);
-            assertThat(d.homeserver().id()).as(name).isEqualTo(v.get("expectedHomeserverId").asText());
-            assertThat(d.rule()).as(name).isEqualTo(v.get("expectedRule").asText());
-            assertThat(d.ruleId()).as(name).isEqualTo(v.get("expectedRuleId").asText());
+            Optional<PlacementDecision> d = verifier.reproduceNewAccountDecision(ctx, roster, form(rv), policy);
+            assertThat(d.map(x -> x.homeserver().id()).orElse(null)).as(name)
+                    .isEqualTo(text(v, "expectedHomeserverId"));
+            assertThat(d.map(PlacementDecision::rule).orElse(null)).as(name).isEqualTo(text(v, "expectedRule"));
+            assertThat(d.map(PlacementDecision::ruleId).orElse(null)).as(name).isEqualTo(text(v, "expectedRuleId"));
             assertThat(policy != null && verifier.unsignedRuleOutranks(ctx, policy, d)).as(name)
                     .isEqualTo(v.get("unsignedRuleAbove").asBoolean());
             if (v.has("fallback")) {
@@ -316,6 +318,8 @@ class ClientVerificationVectorsTest {
                         .filter(Homeserver::acceptsNew).sorted(Comparator.comparing(Homeserver::id)).toList();
                 assertThat(WeightedFallbackRule.stableHash(placed, roster.version(), candidates)).as(name)
                         .isEqualTo(f.get("stableHash").asInt());
+                assertThat(WeightedFallbackRule.totalWeight(candidates)).as(name)
+                        .isEqualTo(f.get("totalWeight").asLong());
             }
         }
     }

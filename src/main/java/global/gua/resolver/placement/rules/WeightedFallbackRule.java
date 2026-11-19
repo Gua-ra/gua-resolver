@@ -2,10 +2,14 @@ package global.gua.resolver.placement.rules;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -24,10 +28,25 @@ import global.gua.resolver.roster.RosterStore;
 @Order(Integer.MAX_VALUE)
 public class WeightedFallbackRule implements PlacementRule {
 
+    /**
+     * Up to this total, reducing the signed 32-bit hash modulo the total keeps every candidate's chance within
+     * 1/256 of its share. Above it the fallback makes no decision, and admission and governance refuse weights
+     * that would cross it. Raising it would change decisions for totals in between, so it is part of v1.
+     */
+    public static final long MAX_TOTAL_WEIGHT = 1L << 24;
+
+    private static final Logger log = LoggerFactory.getLogger(WeightedFallbackRule.class);
+
     private final RosterStore rosterStore;
+    private final AtomicLong reportedRosterVersion = new AtomicLong(-1);
 
     public WeightedFallbackRule(RosterStore rosterStore) {
         this.rosterStore = rosterStore;
+    }
+
+    /** Negative weights count as 0, as they do in the hash. */
+    public static long totalWeight(Collection<Homeserver> homeservers) {
+        return homeservers.stream().mapToLong(hs -> Math.max(0, hs.weight())).sum();
     }
 
     @Override
@@ -41,7 +60,15 @@ public class WeightedFallbackRule implements PlacementRule {
         if (candidates.isEmpty()) {
             return Optional.empty();
         }
-        long totalWeight = candidates.stream().mapToLong(hs -> Math.max(0, hs.weight())).sum();
+        long totalWeight = totalWeight(candidates);
+        if (totalWeight > MAX_TOTAL_WEIGHT) {
+            if (reportedRosterVersion.getAndSet(roster.version()) != roster.version()) {
+                log.error("Weighted fallback makes no decision for roster {}: the homeservers accepting new "
+                        + "accounts weigh {} in total, above the limit of {}", roster.version(), totalWeight,
+                        MAX_TOTAL_WEIGHT);
+            }
+            return Optional.empty();
+        }
         if (totalWeight == 0) {
             int index = Math.floorMod(stableHash(context, roster.version(), candidates), candidates.size());
             return Optional.of(PlacementDecision.of(candidates.get(index), name(), "weighted-fallback",
