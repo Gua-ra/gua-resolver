@@ -83,7 +83,7 @@ Schema tag `gua-federation-genesis.v1`. The root of trust: a threshold and the g
 | 6 | `registries` | set of strings |
 
 - `genesisId` is the SHA-256 of these bytes. The fingerprint people compare is its first 16 hex characters in groups of four.
-- `registries` is a set, so the JSON order of the names never changes the `genesisId`. The four names are fixed: `HomeserverRegistry`, `VerifierRegistry`, `PolicyRegistry`, `WitnessRegistry`. Only `HomeserverRegistry` has a code path. The content of the others must stay empty. Routing policy is the existing `gua-routing-policy.v1` bundle verified under the governance keys, not a registry epoch. A policy registry epoch would bind the `genesisId` into the bundle bytes, which needs a new `gua-routing-policy.v2` tag. It must land before the identifier proof policy shares that registry.
+- `registries` is a set, so the JSON order of the names never changes the `genesisId`. The four names are fixed: `HomeserverRegistry`, `VerifierRegistry`, `PolicyRegistry`, `WitnessRegistry`. Only `HomeserverRegistry` has a code path. The `WitnessRegistry` content is specified in [federation log](federation-log.md#witness-list), and the resolver does not accept it yet. The content of the other two must stay empty. Routing policy is the existing `gua-routing-policy.v1` bundle verified under the governance keys, not a registry epoch. A policy registry epoch would bind the `genesisId` into the bundle bytes, which needs a new `gua-routing-policy.v2` tag. It must land before the identifier proof policy shares that registry.
 - A genesis is signed by the keys it lists, so fetching it proves nothing. It becomes a trust root only when its fingerprint has been compared over an independent channel and pinned.
 
 ### Governance key change
