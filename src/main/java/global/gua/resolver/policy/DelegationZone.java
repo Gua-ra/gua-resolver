@@ -26,6 +26,10 @@ public record DelegationZone(
         Instant notBefore,
         Instant expiresAt) {
 
+    public boolean inEffectAt(Instant at) {
+        return ValidityWindow.contains(notBefore, expiresAt, at);
+    }
+
     public enum ScopeType {
         PHONE_PREFIX,
         INSTITUTION_DOMAIN,

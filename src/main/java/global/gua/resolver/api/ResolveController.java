@@ -69,7 +69,6 @@ public class ResolveController {
      */
     @PostMapping("/resolve")
     public ResolveResponse resolve(@Valid @RequestBody ResolveRequest request) {
-        // The roster version the decision is made against; clients pin and verify this exact version.
         long rosterVersion = rosterStore.current().version();
         boolean trace = abuse.isTraceEnabled() && Boolean.TRUE.equals(request.trace());
 
@@ -77,13 +76,14 @@ public class ResolveController {
         if (existing.isPresent()) {
             resolveExisting.increment();
             Homeserver hs = existing.get();
-            return ResolveResponse.existing(HomeserverRef.of(hs),
+            return ResolveResponse.existing(HomeserverRef.of(hs), rosterVersion,
                     trace ? DecisionTrace.existing(hs.id(), rosterVersion) : null);
         }
 
         PlacementDecision decision = resolution.placementDecisionFor(placementContextFor(request));
         resolveRegister.increment();
-        return ResolveResponse.register(HomeserverRef.of(decision.homeserver()),
+        Long decidedAgainst = rosterStore.current().version() == rosterVersion ? rosterVersion : null;
+        return ResolveResponse.register(HomeserverRef.of(decision.homeserver()), decidedAgainst,
                 trace ? DecisionTrace.of(decision, rosterVersion) : null);
     }
 
@@ -158,14 +158,18 @@ public class ResolveController {
         }
     }
 
+    /**
+     * {@code rosterVersion} is the roster the answer was made against, so a client can reproduce it. It is left
+     * out when the roster changed while the answer was being made.
+     */
     public record ResolveResponse(boolean exists, HomeserverRef homeserver, HomeserverRef registerAt,
-                                  @JsonInclude(JsonInclude.Include.NON_NULL)
-                                  DecisionTrace trace) {
-        static ResolveResponse existing(HomeserverRef hs, DecisionTrace trace) {
-            return new ResolveResponse(true, hs, null, trace);
+                                  @JsonInclude(JsonInclude.Include.NON_NULL) Long rosterVersion,
+                                  @JsonInclude(JsonInclude.Include.NON_NULL) DecisionTrace trace) {
+        static ResolveResponse existing(HomeserverRef hs, long rosterVersion, DecisionTrace trace) {
+            return new ResolveResponse(true, hs, null, rosterVersion, trace);
         }
-        static ResolveResponse register(HomeserverRef hs, DecisionTrace trace) {
-            return new ResolveResponse(false, null, hs, trace);
+        static ResolveResponse register(HomeserverRef hs, Long rosterVersion, DecisionTrace trace) {
+            return new ResolveResponse(false, null, hs, rosterVersion, trace);
         }
     }
 

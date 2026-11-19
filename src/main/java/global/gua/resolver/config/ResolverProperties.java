@@ -36,6 +36,7 @@ public class ResolverProperties {
     private final Governance governance = new Governance();
     private final Placement placement = new Placement();
     private final DevHomeserver devHomeserver = new DevHomeserver();
+    private final Cors cors = new Cors();
 
     public Mode getMode() { return mode; }
     public void setMode(Mode mode) { this.mode = mode; }
@@ -51,6 +52,7 @@ public class ResolverProperties {
     public Governance getGovernance() { return governance; }
     public Placement getPlacement() { return placement; }
     public DevHomeserver getDevHomeserver() { return devHomeserver; }
+    public Cors getCors() { return cors; }
 
     /** The published authority key set (verify) and this node's signing key (authority mode). */
     public static class Authority {
@@ -414,5 +416,15 @@ public class ResolverProperties {
         public void setRegion(String region) { this.region = region; }
         public String getSigningKey() { return signingKey; }
         public void setSigningKey(String signingKey) { this.signingKey = signingKey; }
+    }
+
+    /** Browser origins allowed to call the public endpoints cross-origin. Empty, the default, refuses them all. */
+    public static class Cors {
+        private List<String> allowedOrigins = new ArrayList<>();
+
+        public List<String> getAllowedOrigins() { return allowedOrigins; }
+        public void setAllowedOrigins(List<String> allowedOrigins) {
+            this.allowedOrigins = allowedOrigins == null ? new ArrayList<>() : allowedOrigins;
+        }
     }
 }

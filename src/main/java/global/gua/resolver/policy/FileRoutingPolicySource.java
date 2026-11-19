@@ -70,7 +70,7 @@ public class FileRoutingPolicySource implements RoutingPolicySource {
     @Override
     public Optional<RoutingPolicyBundle> current() {
         RoutingPolicyBundle bundle = current;
-        if (bundle == null || !withinValidityWindow(bundle)) {
+        if (bundle == null || !bundle.inEffectAt(Instant.now(clock))) {
             return Optional.empty();
         }
         return Optional.of(bundle);
@@ -79,19 +79,10 @@ public class FileRoutingPolicySource implements RoutingPolicySource {
     @Override
     public PolicySourceStatus status() {
         RoutingPolicyBundle bundle = current;
-        boolean healthy = bundle != null && withinValidityWindow(bundle);
-        String message = bundle != null && !withinValidityWindow(bundle) ? "loaded but outside validity window"
-                : lastMessage;
-        return new PolicySourceStatus("file:" + file, healthy,
+        boolean inEffect = bundle != null && bundle.inEffectAt(Instant.now(clock));
+        String message = bundle != null && !inEffect ? "loaded but outside validity window" : lastMessage;
+        return new PolicySourceStatus("file:" + file, inEffect,
                 bundle == null ? null : bundle.version(), loadedAt, message);
-    }
-
-    private boolean withinValidityWindow(RoutingPolicyBundle bundle) {
-        Instant now = Instant.now(clock);
-        if (bundle.notBefore() != null && bundle.notBefore().isAfter(now)) {
-            return false;
-        }
-        return bundle.expiresAt() == null || bundle.expiresAt().isAfter(now);
     }
 
     @Scheduled(fixedDelayString = "${gua.resolver.policy.refresh-interval:PT1M}")
@@ -105,7 +96,8 @@ public class FileRoutingPolicySource implements RoutingPolicySource {
             // re-adopting a signed, in-window lower or equal version instead of being deadlocked until a
             // brand-new higher version is minted.
             RoutingPolicyBundle existing = current;
-            if (existing != null && withinValidityWindow(existing) && loaded.version() < existing.version()) {
+            if (existing != null && existing.inEffectAt(Instant.now(clock))
+                    && loaded.version() < existing.version()) {
                 throw new IllegalStateException("routing policy rollback rejected: loaded v" + loaded.version()
                         + " < current v" + existing.version());
             }

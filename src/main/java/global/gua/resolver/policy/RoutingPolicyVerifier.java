@@ -61,6 +61,17 @@ public class RoutingPolicyVerifier {
         this(props, (GovernanceKeySet) null);
     }
 
+    /** Trusts exactly these keys, with no fallback to another key set. */
+    public static RoutingPolicyVerifier forKeys(List<ResolverProperties.TrustedKey> keys, int threshold) {
+        return new RoutingPolicyVerifier(publicKeys(keys), threshold);
+    }
+
+    private RoutingPolicyVerifier(Map<String, PublicKey> keys, int threshold) {
+        this.threshold = Math.max(1, threshold);
+        this.requireSignatures = true;
+        this.trustedKeys.putAll(keys);
+    }
+
     private RoutingPolicyVerifier(ResolverProperties props, GovernanceKeySet governance) {
         this.threshold = Math.max(1, props.getPolicy().getSignatureThreshold());
         this.requireSignatures = props.getPolicy().isRequireSignatures();
@@ -78,11 +89,7 @@ public class RoutingPolicyVerifier {
             keys = props.getAuthority().getTrustedKeys();
             root = "gua.resolver.authority.trusted-keys (the pre-cutover fallback)";
         }
-        for (ResolverProperties.TrustedKey k : keys) {
-            if (k.getId() != null && k.getPublicKey() != null && !k.getPublicKey().isBlank()) {
-                trustedKeys.put(k.getId(), Ed25519.publicKey(k.getPublicKey()));
-            }
-        }
+        trustedKeys.putAll(publicKeys(keys));
 
         if (!requireSignatures) {
             log.warn("Routing-policy signatures are NOT required (gua.resolver.policy.require-signatures is "
@@ -163,11 +170,21 @@ public class RoutingPolicyVerifier {
         return verified;
     }
 
+    private static Map<String, PublicKey> publicKeys(List<ResolverProperties.TrustedKey> keys) {
+        Map<String, PublicKey> out = new HashMap<>();
+        for (ResolverProperties.TrustedKey k : keys) {
+            if (k.getId() != null && k.getPublicKey() != null && !k.getPublicKey().isBlank()) {
+                out.put(k.getId(), Ed25519.publicKey(k.getPublicKey()));
+            }
+        }
+        return out;
+    }
+
     private static boolean blank(String s) {
         return s == null || s.isBlank();
     }
 
-    private int countValidSignatures(RoutingPolicyBundle bundle) {
+    public int countValidSignatures(RoutingPolicyBundle bundle) {
         byte[] canonical = CanonicalRoutingPolicy.bytes(bundle);
         Set<String> counted = new HashSet<>();
         int valid = 0;

@@ -46,6 +46,17 @@ class MerkleTreeTest {
     }
 
     @Test
+    void anEmptyPrefixIsConsistentWithEveryTreeAndNeedsNoProof() {
+        List<String> all = leaves(9);
+        for (int second = 0; second <= 9; second++) {
+            List<String> proof = MerkleTree.consistencyProof(all, 0, second);
+            assertThat(proof).as("0 -> %d", second).isEmpty();
+            assertThat(MerkleTree.verifyConsistency(0, second, MerkleTree.root(List.of()),
+                    MerkleTree.root(all.subList(0, second)), proof)).as("0 -> %d", second).isTrue();
+        }
+    }
+
+    @Test
     void consistencyProofRejectsRewrittenHistory() {
         List<String> original = leaves(6);
         String oldRoot = MerkleTree.root(original.subList(0, 3));

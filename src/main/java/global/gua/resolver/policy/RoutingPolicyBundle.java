@@ -22,6 +22,10 @@ public record RoutingPolicyBundle(
 
     public static final String SCHEMA_VERSION = "gua-routing-policy.v1";
 
+    public boolean inEffectAt(Instant at) {
+        return ValidityWindow.contains(notBefore, expiresAt, at);
+    }
+
     public record FallbackStrategy(String type, boolean enabled) {}
 
     /** Authority signature over the whole canonical bundle: threshold k-of-n. */

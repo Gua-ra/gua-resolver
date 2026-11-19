@@ -39,15 +39,21 @@ public class PlacementEngine {
 
     /** Same placement decision, with the rule/policy metadata needed for debugging and audit. */
     public PlacementDecision decideWithTrace(PlacementContext context) {
+        return firstDecision(context).orElseThrow(() -> new NoPlacementAvailableException(
+                "no rule places new accounts: none of the homeservers accepts them, or their weights add up past "
+                        + "the weighted fallback's limit"));
+    }
+
+    public Optional<PlacementDecision> firstDecision(PlacementContext context) {
         for (PlacementRule rule : rules) {
             Optional<PlacementDecision> choice = rule.evaluate(context);
             if (choice.isPresent()) {
                 PlacementDecision decision = choice.get();
                 log.debug("Placement: {} -> {} (by {}; reason={})",
                         context.country(), decision.homeserver().id(), rule.name(), decision.reason());
-                return decision;
+                return choice;
             }
         }
-        throw new NoPlacementAvailableException("no homeserver is currently accepting new accounts");
+        return Optional.empty();
     }
 }

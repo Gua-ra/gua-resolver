@@ -44,11 +44,9 @@ public class RoutingPolicyValidator {
             throw invalid("version must be positive");
         }
         Instant now = Instant.now(clock);
-        if (bundle.notBefore() != null && bundle.notBefore().isAfter(now)) {
-            throw invalid("policy is not active yet");
-        }
-        if (bundle.expiresAt() != null && !bundle.expiresAt().isAfter(now)) {
-            throw invalid("policy is expired");
+        if (!bundle.inEffectAt(now)) {
+            boolean early = bundle.notBefore() != null && bundle.notBefore().isAfter(now);
+            throw invalid(early ? "policy is not active yet" : "policy is expired");
         }
 
         Map<String, RosterEntry> activeHomeservers = roster.activeEntries().stream()

@@ -15,7 +15,9 @@ import org.springframework.transaction.annotation.Transactional;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import global.gua.resolver.admission.ClaimOverlap;
+import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.governance.store.RegistryEpochRepository;
+import global.gua.resolver.placement.rules.WeightedFallbackRule;
 import global.gua.resolver.roster.RosterEntry;
 import global.gua.resolver.roster.RosterStore;
 import global.gua.resolver.roster.SignedRoster;
@@ -145,6 +147,7 @@ public class RegistryService {
                     + "fetch the pending content again and sign that");
         }
         requireNoOverlappingClaims(content);
+        requireCandidateWeightWithinLimit(content);
 
         GovernanceVerifier.require(keys, CanonicalRegistryEpoch.bytes(submitted), submitted.signatures(),
                 Registry.HOMESERVERS.wireName() + " epoch " + submitted.epoch());
@@ -173,6 +176,20 @@ public class RegistryService {
                 GovernanceVerifier.count(keys, CanonicalRegistryEpoch.bytes(submitted),
                         submitted.signatures()).operators());
         return rosterStore.refresh();
+    }
+
+    /** An epoch that does not raise the total is never refused, even when the total is already past the limit. */
+    private void requireCandidateWeightWithinLimit(HomeserverRegistryContent content) {
+        long weightAfter = content.members().stream()
+                .filter(m -> m.status() == RosterEntry.Status.ACTIVE && m.acceptsNew())
+                .mapToLong(m -> Math.max(0, m.weight())).sum();
+        long weightNow = WeightedFallbackRule.totalWeight(rosterStore.current().activeEntries().stream()
+                .map(RosterEntry::homeserver).filter(Homeserver::acceptsNew).toList());
+        if (weightAfter > WeightedFallbackRule.MAX_TOTAL_WEIGHT && weightAfter > weightNow) {
+            throw new GovernanceException("this epoch would make the homeservers that accept new accounts weigh "
+                    + weightAfter + " in total, above the weighted fallback's limit of "
+                    + WeightedFallbackRule.MAX_TOTAL_WEIGHT + "; build the epoch without the change that adds it");
+        }
     }
 
     /**

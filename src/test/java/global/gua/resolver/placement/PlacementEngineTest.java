@@ -26,7 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Unit tests for the placement pipeline: a carrier claiming its MCCMNC wins, a verified affiliation claim
- * wins, an unverified one does not, and otherwise the weighted fallback always yields an enabled homeserver.
+ * wins, an unverified one does not, and otherwise the weighted fallback picks an enabled homeserver.
  * Pure (no Spring). Signed-policy tests use a permissive verifier so they exercise placement logic; the
  * delegation cryptography itself is covered in RoutingPolicyTest.
  */

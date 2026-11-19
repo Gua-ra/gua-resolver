@@ -3,6 +3,8 @@ package global.gua.resolver.config;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.springframework.boot.autoconfigure.security.SecurityProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -13,6 +15,9 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
 
 /**
  * Explicit public allowlist plus deny by default.
@@ -57,6 +62,41 @@ public class SecurityConfig {
                         .anyRequest().denyAll())
                 .httpBasic(Customizer.withDefaults());
         return http.build();
+    }
+
+    /**
+     * Only the public read endpoints and {@code POST /resolve} are exposed cross-origin, never
+     * {@code /authority/**} or the placement ingest. With no origin configured every preflight is refused.
+     */
+    @Bean
+    FilterRegistrationBean<CorsFilter> resolverCorsFilter(ResolverProperties props) {
+        List<String> origins = props.getCors().getAllowedOrigins().stream()
+                .filter(o -> o != null && !o.isBlank()).map(String::trim).toList();
+        FilterRegistrationBean<CorsFilter> registration =
+                new FilterRegistrationBean<>(new CorsFilter(corsSource(origins)));
+        registration.setName("resolverCorsFilter");
+        registration.setEnabled(!origins.isEmpty());
+        // Ahead of the /resolve rate limiter, so a preflight spends no token and a 429 still carries the header.
+        registration.setOrder(SecurityProperties.DEFAULT_FILTER_ORDER - 2);
+        return registration;
+    }
+
+    private static UrlBasedCorsConfigurationSource corsSource(List<String> origins) {
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        CorsConfiguration read = new CorsConfiguration();
+        read.setAllowedOrigins(origins);
+        read.setAllowedMethods(List.of("GET"));
+        read.setAllowedHeaders(List.of("Accept", "Content-Type"));
+        read.setMaxAge(3600L);
+        for (String path : List.of("/roster", "/roster/log", "/roster/log/consistency", "/policy/routing",
+                "/policy/log", "/directory/checkpoint", "/.well-known/gua-federation")) {
+            source.registerCorsConfiguration(path, read);
+        }
+        CorsConfiguration resolve = new CorsConfiguration(read);
+        resolve.setAllowedMethods(List.of("POST"));
+        resolve.setExposedHeaders(List.of("Retry-After"));
+        source.registerCorsConfiguration("/resolve", resolve);
+        return source;
     }
 
     /**

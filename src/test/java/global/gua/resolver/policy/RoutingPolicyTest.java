@@ -215,4 +215,22 @@ class RoutingPolicyTest {
                 .isInstanceOf(RoutingPolicyValidator.RoutingPolicyValidationException.class)
                 .hasMessageContaining("outside delegation zone");
     }
+
+    @Test
+    void boundsCompareInTheWholeMillisecondsTheyAreSignedIn() {
+        Instant t = Instant.parse("2030-01-01T00:00:00Z");
+
+        assertThat(window(t.plusNanos(500_000), null).inEffectAt(t.plusNanos(200_000))).isTrue();
+        assertThat(window(null, t.plusNanos(500_000)).inEffectAt(t.plusNanos(200_000))).isFalse();
+    }
+
+    @Test
+    void aBoundPastTheEpochMillisecondRangeStillCompares() {
+        assertThat(window(null, Instant.MAX).inEffectAt(Instant.parse("2030-01-01T00:00:00Z"))).isTrue();
+    }
+
+    private static RoutingPolicyBundle window(Instant notBefore, Instant expiresAt) {
+        return new RoutingPolicyBundle(RoutingPolicyBundle.SCHEMA_VERSION, "window", 1, Instant.EPOCH, notBefore,
+                expiresAt, List.of(), List.of(), null, List.of(), List.of());
+    }
 }
