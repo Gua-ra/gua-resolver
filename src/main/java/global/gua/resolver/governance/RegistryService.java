@@ -178,12 +178,7 @@ public class RegistryService {
         return rosterStore.refresh();
     }
 
-    /**
-     * The claim non-overlap invariant, re-checked over the membership this epoch would make real. An epoch
-     * applies claims as well as statuses, so it is the last point at which two homeservers could end up
-     * claiming the same accounts. An epoch that would leave two members overlapping is refused.
-     */
-    /** An epoch that lowers the total is never refused, even when the total is already past the limit. */
+    /** An epoch that does not raise the total is never refused, even when the total is already past the limit. */
     private void requireCandidateWeightWithinLimit(HomeserverRegistryContent content) {
         long weightAfter = content.members().stream()
                 .filter(m -> m.status() == RosterEntry.Status.ACTIVE && m.acceptsNew())
@@ -197,6 +192,11 @@ public class RegistryService {
         }
     }
 
+    /**
+     * The claim non-overlap invariant, re-checked over the membership this epoch would make real. An epoch
+     * applies claims as well as statuses, so it is the last point at which two homeservers could end up
+     * claiming the same accounts. An epoch that would leave two members overlapping is refused.
+     */
     private static void requireNoOverlappingClaims(HomeserverRegistryContent content) {
         List<RegistryMember> holdingClaims = content.members().stream()
                 .filter(m -> m.status() != RosterEntry.Status.REVOKED).toList();

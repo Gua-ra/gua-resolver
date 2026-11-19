@@ -16,7 +16,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
@@ -113,12 +112,8 @@ public final class ClientVerificationVectorsGenerator {
             List.of());
     static final Homeserver HS_NO_ISSUER = new Homeserver("hs-no-issuer", "plain.gua.test",
             "https://matrix.plain.gua.test", null, null, 1, true, "", Homeserver.SearchVisibility.GLOBAL, List.of());
-    static final Homeserver HS_HEAVY_A = new Homeserver("hs-heavy-a", "heavy-a.gua.test",
-            "https://matrix.heavy-a.gua.test", "https://account.heavy-a.gua.test", null, 2_000_000_000, true, "",
-            Homeserver.SearchVisibility.GLOBAL, List.of());
-    static final Homeserver HS_HEAVY_B = new Homeserver("hs-heavy-b", "heavy-b.gua.test",
-            "https://matrix.heavy-b.gua.test", "https://account.heavy-b.gua.test", null, 2_000_000_000, true, "",
-            Homeserver.SearchVisibility.GLOBAL, List.of());
+    static final Homeserver HS_HEAVY_A = fallbackHomeserver("hs-heavy-a", 2_000_000_000, true);
+    static final Homeserver HS_HEAVY_B = fallbackHomeserver("hs-heavy-b", 2_000_000_000, true);
     static final Homeserver HS_LIMIT_A = fallbackHomeserver("hs-limit-a", 1 << 23, true);
     static final Homeserver HS_LIMIT_B = fallbackHomeserver("hs-limit-b", 1 << 23, true);
     static final Homeserver HS_SUSPENDED_HEAVY = fallbackHomeserver("hs-suspended-heavy", Integer.MAX_VALUE, true);
@@ -712,12 +707,11 @@ public final class ClientVerificationVectorsGenerator {
 
     static ArrayNode policyRejections(RoutingPolicyBundle policy) {
         ArrayNode out = JSON.createArrayNode();
+        RoutingPolicyBundle signedByAuthority = policy(AUTHORITY_A, true, true);
         ObjectNode operationalKey = policyVector("signed by the roster authority key, which is not a policy key",
-                null, policy(AUTHORITY_A, true, true), List.of(GOVERNANCE_A), 1);
-        operationalKey.put("reason",
-                "Only policy keys count, not the roster authority key.");
-        operationalKey.put("expectedOutcome",
-                policySignatureOutcome(policy(AUTHORITY_A, true, true), List.of(GOVERNANCE_A)));
+                null, signedByAuthority, List.of(GOVERNANCE_A), 1);
+        operationalKey.put("reason", "Only policy keys count, not the roster authority key.");
+        operationalKey.put("expectedOutcome", policySignatureOutcome(signedByAuthority, List.of(GOVERNANCE_A)));
         out.add(operationalKey);
         RoutingPolicyBundle retargeted = withRules(policy, retargetedRules(policy));
         ObjectNode retargetedRule = policyVector("a rule target changed after signing", null, retargeted,

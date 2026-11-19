@@ -18,8 +18,8 @@ Date: 2026-07-08
 
 This is the canonical algorithm a Gua client (or any third party) uses to verify a resolver's answer without
 trusting the resolver. `global.gua.resolver.verify.ResolverVerifier` is the Java reference for the roster and
-policy signatures, the policy validity window, locating an answer in the roster, and placement. The member
-block and transparency-log checks are specified here and run in the web, iOS and Android apps.
+policy signatures, the policy validity window and log step, locating an answer in the roster, and placement. The
+member block and log consistency checks are specified here and run in the web, iOS and Android apps.
 
 ## Trust roots
 
@@ -65,7 +65,7 @@ These are the only inputs the verifier trusts. Everything else is fetched and ve
    `signingKey` and `admittedAt`. A resolver image from before 2026-08-14 serves entries without either field, and
    its signature covers bytes without them (`RosterForm.LEGACY`). When no entry carries
    `searchVisibility`, encode that older form; when every entry carries it, encode the two fields; refuse a
-   roster that mixes the two. Production served the older form on 2026-10-27.
+   roster that mixes the two.
 2. Count valid `authoritySignatures`: each must be Ed25519-valid over the canonical bytes under a trusted
    authority key, one vote per key. Require at least `k`.
 3. Verify transparency-log consistency: the `logCheckpoint` must be an append-only extension of the last one
@@ -237,8 +237,7 @@ different mirror or refuse to proceed, never silently accept the unverified answ
 ## Report-only verification in the apps
 
 The web, iOS and Android apps run the six checks below after each `/resolve` answer. The result never changes
-what the app connects to and never delays sign-in. Each run logs one line, so enforcement can be turned on per
-check once real traffic shows no failures.
+what the app connects to and never delays sign-in. Each run logs one line.
 
 **Inputs and limits.** Each build carries its environment's authority keys and threshold, and its policy keys
 and threshold. A run has 10 seconds on a monotonic clock. A fetch that fails or answers anything but a 2xx is

@@ -29,9 +29,8 @@ import global.gua.resolver.roster.RosterStore;
 public class WeightedFallbackRule implements PlacementRule {
 
     /**
-     * Up to this total, reducing the signed 32-bit hash modulo the total keeps every candidate's chance within
-     * 1/256 of its share. Above it the fallback makes no decision, and admission and governance refuse weights
-     * that would cross it. Raising it would change decisions for totals in between, so it is part of v1.
+     * Up to this total the signed 32-bit hash keeps each candidate's chance within 1/256 of its share. Admission and
+     * governance refuse weights that would cross it, and raising it would change decisions (weighted-fallback.v1).
      */
     public static final long MAX_TOTAL_WEIGHT = 1L << 24;
 

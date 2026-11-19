@@ -172,7 +172,7 @@ public final class ResolverVerifier {
 
     /**
      * Neither the bundle signatures nor its log leaf cover delegate signatures, so a client cannot tell a missing
-     * one from a removed one. With no decision, any matching rule in an unsigned zone outranks it.
+     * one from a removed one. Unless a policy rule decided, any matching rule in an unsigned zone outranks the result.
      */
     public boolean unsignedRuleOutranks(PlacementContext context, RoutingPolicyBundle policy,
                                         Optional<PlacementDecision> decision) {
