@@ -1,5 +1,6 @@
 package global.gua.resolver.verify;
 
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -9,6 +10,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Comparator;
 import java.util.HexFormat;
@@ -68,6 +70,7 @@ public final class ClientVerificationVectorsGenerator {
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     private static final HexFormat HEX = HexFormat.of();
     private static final Base64.Decoder B64 = Base64.getDecoder();
+    private static final Base64.Encoder B64E = Base64.getEncoder();
 
     record NamedKey(String id, String ref, String seedHex, String publicHex) {
         Ed25519.KeyPairB64 pair() {
@@ -224,6 +227,7 @@ public final class ClientVerificationVectorsGenerator {
         root.set("policyLog", policyLog(events, policy, withRules(policy, retargetedRules(policy))));
         root.set("placements", placements(r1, r2, r6, r8, r9, r10, r11, brPolicy, spUnsigned));
         root.set("resolveAnswers", resolveAnswers(r2.roster(), prod, r5.roster(), r7.roster()));
+        root.set("ed25519Cases", ed25519Cases());
         return root;
     }
 
@@ -981,5 +985,94 @@ public final class ClientVerificationVectorsGenerator {
         } else {
             n.put("expectedEntryId", located.entry().homeserver().id());
         }
+    }
+
+    static final BigInteger GROUP_ORDER =
+            BigInteger.TWO.pow(252).add(new BigInteger("27742317777372353535851937790883648493"));
+    static final String SPKI_PREFIX_HEX = "302a300506032b6570032100";
+    static final String X25519_SPKI_PREFIX_HEX = "302a300506032b656e032100";
+    static final String IDENTITY_POINT_HEX = "01" + "00".repeat(31);
+    static final String R_Y_P_PLUS_ONE_HEX = "ee" + "ff".repeat(30) + "7f";
+
+    // Case 9 of ed25519-speccheck (github.com/novifinancial/ed25519-speccheck, Apache-2.0).
+    static final String SPECCHECK9_PUBLIC_HEX = "f7badec5b8abeaf699583992219b7b223f1df3fbbea919844e3f7c554a43dd43";
+    static final String SPECCHECK9_MESSAGE_HEX = "9bedc267423725d473888631ebf45988bad3db83851ee85c85e241a07d148b41";
+    static final String SPECCHECK9_SIGNATURE_HEX = "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            + "ca8c5b64cd208982aa38d4936621a4775aa233aa0505711d8fdcfdaa943d4908";
+
+    /**
+     * Checks every implementation already agrees on. Small-order and non-canonical public keys, and the choice
+     * between the cofactored and cofactorless equations, are left out until the protocol decides them.
+     */
+    static ArrayNode ed25519Cases() {
+        Ed25519.KeyPairB64 key = AUTHORITY_A.pair();
+        String spki = key.publicKeyB64();
+        byte[] message = new byte[0];
+        byte[] signature = B64.decode(Ed25519.sign(Ed25519.privateKey(key.privateKeyB64()), message));
+        String signatureB64 = B64E.encodeToString(signature);
+        if (!signatureB64.contains("+")) {
+            throw new IllegalStateException("the URL-safe case needs a '+' in the signature");
+        }
+        BigInteger s = littleEndian(Arrays.copyOfRange(signature, 32, 64));
+
+        ArrayNode out = JSON.createArrayNode();
+        ed25519Case(out, "valid signature", spki, message, signatureB64, true);
+        ed25519Case(out, "S plus the group order", spki, message, withS(signature, s.add(GROUP_ORDER)), false);
+        ed25519Case(out, "S with the top bit set", spki, message, withS(signature, s.setBit(255)), false);
+        ed25519Case(out, "R encoded with y = p + 1, under the identity key with S = 0", spkiB64(IDENTITY_POINT_HEX),
+                message, B64E.encodeToString(HEX.parseHex(R_Y_P_PLUS_ONE_HEX + "00".repeat(32))), false);
+        ed25519Case(out, "R with x = 0 and the sign bit set", spkiB64(SPECCHECK9_PUBLIC_HEX),
+                HEX.parseHex(SPECCHECK9_MESSAGE_HEX), B64E.encodeToString(HEX.parseHex(SPECCHECK9_SIGNATURE_HEX)),
+                false);
+        ed25519Case(out, "signature of 63 bytes", spki, message,
+                B64E.encodeToString(Arrays.copyOf(signature, 63)), false);
+        ed25519Case(out, "signature of 65 bytes", spki, message,
+                B64E.encodeToString(Arrays.copyOf(signature, 65)), false);
+        ed25519Case(out, "signature in the URL-safe alphabet", spki, message,
+                signatureB64.replace('+', '-').replace('/', '_'), false);
+        ed25519Case(out, "signature with a line break", spki, message,
+                signatureB64.substring(0, 44) + "\n" + signatureB64.substring(44), false);
+        ed25519Case(out, "signature with one padding character", spki, message,
+                signatureB64.substring(0, signatureB64.length() - 1), false);
+        ed25519Case(out, "public key with a trailing byte", B64E.encodeToString(
+                Arrays.copyOf(B64.decode(spki), B64.decode(spki).length + 1)), message, signatureB64, false);
+        ed25519Case(out, "public key with the X25519 algorithm identifier",
+                B64E.encodeToString(HEX.parseHex(X25519_SPKI_PREFIX_HEX + Rfc8032Keys.TEST1_PUBLIC_HEX)), message,
+                signatureB64, false);
+        return out;
+    }
+
+    static void ed25519Case(ArrayNode out, String name, String publicKeySpkiB64, byte[] message,
+                            String signatureB64, boolean verifies) {
+        ObjectNode n = out.addObject();
+        n.put("name", name);
+        n.put("publicKeySpkiB64", publicKeySpkiB64);
+        n.put("messageHex", HEX.formatHex(message));
+        n.put("signatureB64", signatureB64);
+        n.put("verifies", verifies);
+    }
+
+    static String spkiB64(String publicKeyHex) {
+        return B64E.encodeToString(HEX.parseHex(SPKI_PREFIX_HEX + publicKeyHex));
+    }
+
+    static BigInteger littleEndian(byte[] bytes) {
+        byte[] bigEndian = bytes.clone();
+        for (int i = 0; i < bigEndian.length / 2; i++) {
+            byte t = bigEndian[i];
+            bigEndian[i] = bigEndian[bigEndian.length - 1 - i];
+            bigEndian[bigEndian.length - 1 - i] = t;
+        }
+        return new BigInteger(1, bigEndian);
+    }
+
+    static String withS(byte[] signature, BigInteger s) {
+        byte[] bigEndian = s.toByteArray();
+        byte[] out = Arrays.copyOf(signature, 64);
+        for (int i = 0; i < 32; i++) {
+            int j = bigEndian.length - 1 - i;
+            out[32 + i] = j >= 0 ? bigEndian[j] : 0;
+        }
+        return B64E.encodeToString(out);
     }
 }

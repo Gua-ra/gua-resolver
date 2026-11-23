@@ -340,4 +340,18 @@ class ClientVerificationVectorsTest {
                     .isEqualTo(text(v, "expectedEntryId"));
         }
     }
+
+    @Test
+    void everyEd25519CaseHasItsExpectedVerdict() throws Exception {
+        for (JsonNode c : vectors().get("ed25519Cases")) {
+            boolean verified;
+            try {
+                verified = Ed25519.verify(Ed25519.publicKey(c.get("publicKeySpkiB64").asText()),
+                        HEX.parseHex(c.get("messageHex").asText()), c.get("signatureB64").asText());
+            } catch (IllegalArgumentException e) {
+                verified = false;
+            }
+            assertThat(verified).as(c.get("name").asText()).isEqualTo(c.get("verifies").asBoolean());
+        }
+    }
 }

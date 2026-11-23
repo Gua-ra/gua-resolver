@@ -227,6 +227,11 @@ byte-identical copies, and a port runs the file before its results are trusted.
 - In `policyLog`, a null `servedPolicy` stands for a `404`, and each case is checked against all of `log.events`
   with its own checkpoint.
 - The production roster is a copy of what `https://resolver.gua.global/roster` served on 2026-10-27.
+- `ed25519Cases` holds one valid signature and inputs every port must refuse: S at or above the group order,
+  a non-canonical R, signatures that are not 64 bytes, base64 outside the standard padded alphabet, and a public
+  key with a trailing byte or another algorithm. A case that does not verify may fail while parsing the key or
+  the signature. Small-order and non-canonical public keys, and the choice between the cofactored and
+  cofactorless equations, are not covered yet.
 
 ## Failure handling
 
