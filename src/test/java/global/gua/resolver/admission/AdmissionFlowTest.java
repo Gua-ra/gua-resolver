@@ -13,6 +13,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import global.gua.resolver.crypto.Ed25519;
+import global.gua.resolver.crypto.Ed25519Forgeries;
 import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.placement.ClaimPredicate;
 import global.gua.resolver.roster.CanonicalMemberEntry;
@@ -109,15 +110,31 @@ class AdmissionFlowTest {
     }
 
     @Test
-    void rejectsKeyPossessionForgery() {
+    void rejectsKeyPossessionProofSignedByAnotherKey() {
         AdmissionRequest good = request("forge.gua.global", List.of());
+        String otherKeysProof = Ed25519.sign(Ed25519.privateKey(Ed25519.generate().privateKeyB64()),
+                good.serverName().getBytes(StandardCharsets.UTF_8));
         AdmissionRequest forged = new AdmissionRequest(null, good.serverName(), good.baseUrl(),
                 good.masIssuer(), good.region(), good.weight(), good.acceptsNew(),
-                good.signingKey(), Ed25519.generate().publicKeyB64(),  // proof not made by signingKey
+                good.signingKey(), otherKeysProof, good.domainProof(), good.claims(), null, null);
+
+        assertThatThrownBy(() -> admission.admit(forged))
+                .isInstanceOf(AdmissionService.AdmissionException.class)
+                .hasMessageContaining("key-possession proof invalid");
+    }
+
+    @Test
+    void rejectsSmallOrderSigningKeyWithForgedProof() {
+        AdmissionRequest good = request("smallorder.gua.global", List.of());
+        AdmissionRequest forged = new AdmissionRequest(null, good.serverName(), good.baseUrl(),
+                good.masIssuer(), good.region(), good.weight(), good.acceptsNew(),
+                Ed25519Forgeries.IDENTITY_KEY_B64, Ed25519Forgeries.IDENTITY_SIGNATURE_B64,
                 good.domainProof(), good.claims(), null, null);
 
         assertThatThrownBy(() -> admission.admit(forged))
-                .isInstanceOf(AdmissionService.AdmissionException.class);
+                .isInstanceOf(AdmissionService.AdmissionException.class)
+                .hasMessageContaining("not an acceptable Ed25519 public key");
+        assertThat(entries.existsByServerName(good.serverName())).isFalse();
     }
 
     @Test

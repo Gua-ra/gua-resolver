@@ -151,22 +151,17 @@ class PlacementRecordIngestTest {
     }
 
     @Test
-    void aRetryThatSpellsTheSignatureDifferentlyIsStillTheSameRecord() throws Exception {
+    void aRetryWithAnUnpaddedSignatureIsRefused() throws Exception {
         String accountId = PlacementFixtures.genesisAccountId("ingest-retry-spelling");
         byte[] canonical = PlacementFixtures.canonical(accountId, "hs-one", now());
         String recordB64 = PlacementFixtures.recordB64(canonical);
         String signature = PlacementFixtures.sign(canonical, ONE);
-        // An Ed25519 signature's base64 ends in padding that a decoder treats as optional.
         String unpadded = signature.replace("=", "");
-        assertThat(unpadded).isNotEqualTo(signature);
 
         present(PlacementFixtures.envelope(recordB64, signature)).andExpect(status().isCreated());
-
-        // A publisher retrying after a timeout must not be told its own record conflicts with itself. The
-        // idempotence rule is about the object, so the comparison is on bytes, not on transport spelling.
         present(PlacementFixtures.envelope(recordB64, unpadded))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.result").value("unchanged"));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("bad_signature"));
 
         assertThat(store.find(accountId).orElseThrow().signatureB64()).isEqualTo(signature);
     }

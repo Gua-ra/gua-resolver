@@ -117,7 +117,7 @@ A homeserver's signed statement that it holds an account.
 | notBefore | 8 | epoch milliseconds, unsigned |
 | notAfter | 8 | epoch milliseconds, unsigned, later than `notBefore` |
 
-The Ed25519 signature travels beside the bytes, not inside them. The envelope carries the record and the signature as unpadded base64url.
+The Ed25519 signature travels beside the bytes, not inside them. The envelope carries the record as unpadded base64url and the signature as standard padded base64.
 
 The resolver accepts a record only when all of these hold:
 
