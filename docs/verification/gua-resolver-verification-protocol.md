@@ -28,8 +28,9 @@ A verifier is configured out of band with:
 - the published **authority public keys** (n) and the **authority threshold** `k`;
 - the **policy-signing keys** + threshold. These are the federation's governance keys once a genesis is
   pinned. A verifier has no fallback to the authority keys: an unset list verifies no bundle, including one
-  signed by the operational roster key. This holds in the reference verifier and in every port, although the
-  resolver keeps that fallback until `gua.resolver.governance.required` is turned on.
+  signed by the operational roster key. Ports must not copy the resolver's fallback, which exists only so the
+  resolver can keep serving a bundle already signed with the operational key until
+  `gua.resolver.governance.required` is turned on.
 - optionally the pinned **federation genesis**, published at `GET /.well-known/gua-federation` on the
   resolver origin as `{genesisId, fingerprint, chainHead, genesis, transitions[]}`, where `chainHead` is the
   genesis id with no transition applied, and the hash of the last applied transition after that. It is signed
