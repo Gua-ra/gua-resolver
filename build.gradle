@@ -79,6 +79,14 @@ tasks.register('governanceVectors', JavaExec) {
     mainClass = 'global.gua.resolver.governance.GovernanceVectorsGenerator'
 }
 
+// Regenerate the published federation log vectors. FederationLogVectorsTest reproduces every value.
+tasks.register('federationLogVectors', JavaExec) {
+    group = 'documentation'
+    description = 'Regenerate docs/specs/gua-federation-log-v1-vectors.json'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'global.gua.resolver.federationlog.FederationLogVectorsGenerator'
+}
+
 // Offline governance signing, run outside the cluster with a key that never enters a resolver namespace;
 // see docs/runbooks/governance-keys.md. Keys are piped in, never passed as arguments.
 tasks.register('govTool', JavaExec) {

@@ -99,12 +99,12 @@ Rules:
 - Every input that affects state, including time, is an entry in the log, so a replay sees what the resolver saw. The ordering resolver records the time and does not choose it: logged time never goes backwards and is checked against a time policy on replay. Nothing reads a local clock during replay.
 - **Running a resolver grants no authority.** The number of resolvers is an availability decision, never a voting or signing one. A replica holds no key that counts.
 
+The [federation log](../specs/federation-log.md) spec defines the entries, state, checkpoints, witness list and witness signatures. It also settles one checkpoint per size, time entries and the 120 second clock tolerance, which witness signatures count, and how a verifier judges freshness. Replay reports freshness and does not enforce it. Every witness it defines replays the log, and a witness that checks only history is not defined yet.
+
 Proposed details, not yet reviewed:
 
-- **One checkpoint per size.** A log-only witness refuses to co-sign a second checkpoint at a size it already co-signed.
-- **Quorum.** With `W` the set of witness operators and `f` of them allowed to be faulty, the number that must sign, `q`, satisfies `2q - |W| >= f + 1`. Example: four operators with one faulty need three signatures, so any two accepted sets share two operators and one of those is honest. The first step is one outside operator with `q = 1` and `f = 0`.
+- **Quorum with faulty witnesses.** With `W` the set of witness operators and `f` of them allowed to be faulty, the number that must sign, `q`, satisfies `2q - |W| >= f + 1`. Example: four operators with one faulty need three signatures, so any two accepted sets share two operators and one of those is honest. The spec enforces the `f = 0` case. The first step is one outside operator with `q = 1`.
 - **Pinning.** An app pins the last checkpoint it accepted for the federation, not per account, and moves forward only on a consistency proof and a quorum.
-- **Time.** A `TICK` entry lands at least every 60 seconds. A witness co-signs only when the checkpoint's time is within 120 seconds of its own clock. A clock disagreement is never a dissent. The witness withholds its signature.
 - **Dissent.** It names the last checkpoint the witness agreed with, the disputed checkpoint, the first bad entry and the evidence, so a client can check it.
 - **Evidence of censorship.** An accepted input gets a signed promise that it will appear in the log within a stated delay. An unmet promise proves censorship.
 
