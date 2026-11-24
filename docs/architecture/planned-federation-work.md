@@ -99,7 +99,7 @@ Rules:
 - Every input that affects state, including time, is an entry in the log, so a replay sees what the resolver saw. The ordering resolver records the time and does not choose it: logged time never goes backwards and is checked against a time policy on replay. Nothing reads a local clock during replay.
 - **Running a resolver grants no authority.** The number of resolvers is an availability decision, never a voting or signing one. A replica holds no key that counts.
 
-The [federation log](../specs/federation-log.md) spec defines the entries, state, checkpoints, witness list and witness signatures. It also settles one checkpoint per size, time entries and the 120 second clock tolerance, and which witness signatures count. Every witness it defines replays the log, and a witness that checks only history is not defined yet.
+The [federation log](../specs/federation-log.md) spec defines the entries, state, checkpoints, witness list and witness signatures. It also settles one checkpoint per size, time entries and the 120 second clock tolerance, which witness signatures count, and how a verifier judges freshness. Replay reports freshness and does not enforce it. Every witness it defines replays the log, and a witness that checks only history is not defined yet.
 
 Proposed details, not yet reviewed:
 

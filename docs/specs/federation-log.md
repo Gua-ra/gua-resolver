@@ -51,7 +51,7 @@ Rules:
 - **Signatures.** Every signature an entry carries must verify, and must come from a key the rules for that object allow. The keys in force are those that hold after the entries before this one. Signatures from one key appear once, and governance signatures meet the threshold.
 - **Key changes.** A key change never gives an existing `keyId` to a different key. Otherwise one signature list could not satisfy both the outgoing and the incoming key set.
 - **Rejected entries.** An epoch for `VerifierRegistry` or `PolicyRegistry` fails replay. A log containing any entry that breaks these rules fails the state check.
-- **Ed25519.** Verification follows RFC 8032, and a public key of small order is refused wherever a key is listed. Some libraries, the JDK among them, accept such a key and then verify a forged signature, so every implementation must refuse it to reach the same state.
+- **Ed25519.** Every listed key follows the [key rules](federation-signed-objects.md#rules-for-every-signed-object), which refuse small-order keys, so every implementation reaches the same state.
 
 ## Time
 
@@ -130,6 +130,19 @@ A witness signs a checkpoint only when all of these hold:
 - the witness has not signed another checkpoint of the same size.
 
 The witness publishes its signatures at its own `url`, so a verifier never depends on the resolver to pass them on.
+
+## Freshness
+
+Freshness tells a verifier how recent its view of the log is. It is judged from checkpoints. Governance-signed objects carry no expiry, and no key signs anything new to provide it.
+
+- **Age.** The age of the newest accepted checkpoint is the verifier's clock minus its `lastLoggedAt`. Witness `signedAt` values do not enter the calculation.
+- **Witness quorum.** Once `requiredWitnesses` is above 0, only a witnessed checkpoint counts. Each witness in the quorum compared `lastLoggedAt` with its own clock within 120 seconds before signing, so no single witness can make a checkpoint look newer. While `requiredWitnesses` is 0, the age rests on the resolver's signature alone and is reported as not independently verified.
+- **Clock.** The verifier's clock is the only reference. Witness signatures do not correct it: a clock running behind makes a stale checkpoint look fresh, and one running ahead makes a fresh one look stale. A `lastLoggedAt` more than 5 minutes ahead of the verifier's clock is reported as `clock_skew`.
+- **Elapsed time.** After accepting a checkpoint, a verifier may add monotonic time elapsed since acceptance to the age it computed then, so later wall-clock changes do not affect the result. Monotonic time does not survive a restart, after which the wall clock is used again.
+- **Bootstrap.** A verifier that has accepted no checkpoint has no reference beyond its clock and the pinned genesis. The first checkpoint it accepts becomes the reference.
+- **Result.** `fresh` when the age is within the configured limit, `stale` beyond it, `clock_skew` as above. The limit is a deployment parameter. The first evaluation reports only, with a limit of 15 minutes.
+- **Enforcement.** Not part of this version. If enforced later, a stale or unwitnessed view blocks only operations that change trust: placing a new account, trusting a homeserver the verifier has not seen before, accepting a homeserver key change, and moving an account. Existing sessions and ordinary messaging never depend on the resolver being reachable or fresh.
+- **Limits.** A fresh checkpoint shows that the resolver signed this view recently. It does not show that no entries were withheld or that others see the same history. Those are detected through conflicts and witnesses, not through freshness.
 
 ## Conflicts
 
