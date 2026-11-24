@@ -31,18 +31,10 @@ import global.gua.resolver.roster.store.RosterEntryRepository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * End-to-end admission against the real authority stack: admitting a homeserver vets its key-possession and
- * domain proof, appends an ADMIT event to the transparency log, and re-signs a roster that still verifies;
- * overlapping claims are rejected. It also covers the member self-signed path: admission that proves
- * possession by signing its own entry, the attest endpoint that lets an admitted member adopt, move or
- * re-key its entry, and the substitutions that must fail.
- */
 @SpringBootTest
 @DirtiesContext
 class AdmissionFlowTest {
 
-    /** The seeded dev homeserver's membership key, generated in memory for this context only. */
     private static final Ed25519.KeyPairB64 DEV_KEY = Ed25519.generate();
 
     @DynamicPropertySource
@@ -255,7 +247,7 @@ class AdmissionFlowTest {
 
         assertThat(admitted.member()).isNotNull();
         assertThat(admitted.member().sequence()).isEqualTo(1);
-        // ADMIT and MEMBER_ATTEST: an admission carrying a member block appends two leaves.
+        // ADMIT and MEMBER_ATTEST.
         assertThat(rosterStore.current().logCheckpoint().size()).isEqualTo(before + 2);
         String hash = CanonicalMemberEntry.hash(admitted.homeserver(), admitted.member());
         assertThat(transparencyLog.eventsOfType(TransparencyLog.MEMBER_ATTEST))

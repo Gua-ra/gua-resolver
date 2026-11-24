@@ -43,7 +43,6 @@ public final class Ed25519 {
 
     public record KeyPairB64(String publicKeyB64, String privateKeyB64) {}
 
-    /** Generate a fresh Ed25519 keypair, encoded base64 (X.509 public, PKCS#8 private). */
     public static KeyPairB64 generate() {
         try {
             KeyPair kp = KeyPairGenerator.getInstance(ALG).generateKeyPair();
@@ -55,10 +54,7 @@ public final class Ed25519 {
         }
     }
 
-    /**
-     * Parses a public key, refusing non-canonical encodings and small-order points: anyone can forge
-     * signatures under a small-order key.
-     */
+    /** Refuses non-canonical encodings and small-order points, under which anyone can forge signatures. */
     public static PublicKey publicKey(String base64X509) {
         byte[] spki = decodeCanonical(base64X509);
         if (spki == null || spki.length != SPKI_PREFIX.length + RAW_KEY_LENGTH
@@ -87,7 +83,6 @@ public final class Ed25519 {
         }
     }
 
-    /** Sign {@code message}, returning the detached signature base64-encoded. */
     public static String sign(PrivateKey key, byte[] message) {
         try {
             Signature s = Signature.getInstance(ALG);
@@ -99,7 +94,7 @@ public final class Ed25519 {
         }
     }
 
-    /** Verify a base64 detached signature over {@code message}. Returns false on any malformed input. */
+    /** Returns false on any malformed input. */
     public static boolean verify(PublicKey key, byte[] message, String signatureB64) {
         if (key == null) {
             return false;

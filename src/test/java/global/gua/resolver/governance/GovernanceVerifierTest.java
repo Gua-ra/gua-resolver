@@ -9,10 +9,7 @@ import global.gua.resolver.crypto.Ed25519;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * A governance threshold counts distinct operators, never key ids. Per-key counting, which the roster
- * verifier uses, would make a k-of-n satisfiable by one party holding k keys.
- */
+/** Thresholds count operators, not key ids, so one party holding k keys cannot meet a k-of-n. */
 class GovernanceVerifierTest {
 
     private static final byte[] MESSAGE = "governance object".getBytes(java.nio.charset.StandardCharsets.UTF_8);
@@ -27,7 +24,7 @@ class GovernanceVerifierTest {
         GovernanceVerifier.Outcome outcome = GovernanceVerifier.count(keys, MESSAGE,
                 List.of(first.sign(MESSAGE), second.sign(MESSAGE)));
 
-        // Two valid signatures, two distinct key ids, one operator. The count is the operator count.
+        // Two valid signatures from two key ids held by one operator.
         assertThat(outcome.operators()).isEqualTo(1);
         assertThat(outcome.countedOperators()).containsExactly("operator-a");
         assertThat(outcome.valid()).isTrue();
@@ -77,7 +74,6 @@ class GovernanceVerifierTest {
         assertThat(GovernanceVerifier.count(keys, MESSAGE, List.of(stranger.sign(MESSAGE))).operators())
                 .isZero();
 
-        // A valid signature over different bytes, presented for the right key id, counts for nothing.
         GovernanceSignature wrongBytes = new GovernanceSignature("gov-1",
                 Ed25519.sign(Ed25519.privateKey(known.privateKeyB64()), "other".getBytes(
                         java.nio.charset.StandardCharsets.UTF_8)));
