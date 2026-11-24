@@ -47,7 +47,7 @@ sequenceDiagram
 Rules:
 
 - The proposed homeserver stays fixed for the life of the transaction, and anyone can re-derive it from the signed policy and roster. A resolver signature that nobody can re-derive would make the resolver the placement authority.
-- **A signature adds security only if obtaining it requires compromising someone.** The applicant's own signature ties the transaction together and stops replay. The homeserver's agreement does three jobs: no account is placed where nobody agreed to host it, the destination cannot drift during the transaction, and the homeserver controls its own admissions. Neither signature is a check on who owns the phone number.
+- **A signature adds security only if obtaining it requires compromising someone.** The applicant's own signature ties the transaction together and stops replay. The homeserver's agreement keeps accounts off homeservers that did not accept them, fixes the destination for the whole transaction, and leaves admission decisions with the homeserver. Neither signature is a check on who owns the phone number.
 
 [Placement records](../specs/account-identifiers-and-placement-records.md#placement-record-66--n-bytes) exist and, with their flags on, are compared daily against where accounts really live. Routing may read them only once the conditions listed in the [migration plan](../migrations/gua-resolver-migration-plan.md#phase-4-placement-records-for-existing-accounts) hold.
 

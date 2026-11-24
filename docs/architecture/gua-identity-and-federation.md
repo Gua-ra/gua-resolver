@@ -211,7 +211,8 @@ stateDiagram-v2
 
 | | Scope today |
 | --- | --- |
-| Messages and rooms | Federated between Gua homeservers over Matrix federation. Gua is a closed federation and does not join the open Matrix network. |
+| Messages and rooms | Exchanged over Matrix federation. Gua's homeservers currently federate openly with other Matrix servers. |
+| Matrix federation policy | Chosen by each homeserver operator: open, limited to chosen servers, or private. Limiting Gua's own homeservers to the roster is planned and not in place. |
 | Roster, routing policy, transparency log | Federation-wide, published by the resolver. |
 | Matrix account, sessions, devices, key backup | Local to one homeserver. |
 | Sign-in, PIN, passkeys, recovery, usernames, contact discovery, account identifiers | Central. One identity service serves every homeserver. |

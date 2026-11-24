@@ -1,13 +1,13 @@
 ![gua-resolver](https://github.com/user-attachments/assets/01bd66c7-6250-42ce-a4d0-1f8ade952ca2)
 
-gua-resolver is the routing front door of the Gua federation. Before login, a client asks it which homeserver an identifier leads to. It also serves the signed list of federated homeservers.
+gua-resolver is the routing front door of the Gua federation. Before login, a client asks it which homeserver an identifier leads to. It also serves the signed roster of homeservers that host Gua accounts.
 
 The resolver serves and verifies routing information. It does not authenticate anyone and never holds a credential.
 
 ## Endpoints
 
 - `POST /resolve`: a phone number in, the homeserver to log in to or register at out. Rate limited per client and globally; over the limit it answers `429` with `Retry-After`.
-- `GET /roster`: the signed list of federated homeservers. Its transparency log is at `/roster/log` and `/roster/log/consistency`.
+- `GET /roster`: the signed roster of homeservers that host Gua accounts. Its transparency log is at `/roster/log` and `/roster/log/consistency`.
 - `GET /policy/routing`: the signed routing policy bundle, with `/policy/routing/status` and `/policy/log`.
 - `GET /directory/lookup`, `GET /directory/checkpoint`: the mirror-facing directory read and its signed checkpoint.
 - `GET /.well-known/gua-federation`, `GET /registry/homeservers/epoch/{current|n}`: the pinned federation genesis and the governance-signed membership epochs.
