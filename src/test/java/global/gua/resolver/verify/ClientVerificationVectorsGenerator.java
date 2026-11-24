@@ -1000,9 +1000,38 @@ public final class ClientVerificationVectorsGenerator {
     static final String SPECCHECK9_SIGNATURE_HEX = "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
             + "ca8c5b64cd208982aa38d4936621a4775aa233aa0505711d8fdcfdaa943d4908";
 
+    private static final String FORGED_MESSAGE_HEX = "6775612d617564697420666f726765642073746174656d656e74";
+
     /**
-     * Checks every implementation already agrees on. Small-order and non-canonical public keys, and the choice
-     * between the cofactored and cofactorless equations, are left out until the protocol decides them.
+     * Forgeries with R a small-order point and S = 0 that a verifier without the key checks accepts: key name,
+     * public key, message suffix and R, from the audit probes.
+     */
+    private static final String[][] WEAK_KEY_FORGERIES = {
+            {"identity key (order 1)", "01" + "00".repeat(31), "00", "01" + "00".repeat(31)},
+            {"key of order 2", "ec" + "ff".repeat(30) + "7f", "00", "01" + "00".repeat(31)},
+            {"all-zero key (order 4)", "00".repeat(32), "00", "01" + "00".repeat(31)},
+            {"key of order 4 with x negative", "00".repeat(31) + "80", "00", "01" + "00".repeat(31)},
+            {"key of order 8", "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05", "00",
+                    "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05"},
+            {"key of order 8 with x negative", "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc85",
+                    "02", "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05"},
+            {"key of order 8, second y", "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a", "00",
+                    "00".repeat(32)},
+            {"key of order 8, second y, x positive",
+                    "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa", "00",
+                    "ec" + "ff".repeat(30) + "7f"},
+            {"non-canonical key with y = p", "ed" + "ff".repeat(30) + "7f", "00", "01" + "00".repeat(31)},
+            {"non-canonical key with y = p and the sign bit set", "ed" + "ff".repeat(31), "01",
+                    "ec" + "ff".repeat(30) + "7f"},
+            {"non-canonical key with y = p + 1", "ee" + "ff".repeat(30) + "7f", "00", "01" + "00".repeat(31)},
+            {"non-canonical key with x = 0 and the sign bit set", "01" + "00".repeat(30) + "80", "",
+                    "01" + "00".repeat(31)},
+    };
+
+    /**
+     * Rules every verifier applies: one base64 spelling, canonical points outside the small-order subgroup, and S
+     * below the group order. Mixed-order keys and the choice between the cofactored and cofactorless equations are
+     * left out until the protocol decides them.
      */
     static ArrayNode ed25519Cases() {
         Ed25519.KeyPairB64 key = AUTHORITY_A.pair();
@@ -1039,6 +1068,23 @@ public final class ClientVerificationVectorsGenerator {
         ed25519Case(out, "public key with the X25519 algorithm identifier",
                 B64E.encodeToString(HEX.parseHex(X25519_SPKI_PREFIX_HEX + Rfc8032Keys.TEST1_PUBLIC_HEX)), message,
                 signatureB64, false);
+        ed25519Case(out, "signature without padding", spki, message, signatureB64.replace("=", ""), false);
+        ed25519Case(out, "signature with an extra padding character", spki, message, signatureB64 + "=", false);
+        ed25519Case(out, "signature with non-zero trailing bits", spki, message,
+                withNonZeroTrailingBits(signatureB64), false);
+        ed25519Case(out, "public key without padding", spki.replace("=", ""), message, signatureB64, false);
+        ed25519Case(out, "public key with non-zero trailing bits", withNonZeroTrailingBits(spki), message,
+                signatureB64, false);
+        ed25519Case(out, "public key that is not a curve point", spkiB64("02" + "00".repeat(31)), message,
+                signatureB64, false);
+        ed25519Case(out, "public key with NULL algorithm parameters", B64E.encodeToString(HEX.parseHex(
+                "302c300706032b65700500032100" + HEX.formatHex(Arrays.copyOfRange(B64.decode(spki), 12, 44)))),
+                message, signatureB64, false);
+        for (String[] forgery : WEAK_KEY_FORGERIES) {
+            ed25519Case(out, "forgery under the " + forgery[0], spkiB64(forgery[1]),
+                    HEX.parseHex(FORGED_MESSAGE_HEX + forgery[2]),
+                    B64E.encodeToString(HEX.parseHex(forgery[3] + "00".repeat(32))), false);
+        }
         return out;
     }
 
@@ -1050,6 +1096,13 @@ public final class ClientVerificationVectorsGenerator {
         n.put("messageHex", HEX.formatHex(message));
         n.put("signatureB64", signatureB64);
         n.put("verifies", verifies);
+    }
+
+    static String withNonZeroTrailingBits(String padded) {
+        String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        int last = padded.replace("=", "").length() - 1;
+        char bumped = alphabet.charAt(alphabet.indexOf(padded.charAt(last)) + 1);
+        return padded.substring(0, last) + bumped + padded.substring(last + 1);
     }
 
     static String spkiB64(String publicKeyHex) {
