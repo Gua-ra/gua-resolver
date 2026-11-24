@@ -26,11 +26,6 @@ import global.gua.resolver.roster.RosterEntry;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The attestation columns round-trip through H2 exactly, including across a daylight-saving fold: the
- * validity window is signed, so a timestamp that comes back an hour out would silently invalidate every
- * member signature the resolver serves.
- */
 class RosterEntryRepositoryTest {
 
     private static final Ed25519.KeyPairB64 KEY = Ed25519.generate();
@@ -99,16 +94,15 @@ class RosterEntryRepositoryTest {
     void theSignedValidityWindowSurvivesADaylightSavingFold() {
         TimeZone.setDefault(TimeZone.getTimeZone("America/New_York"));
         Homeserver hs = homeserver(KEY.publicKeyB64());
-        // 01:30 local on the night the clocks go back: one local time, two instants.
-        Instant ambiguous = Instant.parse("2026-11-01T05:30:00Z");
-        MemberAttestation member = attestation(hs, 1, ambiguous);
+        Instant first0130DuringDstFallback = Instant.parse("2026-11-01T05:30:00Z");
+        MemberAttestation member = attestation(hs, 1, first0130DuringDstFallback);
         String hash = CanonicalMemberEntry.hash(hs, member);
 
         repository.insert(new RosterEntry(hs, List.of(), Instant.now(), RosterEntry.Status.ACTIVE, member),
                 hs.signingKey(), null, hash);
         RosterEntry read = repository.findById("hs1").orElseThrow();
 
-        assertThat(read.member().notBefore()).isEqualTo(ambiguous);
+        assertThat(read.member().notBefore()).isEqualTo(first0130DuringDstFallback);
         assertThat(CanonicalMemberEntry.hash(read.homeserver(), read.member())).isEqualTo(hash);
     }
 
@@ -119,7 +113,7 @@ class RosterEntryRepositoryTest {
                 Homeserver.SearchVisibility.GLOBAL, List.of());
         repository.insert(new RosterEntry(admitted, List.of(), Instant.now(), RosterEntry.Status.ACTIVE));
 
-        Homeserver attested = homeserver(KEY.publicKeyB64());   // moved baseUrl, GROUP visibility
+        Homeserver attested = homeserver(KEY.publicKeyB64());
         MemberAttestation member = attestation(attested, 4, Instant.parse("2026-09-11T00:00:00Z"));
         String hash = CanonicalMemberEntry.hash(attested, member);
         assertThat(repository.updateMemberIfSequenceMatches("hs1", attested, member, hash, 0)).isEqualTo(1);
@@ -129,7 +123,6 @@ class RosterEntryRepositoryTest {
         RosterEntry read = repository.findById("hs1").orElseThrow();
         assertThat(read.homeserver().baseUrl()).isEqualTo("https://matrix.hs1.gua.test");
         assertThat(read.homeserver().searchGroups()).containsExactly("edu-br");
-        // The authority keeps these: a member cannot vote itself more placement weight.
         assertThat(read.homeserver().weight()).isEqualTo(7);
         assertThat(read.homeserver().acceptsNew()).isFalse();
         assertThat(read.member().sequence()).isEqualTo(4);
@@ -146,26 +139,24 @@ class RosterEntryRepositoryTest {
     }
 
     @Test
-    void updateMemberRefusesAStaleWriteSoTheAcceptedSequenceCannotRegress() {
+    void staleAttestationCannotOverwriteAcceptedSequence() {
         Homeserver admitted = homeserver(KEY.publicKeyB64());
         repository.insert(new RosterEntry(admitted, List.of(), Instant.now(), RosterEntry.Status.ACTIVE));
 
-        // Two attestations verified against the same unattested prior, as two concurrent admins would be.
         Homeserver moved = new Homeserver("hs1", "hs1.gua.test", "https://new.hs1.gua.test",
                 "https://account.hs1.gua.test/", "BR", 1, true, KEY.publicKeyB64(),
                 Homeserver.SearchVisibility.GROUP, List.of("edu-br"));
-        MemberAttestation winner = attestation(moved, 4, Instant.parse("2026-09-11T00:00:00Z"));
-        MemberAttestation loser = attestation(admitted, 3, Instant.parse("2026-09-11T00:00:00Z"));
-        String winnerHash = CanonicalMemberEntry.hash(moved, winner);
-        String loserHash = CanonicalMemberEntry.hash(admitted, loser);
+        MemberAttestation accepted = attestation(moved, 4, Instant.parse("2026-09-11T00:00:00Z"));
+        MemberAttestation stale = attestation(admitted, 3, Instant.parse("2026-09-11T00:00:00Z"));
+        String acceptedHash = CanonicalMemberEntry.hash(moved, accepted);
+        String staleHash = CanonicalMemberEntry.hash(admitted, stale);
 
-        assertThat(repository.updateMemberIfSequenceMatches("hs1", moved, winner, winnerHash, 0)).isEqualTo(1);
-        // Same expected prior, lower sequence: the entry moved, so the write must match no row.
-        assertThat(repository.updateMemberIfSequenceMatches("hs1", admitted, loser, loserHash, 0)).isZero();
+        assertThat(repository.updateMemberIfSequenceMatches("hs1", moved, accepted, acceptedHash, 0)).isEqualTo(1);
+        assertThat(repository.updateMemberIfSequenceMatches("hs1", admitted, stale, staleHash, 0)).isZero();
 
         RosterEntry read = repository.findById("hs1").orElseThrow();
         assertThat(read.member().sequence()).isEqualTo(4);
         assertThat(read.homeserver().baseUrl()).isEqualTo("https://new.hs1.gua.test");
-        assertThat(repository.memberEntryHash("hs1")).contains(winnerHash);
+        assertThat(repository.memberEntryHash("hs1")).contains(acceptedHash);
     }
 }

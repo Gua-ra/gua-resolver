@@ -31,10 +31,6 @@ import global.gua.resolver.roster.SignedRoster;
 import global.gua.resolver.roster.TransparencyLog;
 import global.gua.resolver.roster.store.RosterEntryRepository;
 
-/**
- * Only the registered key, or a key it rotates to, may change an entry's address, issuer, key or search
- * policy; weight, acceptsNew, claims and status stay with the authority.
- */
 @Service
 @ConditionalOnProperty(name = "gua.resolver.mode", havingValue = "AUTHORITY", matchIfMissing = true)
 public class AdmissionService {
@@ -88,10 +84,9 @@ public class AdmissionService {
         if (entries.existsByServerName(req.serverName())) {
             throw new AdmissionException(req.serverName() + " is already admitted");
         }
-        // SUSPENDED and PENDING members still hold their claimed ranges.
-        List<RosterEntry> holdingClaims = entries.findAll().stream()
+        List<RosterEntry> unrevokedEntries = entries.findAll().stream()
                 .filter(e -> e.status() != RosterEntry.Status.REVOKED).toList();
-        for (RosterEntry e : holdingClaims) {
+        for (RosterEntry e : unrevokedEntries) {
             if (ClaimOverlap.conflicts(req.claims(), e.claims())) {
                 throw new AdmissionException(
                         "requested claims overlap those of " + e.homeserver().serverName());
@@ -119,11 +114,9 @@ public class AdmissionService {
             requireNoUnexpectedSignatures(req.member(), false);
             entryHash = result.entryHash();
         } else {
-            log.warn("Admitting {} without a member self-signature; the authority alone can still rewrite "
-                    + "this entry until its operator attests it (ADM-007)", req.serverName());
+            log.warn("Admitting homeserver {} without a member self-signature", req.serverName());
         }
 
-        // Under governance the entry stays out of the signed roster until a governance-signed epoch activates it.
         RosterEntry.Status initial = genesis.governanceRequired()
                 ? RosterEntry.Status.PENDING
                 : RosterEntry.Status.ACTIVE;
@@ -136,8 +129,7 @@ public class AdmissionService {
         log.info("Admitted homeserver {} ({}) with {} claim(s), member self-signature: {}, status: {}",
                 id, hs.serverName(), req.claims().size(), selfSigned, initial);
         if (initial == RosterEntry.Status.PENDING) {
-            log.info("{} stays PENDING and is not served until a governance-signed membership epoch admits "
-                    + "it (docs/runbooks/governance-keys.md)", id);
+            log.info("Homeserver {} admission requires governance approval", id);
         }
         return rosterStore.refresh();
     }
@@ -150,13 +142,12 @@ public class AdmissionService {
         RosterEntry stored = entries.findById(id)
                 .orElseThrow(() -> new AdmissionException("no such homeserver: " + id));
         if (stored.status() == RosterEntry.Status.REVOKED) {
-            throw new AdmissionException(id + " is revoked: a revoked member is admitted afresh, "
-                    + "never re-attested");
+            throw new AdmissionException(id + " is revoked; submit a new admission");
         }
         String genesisKey = stored.homeserver().signingKey();
         if (genesisKey == null || genesisKey.isBlank()) {
-            throw new AdmissionException(id + " has no registered key to anchor an attestation: "
-                    + "revoke it and admit the operator afresh");
+            throw new AdmissionException(id + " has no registered signing key; revoke the entry and "
+                    + "submit a new admission");
         }
 
         MemberAttestationRequest.HomeserverFields fields = request.homeserver();
@@ -165,8 +156,8 @@ public class AdmissionService {
                     + fields.id());
         }
         if (!stored.homeserver().serverName().equals(fields.serverName())) {
-            throw new AdmissionException("serverName cannot change: a different server name is a new "
-                    + "identity, which is a fresh admission");
+            throw new AdmissionException("serverName cannot change; submit a new admission for a "
+                    + "different serverName");
         }
         requireText(fields.baseUrl(), "baseUrl");
         requireText(fields.masIssuer(), "masIssuer");
@@ -199,8 +190,8 @@ public class AdmissionService {
         int updated = entries.updateMemberIfSequenceMatches(id, attested, request.member(), result.entryHash(),
                 prior.sequence());
         if (updated == 0) {
-            throw new AdmissionException("a concurrent attestation changed " + id + " while this one was "
-                    + "verified against sequence " + prior.sequence() + "; retry against the current entry");
+            throw new AdmissionException("stored sequence for " + id + " changed after verification "
+                    + "against sequence " + prior.sequence() + "; retry against the current entry");
         }
         RosterEntry accepted = new RosterEntry(attested, stored.claims(), stored.admittedAt(),
                 stored.status(), request.member());
@@ -238,26 +229,17 @@ public class AdmissionService {
         }
     }
 
-    /**
-     * Suspend (temporarily) or revoke (permanently) an admitted homeserver.
-     *
-     * <p>With governance required this records intent only and changes nothing that is served, so the
-     * operational key cannot take a member out of service on its own. The change takes effect when a
-     * membership epoch carries it.
-     */
     @Transactional
     public SignedRoster setStatus(String id, RosterEntry.Status status) {
         entries.findById(id).orElseThrow(() -> new AdmissionException("no such homeserver: " + id));
         if (status == RosterEntry.Status.PENDING) {
-            throw new AdmissionException("PENDING is how an entry waits for governance, not a status to set");
+            throw new AdmissionException("PENDING cannot be set directly");
         }
         if (genesis.governanceRequired()) {
             entries.setPendingStatus(id, status);
-            // Logged so an auditor can see intents that governance never ratified.
             transparencyLog.append(TransparencyLog.STATUS_INTENT, id,
                     MerkleTree.sha256Hex(id + ":" + status + ":intent"));
-            log.info("Recorded intent to set homeserver {} status -> {}. It stays as it is until a "
-                    + "governance-signed membership epoch carries the change (ADM-001 L10)", id, status);
+            log.info("Requested homeserver {} status {}; governance approval required", id, status);
             return rosterStore.current();
         }
         entries.updateStatus(id, status);
@@ -284,7 +266,7 @@ public class AdmissionService {
         try {
             hash = CanonicalMemberEntry.hash(stored.homeserver(), member);
         } catch (RuntimeException e) {
-            hash = null;   // a stored entry that no longer encodes cannot pin the next one by hash
+            hash = null;
         }
         return new MemberEntryVerifier.Prior(member.keyId(), stored.homeserver().signingKey(),
                 member.sequence(), hash);
@@ -294,16 +276,15 @@ public class AdmissionService {
         int allowed = rotation ? 2 : 1;
         if (member.signatures().size() > allowed) {
             throw new AdmissionException(rotation
-                    ? "a rotation carries exactly the new key's and the previous key's signatures"
-                    : "an entry carries exactly its own key's signature");
+                    ? "key rotation requires exactly the new and previous keys' signatures"
+                    : "a member entry requires exactly one signature from its signing key");
         }
     }
 
     private static String admittedId(AdmissionRequest req, boolean selfSigned) {
         if (selfSigned) {
             if (req.id() == null || req.id().isBlank()) {
-                throw new AdmissionException("id is required with a member block: it is part of the "
-                        + "signed entry");
+                throw new AdmissionException("id is required with a member block");
             }
             return req.id();
         }

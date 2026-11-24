@@ -75,7 +75,6 @@ class Ed25519Test {
         assertThat(Ed25519.verify(key, MESSAGE, withNonZeroTrailingBits(signature))).isFalse();
     }
 
-    /** Sets the unused low bits of the last base64 digit, which a lenient decoder silently drops. */
     private static String withNonZeroTrailingBits(String padded) {
         int last = padded.replace("=", "").length() - 1;
         String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

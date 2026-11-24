@@ -18,10 +18,6 @@ import java.util.Base64;
 import java.util.HexFormat;
 import java.util.Set;
 
-/**
- * Ed25519 over the JDK provider. Public keys are the 44-byte X.509 {@code SubjectPublicKeyInfo} and
- * signatures the raw 64 bytes, both as standard padded base64; private keys are base64 PKCS#8.
- */
 public final class Ed25519 {
 
     private static final String ALG = "Ed25519";
@@ -93,7 +89,6 @@ public final class Ed25519 {
         }
     }
 
-    /** Returns false on any malformed input. */
     public static boolean verify(PublicKey key, byte[] message, String signatureB64) {
         if (key == null) {
             return false;

@@ -60,10 +60,6 @@ public final class GovernanceKeySet {
         return publicKeys.get(keyId);
     }
 
-    /**
-     * The policy verifier counts these per key, not per operator; a threshold that must mean independent
-     * operators goes through {@link GovernanceVerifier}.
-     */
     public List<ResolverProperties.TrustedKey> asTrustedKeys() {
         return byKeyId.values().stream().map(k -> {
             ResolverProperties.TrustedKey trusted = new ResolverProperties.TrustedKey();
@@ -93,7 +89,7 @@ public final class GovernanceKeySet {
             }
             if (key.operatorId() == null || key.operatorId().isBlank()) {
                 throw new GovernanceException("governance key " + key.keyId()
-                        + " needs an operatorId: a threshold counts operators, not keys");
+                        + " requires an operatorId");
             }
             if (!keyIds.add(key.keyId())) {
                 throw new GovernanceException("duplicate governance keyId: " + key.keyId());
@@ -103,7 +99,7 @@ public final class GovernanceKeySet {
         }
         if (threshold > operators.size()) {
             throw new GovernanceException("governance threshold " + threshold + " exceeds the "
-                    + operators.size() + " distinct operator(s) holding these keys, so it can never be met");
+                    + operators.size() + " distinct operator(s)");
         }
     }
 

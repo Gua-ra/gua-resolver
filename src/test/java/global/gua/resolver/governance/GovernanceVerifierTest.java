@@ -85,7 +85,7 @@ class GovernanceVerifierTest {
 
         assertThatThrownBy(() -> GovernanceKeySet.of("genesis", 1, List.of(orphan)))
                 .isInstanceOf(GovernanceException.class)
-                .hasMessageContaining("needs an operatorId");
+                .hasMessageContaining("requires an operatorId");
     }
 
     @Test

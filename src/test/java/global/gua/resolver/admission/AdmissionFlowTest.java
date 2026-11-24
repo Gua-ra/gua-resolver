@@ -38,7 +38,6 @@ class AdmissionFlowTest {
 
     @DynamicPropertySource
     static void seededDevHomeserver(DynamicPropertyRegistry registry) {
-        // Its own database: this context reseeds the roster.
         registry.add("spring.datasource.url",
                 () -> "jdbc:h2:mem:admission-flow;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE");
         registry.add("gua.resolver.dev-homeserver.signing-key", DEV_KEY::publicKeyB64);
@@ -344,6 +343,6 @@ class AdmissionFlowTest {
 
         assertThatThrownBy(() -> admission.attest("revoked", attestRequest(hs, member)))
                 .isInstanceOf(AdmissionService.AdmissionException.class)
-                .hasMessageContaining("admitted afresh");
+                .hasMessageContaining("is revoked; submit a new admission");
     }
 }
