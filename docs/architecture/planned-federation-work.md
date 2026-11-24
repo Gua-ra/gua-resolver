@@ -1,27 +1,27 @@
 # Federation work that is not built yet
 
-The gaps between the system described in [Gua identity and federation](gua-identity-and-federation.md) and a federation that several independent operators can trust. Each section says what is missing today, the rules any implementation must keep, and what blocks it. Nothing here is built unless a section says so. The order of work is in the [migration plan](../migrations/gua-resolver-migration-plan.md).
+Proposed changes to the system described in [Gua identity and federation](gua-identity-and-federation.md). Each section lists the current limits, implementation requirements and dependencies. Features are unimplemented unless stated otherwise. See the [migration plan](../migrations/gua-resolver-migration-plan.md) for the order of work.
 
-One operator runs every service and holds every key today. Two keys held by one operator are one party, so no property below that depends on independent parties holds yet.
+One operator currently runs every service and controls every key. Guarantees that require independent operators are not yet available.
 
 ## Identifier ownership attested by independent verifiers
 
-Today the identity service's own directory is the only record of which account a phone number belongs to.
+The identity service directory is currently the only record associating phone numbers with accounts.
 
-The design makes that a signed record. A verifier checks that a person controls an identifier and signs a statement. Governance accredits verifiers. A governance-signed policy per identifier type says how many independently governed verifiers must agree, which proofs are allowed and how fresh a challenge must be. Forging a record for an unused identifier then requires compromising that many verifier operators, or enough governance keys to change the policy.
+The proposed design uses signed records from governance-accredited verifiers. Each verifier checks control of an identifier and signs an attestation. A governance-signed policy specifies the required number of independent verifier operators, allowed proofs and challenge freshness for each identifier type. Forging a record for an unused identifier would require compromising the required verifier operators or enough governance keys to change the policy.
 
 Rules:
 
-- **An identifier is an attribute of an account.** If a carrier reassigns a number and it is later tied to a new account, the old account, its history, credentials and homeserver do not move.
-- **The count is of independently governed parties.** Verifiers under common control count once, whatever their keys or operator names say.
-- **A check that needs a key set never falls back to a different one** when that set is missing.
-- **More verifiers do not help against a SIM swap.** Whoever controls the phone number right now is truthfully attested by every honest verifier.
+- Reassignment of a phone number does not transfer the previous account, history or credentials, or change its homeserver.
+- Verifiers under common control count as one operator, regardless of the number of keys or operator ids.
+- Verification requires the specified key set. A missing key set must cause rejection.
+- Verifiers attest current control of a phone number. Additional verifiers do not protect against a SIM swap.
 
-Open: how many verifiers each identifier type needs. Blocked by governance being enabled and by a second operator to make the count mean something.
+Undecided: the verifier threshold for each identifier type. Deployment requires governance enforcement and a second independent operator.
 
 ## New accounts registered as one checkable transaction
 
-Today the resolver picks a homeserver for a new number by evaluating policy on each request, and nothing is recorded. The weighted fallback seeds on the roster version, which is the transparency log size, so its answer can change whenever any leaf is appended.
+The resolver currently evaluates policy for each request without recording the selected homeserver. Its weighted fallback uses the roster version, equal to the transparency log size, as a seed. Appending a log entry can change the selection.
 
 The design:
 
@@ -33,10 +33,10 @@ sequenceDiagram
     participant V as Verifiers
     participant Log as Federation log
     App->>App: create the account's identity and key
-    App->>Resolver: where can this account be created?
-    Resolver-->>App: a homeserver, checkable against signed policy and roster
-    App->>HS: will you host this account?
-    HS-->>App: signed agreement to host, short-lived
+    App->>Resolver: request account placement
+    Resolver-->>App: proposed homeserver for independent verification
+    App->>HS: request acceptance of account
+    HS-->>App: short-lived signed acceptance
     App->>V: prove control of the phone number
     V-->>App: signed attestation
     App->>App: sign agreement, attestations, destination and nonce with the account's key
@@ -46,98 +46,98 @@ sequenceDiagram
 
 Rules:
 
-- The proposed homeserver stays fixed for the life of the transaction, and anyone can re-derive it from the signed policy and roster. A resolver signature that nobody can re-derive would make the resolver the placement authority.
-- **A signature adds security only if obtaining it requires compromising someone.** The applicant's own signature ties the transaction together and stops replay. The homeserver's agreement keeps accounts off homeservers that did not accept them, fixes the destination for the whole transaction, and leaves admission decisions with the homeserver. Neither signature is a check on who owns the phone number.
+- The destination must remain fixed throughout the transaction. Apps must independently reproduce the resolver's selection from the signed policy and roster.
+- The applicant signs the transaction fields and nonce to bind the request and prevent replay. The destination homeserver signs its acceptance of that account for the transaction and controls its own admissions. Neither signature proves control of the phone number.
 
-[Placement records](../specs/account-identifiers-and-placement-records.md#placement-record-66--n-bytes) exist and, with their flags on, are compared daily against where accounts really live. Routing may read them only once the conditions listed in the [migration plan](../migrations/gua-resolver-migration-plan.md#phase-4-placement-records-for-existing-accounts) hold.
+[Placement records](../specs/account-identifiers-and-placement-records.md#placement-record-66--n-bytes) are implemented. When enabled, they are compared daily with actual account hosting. Their use in routing requires the conditions in the [migration plan](../migrations/gua-resolver-migration-plan.md#phase-4-placement-records-for-existing-accounts).
 
 ## Apps verifying before they connect
 
-Today the apps hand the resolver's `baseUrl` to the Matrix SDK as received. The [verification protocol](../verification/gua-resolver-verification-protocol.md) describes what a client can check now, and a Java reference verifier exists, but no app runs it.
+The apps currently pass the resolver's `baseUrl` directly to the Matrix SDK. The [verification protocol](../verification/gua-resolver-verification-protocol.md) and Java reference verifier define the available checks. No app performs them yet.
 
-The design: before connecting, the app checks the pinned federation root, the roster, the homeserver's own signature on its entry, and the placement record. It ships in report-only mode first.
+Before connecting, apps should verify the pinned federation root, roster, homeserver signature and placement record. Initial deployment should report verification failures without blocking connections.
 
-Open: what an app does when a homeserver's key changes in a way it cannot tell from a takeover, and how it handles a federation root newer than the one it was built with without opening a downgrade path.
+Undecided: how apps distinguish legitimate homeserver key changes from takeovers, and how they accept newer federation roots while rejecting downgrades.
 
 ## Checkpoints, witnesses and replicas
 
-Today the transparency log proves that a history of hashes was only appended to. It does not prove what the current state is. Directory changes are not logged, the resolver stamps entries with its own clock, the answer "no account for this number" is unsigned, and two clients could be shown two different histories without noticing. Mirror mode exists and is not exercised.
+The transparency log currently proves that a sequence of hashes is append-only. It does not verify current state. Directory changes are not logged, timestamps use the resolver's clock, and negative account lookup responses are unsigned. Clients do not detect conflicting histories. Mirror mode is implemented but untested.
 
-The leading design is one ordering resolver, two kinds of witness, and a sparse Merkle tree so that both "this account exists" and "no such account" come with proofs.
+The proposed design uses one ordering resolver, log-only and replaying witnesses, and a sparse Merkle tree with proofs for account existence and absence.
 
 ```mermaid
 flowchart LR
     R["Ordering resolver<br/>appends entries, signs checkpoints"]
-    L["Log-only witness<br/>checks the log only grew"]
+    L["Log-only witness<br/>verifies append-only history"]
     P["Replaying witness<br/>re-runs every entry and<br/>recomputes the state"]
     A["App"]
     R -- "checkpoint" --> L
     R -- "checkpoint and entries" --> P
     R -- "answer with proof" --> A
-    L -- "co-signature: no split history" --> A
-    P -- "co-signature: the state is right,<br/>or a signed dissent" --> A
+    L -- "consistency co-signature" --> A
+    P -- "state verification co-signature<br/>or signed dissent" --> A
 ```
 
-Five properties, each bought separately. A history can be consistent, available and perfectly ordered and still be wrong.
+History consistency, availability, ordering, state correctness and censorship detection require separate checks:
 
 | Property | What provides it | Broken by |
 | --- | --- | --- |
 | The state is computed correctly | Deterministic rules and independent replay | The ordering operator plus every replaying witness the app requires |
 | Everyone sees one history | Witness co-signatures, apps pinning checkpoints, consistency proofs | The ordering operator plus enough witnesses under one control, or apps that never compare |
 | Nothing is censored | Not prevented. Only detectable | The ordering operator alone |
-| The service stays up | Not provided by witnesses | The ordering operator alone |
+| Service availability | Not provided by witnesses | The ordering operator alone |
 | Entries have one order | The ordering resolver | The ordering operator alone |
 
 Rules:
 
-- A signed checkpoint proves only that its signers signed those bytes. It says nothing about whether the state was computed correctly.
-- A witness signature counts toward correctness only if that witness fetched every entry, verified it, replayed it and recomputed the state itself. It signs the size it verified up to. A witness that cannot verify does not sign. A witness whose replay disagrees publishes a signed dissent.
-- A witness that only checks the log is growing consistently helps detect split histories and nothing more. Clients must be able to tell the two kinds apart.
-- A witness's kind and operator are attested by governance when it is admitted, never claimed by the witness. Its identity is verified back to the federation root before any checkpoint it co-signed is accepted. Otherwise verification is circular.
-- A witness run by the resolver's operator counts for nothing.
-- The sets of witnesses a client accepts must overlap in at least one honest party.
-- Every input that affects state, including time, is an entry in the log, so a replay sees what the resolver saw. The ordering resolver records the time and does not choose it: logged time never goes backwards and is checked against a time policy on replay. Nothing reads a local clock during replay.
-- **Running a resolver grants no authority.** The number of resolvers is an availability decision, never a voting or signing one. A replica holds no key that counts.
+- A checkpoint signature authenticates the checkpoint. It does not establish correct state computation.
+- A state verification signature requires fetching, verifying and replaying every entry, then recomputing state. The witness signs the log size it verified. Failed verification must prevent signing; a state mismatch requires a signed dissent.
+- Clients must distinguish log-only signatures, which verify history consistency, from state verification signatures.
+- Governance must attest each witness's type and operator. Clients must verify that identity against the federation root before accepting a witness signature.
+- Witnesses controlled by the resolver operator do not count toward independent verification.
+- Any two accepted witness sets must share at least one honest operator.
+- Every state input, including time, must be recorded in the log. The ordering resolver must record timestamps according to a time policy rather than choose arbitrary values. Logged time must be monotonic and checked against that policy during replay. Replay must not use the local clock.
+- Additional resolvers may improve availability but do not increase signing authority. Replica keys do not count toward signature thresholds.
 
 Proposed details, not yet reviewed:
 
 - **One checkpoint per size.** A log-only witness refuses to co-sign a second checkpoint at a size it already co-signed.
-- **Quorum.** With `W` the set of witness operators and `f` of them allowed to be faulty, the number that must sign, `q`, satisfies `2q - |W| >= f + 1`. Example: four operators with one faulty need three signatures, so any two accepted sets share two operators and one of those is honest. The first step is one outside operator with `q = 1` and `f = 0`.
+- **Quorum.** For a set of witness operators `W` and at most `f` faulty operators, the required number of signatures `q` satisfies `2q - |W| >= f + 1`. With four operators and one faulty operator, three signatures are required. Any two accepted sets then share two operators, including at least one honest operator. Initial deployment would use one independent operator with `q = 1` and `f = 0`.
 - **Pinning.** An app pins the last checkpoint it accepted for the federation, not per account, and moves forward only on a consistency proof and a quorum.
-- **Time.** A `TICK` entry lands at least every 60 seconds. A witness co-signs only when the checkpoint's time is within 120 seconds of its own clock. A clock disagreement is never a dissent. The witness withholds its signature.
-- **Dissent.** It names the last checkpoint the witness agreed with, the disputed checkpoint, the first bad entry and the evidence, so a client can check it.
+- **Time.** A `TICK` entry is appended at least every 60 seconds. A witness co-signs only when the checkpoint's time is within 120 seconds of its own clock. A clock disagreement prevents signing but does not produce a dissent.
+- **Dissent.** Clients can verify the last agreed checkpoint, disputed checkpoint, first invalid entry and evidence included in a signed dissent.
 - **Evidence of censorship.** An accepted input gets a signed promise that it will appear in the log within a stated delay. An unmet promise proves censorship.
 
-Agreement among several ordering nodes is only worth its cost if the federation refuses a single ordering party or must keep running through a malicious one.
+Multiple ordering nodes are needed only if the federation requires independent control of ordering or continued operation despite a malicious ordering operator.
 
-A replica design must say how a replica gets the pinned federation root, finds checkpoints, verifies a snapshot instead of trusting it, replays to the current state and behaves on a fork, and how a read-only replica differs from a node with authority. The proposed procedure: obtain the root out of band and compare its fingerprint over two channels. Verify the governance key chain and the witness list before any checkpoint. Replay from the start, or accept a snapshot whose recomputed root matches a checkpoint signed by replaying witnesses, then replay to the head. On a fork, stop and pass on the evidence.
+A replica design must specify trust root setup, checkpoint discovery, snapshot verification, replay and fork handling. It must distinguish read-only replicas from nodes with signing authority. Obtain the root out of band and compare its fingerprint over two independent channels, then verify the governance key chain and witness list. Replay all entries, or recompute a snapshot's root and compare it with a checkpoint signed by replaying witnesses before replaying later entries. Stop on a fork and publish the evidence.
 
-Blocked by a second operator. The formats can be built earlier. The guarantee cannot be claimed earlier.
+The formats can be implemented before a second operator joins. Independent verification requires that operator.
 
 ## Phone numbers that cannot be recovered from stored state
 
-Today the resolver and the identity service both store an HMAC-SHA256 of the phone number under a shared secret pepper. A national numbering plan has between one and ten billion candidates, so anyone holding the stored values and the pepper recovers every number. The pepper cannot be rotated without the raw numbers. `POST /resolve` needs no session, reveals whether a number has an account, and is protected only by rate limits per client, globally and at the ingress.
+The resolver and identity service currently store HMAC-SHA256 phone number hashes using a shared secret pepper. Anyone with the hashes and pepper can enumerate a national numbering plan of roughly one to ten billion candidates to recover the numbers. Changing the pepper requires the raw numbers. `POST /resolve` is unauthenticated, exposes account lookup information and uses per-client, global and ingress rate limits.
 
 Requirements:
 
 1. No raw or cheaply reversible identifier appears in state that leaves the operator.
 2. Turning a number into its lookup key requires an online evaluation that the evaluator can meter without learning the number.
 3. Routine rotation of operators or key shares leaves every lookup key unchanged.
-4. Once a second evaluator operator exists, no single party holds the whole key.
-5. The app learns the evaluation public key from the pinned federation chain, never from the evaluator.
-6. Every app sees the same public key for a key generation, so the evaluator cannot split them into groups.
+4. With a second evaluator operator, no single operator may control the whole key.
+5. The app obtains the evaluation public key from the pinned federation chain, not from the evaluator.
+6. All apps must use the same public key for a generation. The evaluator must not assign different keys to different clients.
 7. Generations only move forward. An app refuses an older one.
-8. An identifier stays unique across a change of generation.
+8. Identifier uniqueness must be preserved across generation changes.
 9. Emergency re-keying uses only parties that already hold the identifier: the account's own app or an accredited verifier.
 10. Controls on `/resolve` are layered, and none may assume an account session, because the endpoint is needed before any session exists.
 
-The leading design uses the output of a verifiable oblivious pseudorandom function as RFC 9497 defines it for a single server. Several parties holding shares of one key would compute it together, with shares refreshed on rotation so stored lookup keys do not change. RFC 9497 specifies neither the sharing nor the refresh. That combination has not been validated. It needs review by a cryptographer before any of it is implemented, and the choice cannot be swapped later because every stored key depends on it.
+The proposed design uses a verifiable oblivious pseudorandom function, defined for a single server in RFC 9497. Multiple operators would compute its output using shares of one key. Refreshing shares must preserve stored lookup keys. RFC 9497 does not specify key sharing or share refresh; this combination requires cryptographic review before implementation. Changing the construction later would affect every stored lookup key.
 
-Narrowed so far, each subject to that review:
+Proposed constraints, subject to that review:
 
-- **No updatable construction.** One where a public token re-keys every stored value is rejected. Every replica would have to apply the token, so it is public, and with the compromised old key it yields the new key.
+- **No updatable construction.** Do not use a public token to re-key stored values.
 - **Emergency re-keying.** Governance signs a new generation and stops new bindings under the old one. Each identifier is bound again with verifier attestations that link its old and new lookup keys. Identifiers bound again stay linkable by anyone who holds the old key. Only identifiers first bound afterwards gain protection.
-- **The evaluator is its own process with its own keys.** The resolver never holds a share.
+- **Process separation.** The evaluator has its own process and keys. The resolver must not store a key share.
 
 ## Sign-in decided by each homeserver, and passkeys
 
@@ -145,62 +145,62 @@ Today the identity service authenticates users for every homeserver and verifies
 
 Rules for moving authentication to each homeserver:
 
-- **Three questions stay separate.** Which account an identifier refers to, which homeserver holds that account, and whether this person may sign in right now. The federation may answer the first two. Only the homeserver answers the third. Nothing the federation issues is a login credential or a session.
-- **The test for a flow.** Was the artifact issued by a federation component? Does any party treat it as proof that the person is present now, instead of proof of who owns an identifier? Could someone holding only that artifact get a session? Does the homeserver still authenticate the person itself? A yes to the third question or a no to the fourth breaks the rule. A homeserver's own login by SMS code does not.
-- Finding the homeserver happens before the passkey ceremony, because a passkey is tied to one relying party and no platform lists passkeys across relying parties.
-- Whatever helps an app find its homeserver never stores a credential key and never receives an assertion. It adds no way to enumerate accounts and puts no identifier into shared state.
-- A stored hint about which homeserver to use is acted on only after the app has verified that homeserver against the pinned federation chain.
-- Passkey sign-in reaches only an existing account. It never creates one.
-- A passkey's relying party is fixed when it is created. Homeservers run by Gua keep the Gua relying party so existing passkeys keep working. A homeserver run by someone else uses a relying party ID it controls, never one related to Gua's.
+- Account lookup, homeserver placement and authentication are separate operations. The federation may provide lookup and placement information. Only the homeserver authenticates the user and grants a session.
+- A federation-issued artifact must not be sufficient to obtain a session or establish that a user is present. The homeserver must authenticate the user independently. A homeserver's own SMS sign-in does not violate this separation.
+- Homeserver discovery must precede the passkey ceremony. Passkeys are specific to a relying party, and platforms do not list them across relying parties.
+- Homeserver discovery must not store credential keys, receive passkey assertions, enable account enumeration or record identifiers in shared state.
+- Apps must verify the homeserver against the pinned federation chain before using a stored discovery hint.
+- Passkey sign-in must authenticate an existing account. It must not create one.
+- A passkey's relying party is fixed at registration. Homeservers run by Gua retain the Gua relying party for existing passkeys. Other operators use relying party IDs they control, unrelated to Gua's.
 - Each homeserver allows only its own web origins plus the first-party apps, and publishes its relying party ID and origins in its self-signed roster entry.
 - An assertion made for one operator never yields a session at another, including by relaying an assertion from a native app.
 - A homeserver's self-signed roster entry never makes it eligible for a native passkey ceremony under the Gua relying party. A browser enforces origin for web ceremonies. A native ceremony uses the app's compiled association and does not.
 - Admitting a third-party operator needs no app release. Its users run web ceremonies on its own origin.
-- Existing passkeys move as data. The identity service copies each one to the homeserver that holds the account with the relying party ID unchanged, so nobody enrols again.
-- The auth service keys upstream links on provider and subject and never rewrites a subject. Changing what the subject means is a new provider plus a link pass, never an edit in place.
-- **The localpart trap.** The auth service takes a returning user's Matrix localpart from the username the identity service sends. If that username were computed by splitting the user id at its colon, re-keying user ids to a new format would give every returning user the same localpart, and an auth service importing with `on_conflict: add` would merge them all onto one account without an error. `LocalpartDerivationGuardTest` in identity-service fails the build if such a derivation comes back.
+- Migrate existing passkey records from the identity service to the account's homeserver without changing the relying party ID or requiring re-enrolment.
+- The auth service identifies upstream links by provider and subject. Changing subject semantics requires a new provider and an explicit account linking migration, not an in-place subject edit.
+- **Localpart derivation.** The auth service uses the returned username as the Matrix localpart. Deriving that username by splitting the user id at a colon could assign the same localpart to every returning user after an identifier format change. With `on_conflict: add`, the auth service could then merge those users into one account. `LocalpartDerivationGuardTest` in identity-service rejects this derivation.
 
-Blocked by its own design, which also decides what remains of the identity service afterwards.
+The per-homeserver authentication design is incomplete, including the identity service's remaining responsibilities.
 
 ## Moving an account to another homeserver
 
-Gua offers no per-account move, and nothing currently needs one. Moving a whole homeserver keeps every Matrix ID and every key and is the tool for capacity.
+Gua does not support moving individual accounts between homeservers. Capacity changes currently use relocation of a whole homeserver, preserving Matrix IDs and keys.
 
-A Matrix ID contains its server name, every event is signed by the server named in its sender, the auth service never renames a user, and no adopted Matrix feature carries device keys, verification, room membership or message attribution across servers. A move would therefore mean a new Matrix ID with conversations re-established from the user's devices: new device keys, contacts verify the person again, and earlier messages keep the old sender.
+A Matrix ID includes the server name. Events are signed by the sender's server, and the auth service does not rename users. No adopted Matrix feature transfers device keys, verification, room membership or message attribution between servers. An account move would require a new Matrix ID and device keys, re-established conversations and contact verification. Earlier messages would retain the old sender.
 
 Rules if this is ever built:
 
-- Only the account's own key can authorize a move. An account without a key cannot move, because a move started by an operator is a seizure.
+- A move requires authorization from the account's signing key. An operator cannot authorize it, and an account without a key cannot move.
 - A move changes neither the account identifier nor which identifiers belong to the account.
 - A move is a next-generation placement record entered in the log, never a session grant. The destination agrees to host and authenticates the person from scratch.
 - Tooling runs on the user's devices through the ordinary client API, with no admin API and no trust between operators.
 - A move can be abandoned without loss until the old homeserver deactivates the account.
 - The old Matrix ID is never given to anyone else.
-- No record, tool or screen claims the identity is the same or the move is seamless. Any claim that tooling keeps keys, verification or history across a move needs its own demonstration against the versions in use, and no design may assume it.
-- The next-generation placement record carries the account identifier, the destination homeserver id, the generation, a hash of the previous record, the account key's signature, the destination's agreement to host and the logged time. It carries no Matrix ID and makes no claim about keys or verification.
+- Tools and screens must explain the change of Matrix identity. Any claim to preserve keys, verification or history requires validation against the deployed versions.
+- The next-generation placement record includes the account identifier, destination homeserver id, generation, previous record hash, account signature, destination's signed acceptance and logged time. It excludes the Matrix ID and does not establish continuity of device keys or verification.
 
 Revisit when a second operator exists, when a regional or legal requirement demands it, or when Matrix merges a portability proposal that Synapse supports in a room version Gua can adopt.
 
 ## Losing the governance keys
 
-If the governance keys are lost or compromised beyond what their own rotation rule can repair, there is no recovery inside the system. The answer today is a new federation root and new app builds that pin it. What happens to accounts and placements across such a change is undecided, and it is a governance question before it is a protocol one.
+Loss or compromise of governance keys beyond the rotation rule requires a new federation trust root and app builds that pin it. The treatment of existing accounts and placements remains undecided and requires a governance policy before a protocol design.
 
 ## Account authority and device lifecycle
 
-In development on open pull requests and switched off. See the [short description](gua-identity-and-federation.md#in-development-account-authority) in the architecture guide. The rules it is built to:
+This feature is in development on open pull requests and is disabled. See the [architecture guide](gua-identity-and-federation.md#in-development-account-authority). Requirements:
 
-- Control of a phone number never authorizes a change to an account's keys, at any step, in any combination.
-- Operator action, homeserver action and elapsed time never authorize one either. An operator may suspend an account and never reassign it.
-- An account without a key gains one only after a fresh strong proof on the owner's device and a waiting period in which the owner is told and can object. A homeserver or operator cannot do it on the account's behalf.
-- Recovery starts only under rules the account committed to in advance, and competing changes resolve by a fixed order, never by who signs first.
-- Whoever can cancel a recovery is decided in advance and is not just the key that may have been stolen.
-- A stronger committed factor closes weaker paths to the account's keys.
+- Phone number control must not authorize account key changes, alone or in combination with other steps.
+- Operator actions, homeserver actions and elapsed time must not authorize account key changes. An operator may suspend an account but must not reassign it.
+- Adding the first account key requires fresh strong proof on the owner's device and a waiting period with notification and an opportunity to object. A homeserver or operator must not add the key on the owner's behalf.
+- Recovery must follow previously committed rules. Competing key changes must use a fixed ordering rule, independent of signature arrival time.
+- Recovery cancellation rules must be committed in advance and must not depend solely on the potentially compromised key.
+- Once a stronger factor is committed, weaker factors cannot authorize key changes.
 - Waiting periods on key changes run on time recorded in the federation log, which witnesses can replay. Until witnesses exist they run on service time.
 - Losing every committed factor may be final.
 
-The design must cover a second phone, approval by QR code or by a trusted device, a lost or replaced phone, recovery, web login, and browser sessions, which may use the account and are never authority devices automatically.
+The design must cover additional, lost and replacement phones; QR or trusted-device approval; recovery; web login; and browser sessions. Browser access must not automatically grant account signing authority.
 
-Proposed order for competing key changes. It awaits a formal model and review:
+The proposed ordering rules require a formal model and review:
 
 - **Rotate.** Signed by the active key alone. Immediate, cannot change the recovery policy, and refused while a recovery or a policy change is pending.
 - **Recover.** Needs the committed number of recovery factors, takes effect after the recovery wait, installs a new active key and cancels any pending policy change.
