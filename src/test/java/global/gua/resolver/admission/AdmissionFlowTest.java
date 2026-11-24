@@ -13,6 +13,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import global.gua.resolver.crypto.Ed25519;
+import global.gua.resolver.crypto.Ed25519Forgeries;
 import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.placement.ClaimPredicate;
 import global.gua.resolver.roster.CanonicalMemberEntry;
@@ -29,23 +30,14 @@ import global.gua.resolver.roster.store.RosterEntryRepository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * End-to-end admission against the real authority stack: admitting a homeserver vets its key-possession and
- * domain proof, appends an ADMIT event to the transparency log, and re-signs a roster that still verifies;
- * overlapping claims are rejected. It also covers the member self-signed path: admission that proves
- * possession by signing its own entry, the attest endpoint that lets an admitted member adopt, move or
- * re-key its entry, and the substitutions that must fail.
- */
 @SpringBootTest
 @DirtiesContext
 class AdmissionFlowTest {
 
-    /** The seeded dev homeserver's membership key, generated in memory for this context only. */
     private static final Ed25519.KeyPairB64 DEV_KEY = Ed25519.generate();
 
     @DynamicPropertySource
     static void seededDevHomeserver(DynamicPropertyRegistry registry) {
-        // Its own database: this context reseeds the roster.
         registry.add("spring.datasource.url",
                 () -> "jdbc:h2:mem:admission-flow;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE");
         registry.add("gua.resolver.dev-homeserver.signing-key", DEV_KEY::publicKeyB64);
@@ -109,15 +101,31 @@ class AdmissionFlowTest {
     }
 
     @Test
-    void rejectsKeyPossessionForgery() {
+    void rejectsKeyPossessionProofSignedByAnotherKey() {
         AdmissionRequest good = request("forge.gua.global", List.of());
+        String otherKeysProof = Ed25519.sign(Ed25519.privateKey(Ed25519.generate().privateKeyB64()),
+                good.serverName().getBytes(StandardCharsets.UTF_8));
         AdmissionRequest forged = new AdmissionRequest(null, good.serverName(), good.baseUrl(),
                 good.masIssuer(), good.region(), good.weight(), good.acceptsNew(),
-                good.signingKey(), Ed25519.generate().publicKeyB64(),  // proof not made by signingKey
+                good.signingKey(), otherKeysProof, good.domainProof(), good.claims(), null, null);
+
+        assertThatThrownBy(() -> admission.admit(forged))
+                .isInstanceOf(AdmissionService.AdmissionException.class)
+                .hasMessageContaining("key-possession proof invalid");
+    }
+
+    @Test
+    void rejectsSmallOrderSigningKeyWithForgedProof() {
+        AdmissionRequest good = request("smallorder.gua.global", List.of());
+        AdmissionRequest forged = new AdmissionRequest(null, good.serverName(), good.baseUrl(),
+                good.masIssuer(), good.region(), good.weight(), good.acceptsNew(),
+                Ed25519Forgeries.IDENTITY_KEY_B64, Ed25519Forgeries.IDENTITY_SIGNATURE_B64,
                 good.domainProof(), good.claims(), null, null);
 
         assertThatThrownBy(() -> admission.admit(forged))
-                .isInstanceOf(AdmissionService.AdmissionException.class);
+                .isInstanceOf(AdmissionService.AdmissionException.class)
+                .hasMessageContaining("not an acceptable Ed25519 public key");
+        assertThat(entries.existsByServerName(good.serverName())).isFalse();
     }
 
     @Test
@@ -205,8 +213,10 @@ class AdmissionFlowTest {
 
         assertThat(admitted.member()).isNotNull();
         assertThat(admitted.member().sequence()).isEqualTo(1);
-        // ADMIT and MEMBER_ATTEST: an admission carrying a member block appends two leaves.
         assertThat(rosterStore.current().logCheckpoint().size()).isEqualTo(before + 2);
+        assertThat(transparencyLog.events()).filteredOn(e -> e.index() >= before)
+                .extracting(TransparencyLog.Event::type)
+                .containsExactly("ADMIT", TransparencyLog.MEMBER_ATTEST);
         String hash = CanonicalMemberEntry.hash(admitted.homeserver(), admitted.member());
         assertThat(transparencyLog.eventsOfType(TransparencyLog.MEMBER_ATTEST))
                 .anySatisfy(e -> {
@@ -333,6 +343,6 @@ class AdmissionFlowTest {
 
         assertThatThrownBy(() -> admission.attest("revoked", attestRequest(hs, member)))
                 .isInstanceOf(AdmissionService.AdmissionException.class)
-                .hasMessageContaining("admitted afresh");
+                .hasMessageContaining("is revoked; submit a new admission");
     }
 }

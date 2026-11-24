@@ -9,8 +9,9 @@ Reference implementation: `global.gua.resolver.crypto.CanonicalEncoder`, `roster
 1. A signed object has exactly one canonical byte representation. A decoder rejects any other encoding of the same values.
 2. A signature covers the canonical bytes. An object hash is SHA-256 over the same bytes, written as lowercase hex.
 3. Transport is JSON. A verifier parses the JSON, rebuilds the canonical bytes from the parsed fields and verifies against those. The signed part is parsed by a strict reader that rejects unknown fields, duplicate keys and trailing content, so a signature never covers fewer fields than a consumer reads.
-4. Signatures sit outside the canonical bytes.
-5. Keys and signatures are Ed25519.
+4. Signatures are excluded from the canonical bytes.
+5. Keys and signatures are Ed25519. Public keys use 44-byte X.509 `SubjectPublicKeyInfo` encoding. Signatures are 64 bytes. Both require standard padded base64.
+6. Public keys must use canonical point encodings (RFC 8032 section 5.1.3). Points of order 1, 2, 4 or 8 are rejected during admission and verification. Mixed-order key handling and the choice between cofactored and cofactorless verification equations remain unspecified. Implementations use their platform's RFC 8032 verifier.
 
 The older roster, policy and claims encodings (`CanonicalRoster`, `CanonicalRoutingPolicy`, `CanonicalDelegatedRules`, `CanonicalRoutingClaims`) are still verified as served and are described in the verification protocol. `CanonicalRoster` joins fields with a raw `0x1F` byte and encodes null and empty identically, so it is never used for a new object. Its `gua-roster.v1` bytes must stay byte-identical so that deployed verifiers keep working. `CanonicalRosterUnchangedTest` enforces that.
 
