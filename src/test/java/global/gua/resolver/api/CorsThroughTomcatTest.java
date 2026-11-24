@@ -13,8 +13,8 @@ import org.springframework.test.annotation.DirtiesContext;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * CORS as a browser sees it through a real listener, where error responses take the ERROR dispatch that
- * MockMvc skips. Uses java.net.http because HttpURLConnection drops the Origin header.
+ * A real listener, because MockMvc skips the ERROR dispatch, and java.net.http, because HttpURLConnection
+ * drops the Origin header.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "gua.resolver.cors.allowed-origins=https://chat.example.test",

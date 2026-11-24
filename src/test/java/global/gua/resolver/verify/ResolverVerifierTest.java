@@ -27,11 +27,7 @@ import global.gua.resolver.roster.TransparencyLog;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * The reference client verifier verifies signed artifacts and independently reproduces the resolver's
- * new-account decision, so a client never has to trust the resolver's answer. The roster and policy trust
- * roots are deliberately different keys here, so a port that conflates them fails.
- */
+/** Roster and policy trust roots use different keys so a port that conflates them fails. */
 class ResolverVerifierTest {
 
     private static final Ed25519.KeyPairB64 AUTH = Ed25519.generate();
@@ -50,12 +46,10 @@ class ResolverVerifierTest {
         return List.of(k);
     }
 
-    /** The operational key set: what the roster snapshot is signed under. */
     private static List<ResolverProperties.TrustedKey> authorityKeys() {
         return keys("auth-a", AUTH);
     }
 
-    /** The governance key set: what a policy bundle is signed under. */
     private static List<ResolverProperties.TrustedKey> governanceKeys() {
         return keys("gov-a", GOVERNANCE);
     }
@@ -210,8 +204,6 @@ class ResolverVerifierTest {
 
     @Test
     void rejectsAPolicySignedOnlyByTheOperationalAuthorityKey() {
-        // The roster key is not a governance key: an empty policy key list does not fall back to the
-        // authority keys.
         RoutingPolicyBundle signedByAuthority = policySignedBy("auth-a", AUTH, true);
 
         assertThatThrownBy(() -> verifier().verifyPolicy(signedByAuthority))
@@ -229,7 +221,6 @@ class ResolverVerifierTest {
     @Test
     void rejectsATamperedRoster() {
         SignedRoster roster = signedRoster();
-        // swap in a different homeserver weight while keeping the old authority signature
         Homeserver tampered = new Homeserver("carrier", "vivo.gua.global", "https://carrier",
                 "https://carrier/auth", "BR", 999, true, "");
         SignedRoster forged = new SignedRoster(roster.version(), roster.issuedAt(),

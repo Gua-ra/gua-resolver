@@ -38,8 +38,8 @@ import global.gua.resolver.roster.SignedRoster;
 import global.gua.resolver.roster.TransparencyLog;
 
 /**
- * Reference for the verification protocol's client checks. Only the apps check member blocks and log consistency.
- * A reproduced placement holds for one roster version, because the weighted fallback seeds on it.
+ * Only the apps check member blocks and log consistency. A reproduced placement holds for one roster version,
+ * because the weighted fallback seeds on it.
  */
 public final class ResolverVerifier {
 

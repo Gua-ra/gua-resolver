@@ -1002,10 +1002,7 @@ public final class ClientVerificationVectorsGenerator {
 
     private static final String FORGED_MESSAGE_HEX = "6775612d617564697420666f726765642073746174656d656e74";
 
-    /**
-     * Forgeries with R a small-order point and S = 0 that a verifier without the key checks accepts: key name,
-     * public key, message suffix and R, from the audit probes.
-     */
+    /** Small-order R, S = 0 forgeries that pass without the key checks: name, public key, message suffix, R. */
     private static final String[][] WEAK_KEY_FORGERIES = {
             {"identity key (order 1)", "01" + "00".repeat(31), "00", "01" + "00".repeat(31)},
             {"key of order 2", "ec" + "ff".repeat(30) + "7f", "00", "01" + "00".repeat(31)},
@@ -1029,9 +1026,8 @@ public final class ClientVerificationVectorsGenerator {
     };
 
     /**
-     * Rules every verifier applies: one base64 spelling, canonical points outside the small-order subgroup, and S
-     * below the group order. Mixed-order keys and the choice between the cofactored and cofactorless equations are
-     * left out until the protocol decides them.
+     * Every verifier requires one base64 spelling, canonical points outside the small-order subgroup, and S below
+     * the group order. Mixed-order keys and cofactored versus cofactorless verification are not yet specified.
      */
     static ArrayNode ed25519Cases() {
         Ed25519.KeyPairB64 key = AUTHORITY_A.pair();

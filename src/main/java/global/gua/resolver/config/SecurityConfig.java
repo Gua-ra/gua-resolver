@@ -20,22 +20,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 
 /**
- * Explicit public allowlist plus deny by default.
- * <ul>
- *   <li>Public by design: {@code /resolve}, {@code /roster*}, {@code /policy/routing*}, {@code /policy/log},
- *       the directory lookup and checkpoint, {@code /.well-known/gua-federation}, {@code /registry/**},
- *       health and API docs. {@code /resolve} is rate limited by {@code ResolveAbuseFilter}, which runs
- *       ahead of this chain.</li>
- *   <li>{@code /placement/records} is public only while {@code gua.resolver.placement.enabled} is on. Its
- *       ingest is self-authenticating: a record is accepted only when it verifies under the roster signing
- *       key of the ACTIVE homeserver it names.</li>
- *   <li>{@code /authority/**} requires the {@code ADMIN} role via HTTP Basic and fails closed: with no
- *       admin password hash configured there are no admin users.</li>
- * </ul>
- *
- * <p>{@code /error} is permitted because Spring Security filters the ERROR dispatch too. Without it a public
- * endpoint that answers 404 reaches the caller as a 401 with an empty body. Permitting it opens nothing: a
- * denied request still renders as its own 401 or 403.
+ * Placement ingest is public because each record must verify under the key of the ACTIVE homeserver it names.
+ * {@code /error} is permitted so a public 404 is not rewritten to an empty 401; denials still render as 401 or 403.
  */
 @Configuration
 public class SecurityConfig {
@@ -49,7 +35,7 @@ public class SecurityConfig {
                 "/.well-known/gua-federation", "/registry/**",
                 "/actuator/**", "/error",
                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html"));
-        // Permitted under exactly the condition that maps the placement controller.
+        // Must match the condition that maps the placement controller.
         if (props.getMode() == ResolverProperties.Mode.AUTHORITY && props.getPlacement().isEnabled()) {
             publicPaths.add("/placement/records");
             publicPaths.add("/placement/records/**");
@@ -64,10 +50,7 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /**
-     * Only the public read endpoints and {@code POST /resolve} are exposed cross-origin, never
-     * {@code /authority/**} or the placement ingest. With no origin configured every preflight is refused.
-     */
+    /** {@code /authority/**} and placement ingest must never be exposed cross-origin. */
     @Bean
     FilterRegistrationBean<CorsFilter> resolverCorsFilter(ResolverProperties props) {
         List<String> origins = props.getCors().getAllowedOrigins().stream()
@@ -99,11 +82,7 @@ public class SecurityConfig {
         return source;
     }
 
-    /**
-     * Admin identity for {@code /authority/**}. Defining this bean also disables Spring Boot's default
-     * generated user. When no BCrypt password hash is configured there are simply no users, so authority
-     * endpoints cannot be authenticated into (fail closed).
-     */
+    /** Also disables Spring Boot's generated default user; with no password hash there are no users at all. */
     @Bean
     UserDetailsService adminUsers(ResolverProperties props, PasswordEncoder encoder) {
         String hash = props.getAdmin().getPasswordHash();

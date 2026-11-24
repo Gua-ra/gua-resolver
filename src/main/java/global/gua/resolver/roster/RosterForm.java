@@ -5,8 +5,8 @@ import java.util.Optional;
 import com.fasterxml.jackson.databind.JsonNode;
 
 /**
- * Which bytes a roster's authority signatures cover. Resolver images before 2026-08-14 sign {@code LEGACY},
- * which leaves each entry's {@code searchVisibility} and {@code searchGroups} out.
+ * {@code LEGACY} leaves each entry's {@code searchVisibility} and {@code searchGroups} out of the signed bytes;
+ * resolver images before 2026-08-14 sign it.
  */
 public enum RosterForm {
     V1,

@@ -5,20 +5,8 @@ import java.util.Optional;
 import java.util.TreeMap;
 
 /**
- * Everything the placement rules may use to decide where a brand-new account lives. All fields are
- * optional so callers supply only what they have verified; rules abstain when their inputs are absent.
- *
- * @param e164Phone     phone in E.164 (e.g. +5511987654321); the resolver verifies nothing about it
- * @param country       ISO country derived from the phone (e.g. BR)
- * @param mccmnc        mobile country+network code derived from the number, if known (carrier identity)
- * @param carrier       human carrier name, if known
- * @param regionHint    explicit region/tenant hint from the caller
- * @param affiliations  affiliation assertions (e.g. ["usp.br"]); trusted for institution/OIDC routing
- *                      only when {@code claimsVerified} is true (i.e. they came from a verified envelope)
- * @param attributes    open-ended attributes for custom/remote claim rules; same trust rule as affiliations
- * @param claimsVerified whether {@code affiliations}/{@code attributes} arrived inside a signature-verified
- *                       routing-claims envelope. Institution/OIDC placement requires this to be true; it is
- *                       set only by the verifier path and can never be self-asserted by a public caller.
+ * {@code affiliations} and {@code attributes} are trusted only when {@code claimsVerified}, which only the
+ * routing-claims verifier may set. Nothing about the phone is verified.
  */
 public record PlacementContext(
         String e164Phone,
@@ -43,10 +31,8 @@ public record PlacementContext(
     }
 
     /**
-     * A stable, deterministic key that seeds the weighted-fallback bucketing hash so all nodes place the same
-     * context identically. This is a plain (non-injective) bucketing key, not a signed or canonical form: it
-     * feeds only a distribution hash, never a signature, so unescaped delimiters here are harmless. Do not
-     * reuse it anywhere a collision would matter; use the escaped {@code Canonical*} encoders instead.
+     * Must be identical on every node. Not injective, so use it only to seed bucketing, never where a
+     * collision would matter.
      */
     public String canonicalRoutingKey() {
         StringBuilder sb = new StringBuilder();

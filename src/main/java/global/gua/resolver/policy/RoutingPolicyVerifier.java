@@ -18,26 +18,8 @@ import global.gua.resolver.governance.GenesisLoader;
 import global.gua.resolver.governance.GovernanceKeySet;
 
 /**
- * Verifies routing-policy bundles at two levels:
- * <ol>
- *   <li><b>Authority</b>: k-of-n threshold Ed25519 signatures over the whole canonical bundle. This attests
- *       the bundle including each delegation zone's grant (scope plus delegate public key).</li>
- *   <li><b>Delegate</b>: each zone's rules must be signed by that zone's delegate key, and a rule is only
- *       trusted when its zone is delegate-verified. This constrains delegates, not the authority: no
- *       delegate key is pinned, so an authority can publish a zone whose delegate key it holds.</li>
- * </ol>
- *
- * <p>Which trust root is in force follows {@code gua.resolver.governance.required}, and nothing else:
- * <ul>
- *   <li>Flag off (the default): bundles verify under {@code policy.trusted-keys}, or, when that list is
- *       unset, under {@code authority.trusted-keys}.</li>
- *   <li>Flag on: the governance key set from the pinned genesis is the only trust root. Both fallbacks are
- *       gone and a bundle signed by the operational key is refused.</li>
- * </ul>
- * The root is chosen at startup; a bundle that does not verify under it stops the service starting.
- *
- * <p>Signature counting here dedupes by key id, not by operator. A threshold that has to mean independence
- * uses {@code GovernanceVerifier}, which counts operators; do not reuse this counter for one.
+ * Delegate keys are not pinned, so delegate signatures never constrain the authority. Thresholds count key
+ * ids, not operators; use {@code GovernanceVerifier} where a threshold must mean independent operators.
  */
 @Component
 public class RoutingPolicyVerifier {
@@ -53,15 +35,12 @@ public class RoutingPolicyVerifier {
         this(props, genesis.keySet().orElse(null));
     }
 
-    /**
-     * Without a genesis, as an offline verifier or a test configures it. With governance required and no
-     * governance key set to require signatures from, this holds no keys and verifies nothing.
-     */
+    /** Without a genesis; with governance required this trusts no key. */
     public RoutingPolicyVerifier(ResolverProperties props) {
         this(props, (GovernanceKeySet) null);
     }
 
-    /** Trusts exactly these keys, with no fallback to another key set. */
+    /** No fallback to another key set. */
     public static RoutingPolicyVerifier forKeys(List<ResolverProperties.TrustedKey> keys, int threshold) {
         return new RoutingPolicyVerifier(publicKeys(keys), threshold);
     }
@@ -100,7 +79,6 @@ public class RoutingPolicyVerifier {
                     + "({}), configure the genesis the bundle was signed under (ADM-001 L8)",
                     root, governanceRequired);
         } else {
-            // Logged at every startup because it is the fact that decides whether a deployed bundle loads.
             log.info("Routing-policy trust root: {} ({} key(s), threshold {}, governance required: {})",
                     root, trustedKeys.size(), threshold, governanceRequired);
         }
@@ -125,12 +103,7 @@ public class RoutingPolicyVerifier {
         }
     }
 
-    /**
-     * The set of zone ids whose rules carry a valid delegate signature (the delegate key is the one the
-     * authority attested in the zone). Assumes the bundle's authority signatures were already verified, so
-     * the zone's {@code delegatePublicKey} is trusted. When signatures are not required (dev), every zone id
-     * is returned. A rule should only be applied when its zone is in this set.
-     */
+    /** Requires verified authority signatures; apply only rules whose zone is in the result. */
     public Set<String> delegateVerifiedZones(RoutingPolicyBundle bundle) {
         Set<String> verified = new HashSet<>();
         List<DelegationZone> zones = bundle.delegationZones() == null ? List.of() : bundle.delegationZones();

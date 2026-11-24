@@ -27,15 +27,13 @@ A verifier is configured out of band with:
 
 - the published **authority public keys** (n) and the **authority threshold** `k`;
 - the **policy-signing keys** + threshold. These are the federation's governance keys once a genesis is
-  pinned. A verifier has no fallback to the authority keys: an unset list verifies nothing rather than
-  silently accepting a bundle signed by the operational roster key. This is unconditional in
-  the reference verifier and in every port. Do not copy the server here: the resolver keeps that fallback
-  until `gua.resolver.governance.required` is turned on, because it has a deployed bundle signed with the
-  operational key to keep serving, and a client has no such thing to preserve.
+  pinned. A verifier has no fallback to the authority keys: an unset list verifies no bundle, including one
+  signed by the operational roster key. This holds in the reference verifier and in every port, although the
+  resolver keeps that fallback until `gua.resolver.governance.required` is turned on.
 - optionally the pinned **federation genesis**, published at `GET /.well-known/gua-federation` on the
-  resolver origin as `{genesisId, fingerprint, chainHead, genesis, transitions[]}`, where `chainHead` says
-  how far the governance key chain has run: the genesis id with no transition applied, the hash of the last
-  applied transition after that. It is signed by the keys it enumerates, so
+  resolver origin as `{genesisId, fingerprint, chainHead, genesis, transitions[]}`, where `chainHead` is the
+  genesis id with no transition applied, and the hash of the last applied transition after that. It is signed
+  by the keys it enumerates, so
   fetching it proves nothing on its own: it is a trust root only once its fingerprint has been compared
   against an independent channel and pinned. **No client fetches or pins it yet.**
 
@@ -100,7 +98,7 @@ entries that have not been attested, and outside `CanonicalRoster`, so step 1 ab
    sequence must name one entry, and a changed `signingKey` must also be signed by the previous `keyId` under
    the previous key, with a new key id. With no prior state, step 3 plus the authority signature and log
    inclusion are what you have; what a client does about a changed identity is not decided.
-6. A failure refuses that entry. It is dropped from the verified view and counted, never partially accepted.
+6. A failure refuses the whole entry: it is dropped from the verified view and counted.
 
 The log commits to each accepted entry: a `MEMBER_ATTEST` leaf whose payload hash is the SHA-256 of the same
 canonical bytes, at the index the entry was accepted. Golden vectors for the encoding, the entry bytes, the
@@ -122,8 +120,8 @@ environments that have not finished attesting.
    (`policyId`, `version`, `zoneId`, the rules whose `delegatedZoneId == zoneId`, in canonical order) and
    require a `delegateSignatures` entry for that zone that is Ed25519-valid under the zone's
    `delegatePublicKey`. A rule is trusted only if its zone is BOTH authority-attested and delegate-signed, so
-   a delegate controls its own rules within an authority-granted scope. This constrains delegates, not the
-   authority: the authority attests the delegate key and this protocol pins none.
+   a delegate controls its own rules within an authority-granted scope. The authority attests the delegate key
+   and this protocol pins none, so delegate signatures do not constrain the authority.
 3. **Validity + scope.** The bundle applies only while `notBefore <= now < expiresAt`, and so does each zone; a
    missing bound is open, and so is a bound in the first millisecond of `1970-01-01T00:00:00Z`, which the canonical
    bytes cannot tell from a missing one. Bounds compare in whole milliseconds, as they are signed. A rule must target
@@ -136,7 +134,7 @@ environments that have not finished attesting.
 
 ## 3. Reproduce the decision
 
-Placement is a deterministic function of (verified roster, verified policy, context). Note that the weighted
+Placement is a deterministic function of (verified roster, verified policy, context). The weighted
 fallback seeds on the roster version, which is the transparency-log size, so its result moves whenever a
 policy or directory-checkpoint leaf is appended even when membership did not change. To verify a `/resolve` answer:
 
@@ -207,7 +205,7 @@ A public client can carry such an envelope but cannot create one.
 
 ## Test vectors
 
-`docs/specs/gua-client-verification-v1-vectors.json` holds golden vectors for the roster bytes in both forms,
+Golden vectors in `docs/specs/gua-client-verification-v1-vectors.json` cover the roster bytes in both forms,
 authority signatures and thresholds, the transparency-log leaves, roots and consistency proofs, routing-policy
 bundles with their delegate signatures and validity windows, the policy's log step, reproduced placements and the
 check of a `/resolve` answer against the roster. `./gradlew clientVerificationVectors` writes the file from the
@@ -227,7 +225,7 @@ byte-identical copies, and a port runs the file before its results are trusted.
 - In `policyLog`, a null `servedPolicy` stands for a `404`, and each case is checked against all of `log.events`
   with its own checkpoint.
 - The production roster is a copy of what `https://resolver.gua.global/roster` served on 2026-10-27.
-- `ed25519Cases` holds one valid signature and inputs every port must refuse, following the key and signature
+- `ed25519Cases` has one valid signature and inputs every port must refuse, following the key and signature
   rules in [Signed federation objects](../specs/federation-signed-objects.md): S at or above the group order,
   a non-canonical R, signatures that are not 64 bytes, any base64 spelling other than standard padded with zero
   trailing bits, malformed key structures, keys that are not curve points, and forgeries under small-order or
@@ -242,8 +240,8 @@ different mirror or refuse to proceed, never silently accept the unverified answ
 
 ## Report-only verification in the apps
 
-The web, iOS and Android apps run the six checks below after each `/resolve` answer. The result never changes
-what the app connects to and never delays sign-in. Each run logs one line.
+After each `/resolve` answer the web, iOS and Android apps run the six checks below as report-only
+verification, without changing what the app connects to or delaying sign-in. Each run logs one line.
 
 **Inputs and limits.** Each build carries its environment's authority keys and threshold, and its policy keys
 and threshold. A run has 10 seconds on a monotonic clock. A fetch that fails or answers anything but a 2xx is
