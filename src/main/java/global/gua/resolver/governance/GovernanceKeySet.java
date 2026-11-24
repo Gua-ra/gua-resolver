@@ -95,6 +95,7 @@ public final class GovernanceKeySet {
             throw new GovernanceException("governance threshold must be at least 1");
         }
         Set<String> keyIds = new java.util.HashSet<>();
+        Set<String> publicKeys = new java.util.HashSet<>();
         Set<String> operators = new java.util.HashSet<>();
         for (GovernanceKey key : keys) {
             if (key == null || key.keyId() == null || key.keyId().isBlank()) {
@@ -106,16 +107,21 @@ public final class GovernanceKeySet {
             }
             if (key.operatorId() == null || key.operatorId().isBlank()) {
                 throw new GovernanceException("governance key " + key.keyId()
-                        + " needs an operatorId: a threshold counts operators, not keys (ADM-001 L8)");
+                        + " needs an operatorId: a threshold counts operators, not keys");
             }
             if (!keyIds.add(key.keyId())) {
                 throw new GovernanceException("duplicate governance keyId: " + key.keyId());
             }
+            PublicKey publicKey;
             try {
-                Ed25519.publicKey(key.publicKey());
+                publicKey = Ed25519.publicKey(key.publicKey());
             } catch (RuntimeException e) {
                 throw new GovernanceException(
                         "governance key " + key.keyId() + " is not an Ed25519 public key");
+            }
+            // One key listed for two operators would let one signer count twice toward the threshold.
+            if (!publicKeys.add(java.util.HexFormat.of().formatHex(publicKey.getEncoded()))) {
+                throw new GovernanceException("governance key " + key.keyId() + " repeats another key");
             }
             operators.add(key.operatorId());
         }

@@ -76,6 +76,7 @@ public class AdmissionService {
     @Transactional
     public SignedRoster admit(AdmissionRequest req) {
         boolean selfSigned = req.member() != null;
+        requireUsableKey(req.signingKey());
 
         // Proof that the applicant controls the signing key it is registering.
         if (!selfSigned) {
@@ -195,6 +196,7 @@ public class AdmissionService {
         requireText(fields.baseUrl(), "baseUrl");
         requireText(fields.masIssuer(), "masIssuer");
         requireText(fields.signingKey(), "signingKey");
+        requireUsableKey(fields.signingKey());
 
         Homeserver.SearchVisibility visibility = fields.searchVisibility() == null
                 ? Homeserver.SearchVisibility.GLOBAL
@@ -356,6 +358,14 @@ public class AdmissionService {
             return req.id();
         }
         return (req.id() == null || req.id().isBlank()) ? deriveId(req.serverName()) : req.id();
+    }
+
+    private static void requireUsableKey(String signingKey) {
+        try {
+            Ed25519.publicKey(signingKey);
+        } catch (IllegalArgumentException e) {
+            throw new AdmissionException("signingKey is not an acceptable Ed25519 public key");
+        }
     }
 
     private static void requireText(String value, String field) {

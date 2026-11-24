@@ -44,6 +44,17 @@ class GovernanceVerifierTest {
     }
 
     @Test
+    void oneKeyListedForTwoOperatorsIsRefused() {
+        GovernanceFixtures.Holder a = GovernanceFixtures.Holder.of("gov-a", "operator-a");
+        GovernanceKey sameKeyOtherOperator = new GovernanceKey("gov-b", GovernanceKey.ALG,
+                a.key().publicKey(), "operator-b");
+
+        assertThatThrownBy(() -> GovernanceKeySet.of("genesis", 2, List.of(a.key(), sameKeyOtherOperator)))
+                .isInstanceOf(GovernanceException.class)
+                .hasMessageContaining("repeats another key");
+    }
+
+    @Test
     void twoOperatorsMeetAThresholdOfTwoAndOneAloneDoesNot() {
         GovernanceFixtures.Holder a = GovernanceFixtures.Holder.of("gov-a", "operator-a");
         GovernanceFixtures.Holder b = GovernanceFixtures.Holder.of("gov-b", "operator-b");
