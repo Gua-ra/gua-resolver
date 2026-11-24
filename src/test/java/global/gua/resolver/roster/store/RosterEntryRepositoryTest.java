@@ -122,7 +122,7 @@ class RosterEntryRepositoryTest {
         Homeserver attested = homeserver(KEY.publicKeyB64());   // moved baseUrl, GROUP visibility
         MemberAttestation member = attestation(attested, 4, Instant.parse("2026-09-11T00:00:00Z"));
         String hash = CanonicalMemberEntry.hash(attested, member);
-        assertThat(repository.updateMember("hs1", attested, member, hash, 0)).isEqualTo(1);
+        assertThat(repository.updateMemberIfSequenceMatches("hs1", attested, member, hash, 0)).isEqualTo(1);
         repository.insertMemberHistory("hs1", member, attested.signingKey(), "{}", hash,
                 Instant.parse("2026-09-11T10:00:00.123Z"), 42L);
 
@@ -159,9 +159,9 @@ class RosterEntryRepositoryTest {
         String winnerHash = CanonicalMemberEntry.hash(moved, winner);
         String loserHash = CanonicalMemberEntry.hash(admitted, loser);
 
-        assertThat(repository.updateMember("hs1", moved, winner, winnerHash, 0)).isEqualTo(1);
+        assertThat(repository.updateMemberIfSequenceMatches("hs1", moved, winner, winnerHash, 0)).isEqualTo(1);
         // Same expected prior, lower sequence: the entry moved, so the write must match no row.
-        assertThat(repository.updateMember("hs1", admitted, loser, loserHash, 0)).isZero();
+        assertThat(repository.updateMemberIfSequenceMatches("hs1", admitted, loser, loserHash, 0)).isZero();
 
         RosterEntry read = repository.findById("hs1").orElseThrow();
         assertThat(read.member().sequence()).isEqualTo(4);

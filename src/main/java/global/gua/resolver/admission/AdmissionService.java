@@ -196,8 +196,7 @@ public class AdmissionService {
         }
         requireNoUnexpectedSignatures(request.member(), rotation);
 
-        // Conditional on the verified sequence, so the loser of a concurrent attest cannot overwrite the winner.
-        int updated = entries.updateMember(id, attested, request.member(), result.entryHash(),
+        int updated = entries.updateMemberIfSequenceMatches(id, attested, request.member(), result.entryHash(),
                 prior.sequence());
         if (updated == 0) {
             throw new AdmissionException("a concurrent attestation changed " + id + " while this one was "
@@ -291,7 +290,6 @@ public class AdmissionService {
                 member.sequence(), hash);
     }
 
-    /** Signatures sit outside the canonical bytes, so any extra one would be unsigned material. */
     private static void requireNoUnexpectedSignatures(MemberAttestation member, boolean rotation) {
         int allowed = rotation ? 2 : 1;
         if (member.signatures().size() > allowed) {

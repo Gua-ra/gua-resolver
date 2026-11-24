@@ -9,7 +9,6 @@ import global.gua.resolver.crypto.Ed25519;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** Thresholds count operators, not key ids, so one party holding k keys cannot meet a k-of-n. */
 class GovernanceVerifierTest {
 
     private static final byte[] MESSAGE = "governance object".getBytes(java.nio.charset.StandardCharsets.UTF_8);
@@ -24,7 +23,6 @@ class GovernanceVerifierTest {
         GovernanceVerifier.Outcome outcome = GovernanceVerifier.count(keys, MESSAGE,
                 List.of(first.sign(MESSAGE), second.sign(MESSAGE)));
 
-        // Two valid signatures from two key ids held by one operator.
         assertThat(outcome.operators()).isEqualTo(1);
         assertThat(outcome.countedOperators()).containsExactly("operator-a");
         assertThat(outcome.valid()).isTrue();
@@ -48,7 +46,7 @@ class GovernanceVerifierTest {
 
         assertThatThrownBy(() -> GovernanceKeySet.of("genesis", 2, List.of(a.key(), sameKeyOtherOperator)))
                 .isInstanceOf(GovernanceException.class)
-                .hasMessageContaining("repeats another key");
+                .hasMessageContaining("duplicate governance public key");
     }
 
     @Test

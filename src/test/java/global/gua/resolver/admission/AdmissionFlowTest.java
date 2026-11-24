@@ -214,8 +214,10 @@ class AdmissionFlowTest {
 
         assertThat(admitted.member()).isNotNull();
         assertThat(admitted.member().sequence()).isEqualTo(1);
-        // ADMIT and MEMBER_ATTEST.
         assertThat(rosterStore.current().logCheckpoint().size()).isEqualTo(before + 2);
+        assertThat(transparencyLog.events()).filteredOn(e -> e.index() >= before)
+                .extracting(TransparencyLog.Event::type)
+                .containsExactly("ADMIT", TransparencyLog.MEMBER_ATTEST);
         String hash = CanonicalMemberEntry.hash(admitted.homeserver(), admitted.member());
         assertThat(transparencyLog.eventsOfType(TransparencyLog.MEMBER_ATTEST))
                 .anySatisfy(e -> {

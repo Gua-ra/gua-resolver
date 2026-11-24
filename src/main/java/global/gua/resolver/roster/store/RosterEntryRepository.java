@@ -178,22 +178,8 @@ public class RosterEntryRepository {
                 """, status.name(), weight, acceptsNew, writeClaims(claims), epoch, id);
     }
 
-    /**
-     * Replace the member-controlled columns with the accepted, signed values and record the attestation.
-     * Only the fields the member signs are written here; weight, acceptsNew, claims and status stay as the
-     * authority holds them.
-     *
-     * <p>The write is conditional on the entry still carrying {@code expectedSequence}. A plain
-     * read-check-write does not serialise at READ COMMITTED: two concurrent attestations could both commit
-     * and leave the lower sequence last. Zero rows updated means another attestation won, so this one is
-     * refused.
-     *
-     * @param expectedSequence the accepted sequence the attestation was verified against; 0 for an entry
-     *                         that carries no member block yet
-     * @return rows updated: 1 when accepted, 0 when another attestation won the race
-     */
-    public int updateMember(String id, Homeserver attested, MemberAttestation member, String entryHash,
-                            long expectedSequence) {
+    public int updateMemberIfSequenceMatches(String id, Homeserver attested, MemberAttestation member,
+                                             String entryHash, long expectedSequence) {
         return jdbc.update("""
                 UPDATE roster_entry SET
                     base_url = ?, mas_issuer = ?, region = ?, search_visibility = ?, search_groups_json = ?,

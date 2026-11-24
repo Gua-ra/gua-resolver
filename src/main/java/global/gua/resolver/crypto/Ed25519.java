@@ -54,9 +54,8 @@ public final class Ed25519 {
         }
     }
 
-    /** Refuses non-canonical encodings and small-order points, under which anyone can forge signatures. */
     public static PublicKey publicKey(String base64X509) {
-        byte[] spki = decodeCanonical(base64X509);
+        byte[] spki = decodeCanonicalBase64(base64X509);
         if (spki == null || spki.length != SPKI_PREFIX.length + RAW_KEY_LENGTH
                 || !Arrays.equals(spki, 0, SPKI_PREFIX.length, SPKI_PREFIX, 0, SPKI_PREFIX.length)) {
             throw new IllegalArgumentException("invalid Ed25519 public key");
@@ -99,7 +98,7 @@ public final class Ed25519 {
         if (key == null) {
             return false;
         }
-        byte[] signature = decodeCanonical(signatureB64);
+        byte[] signature = decodeCanonicalBase64(signatureB64);
         if (signature == null || signature.length != SIGNATURE_LENGTH) {
             return false;
         }
@@ -114,8 +113,7 @@ public final class Ed25519 {
         }
     }
 
-    /** Accepts only standard padded base64 with zero trailing bits, the one spelling every Gua verifier reads. */
-    private static byte[] decodeCanonical(String base64) {
+    private static byte[] decodeCanonicalBase64(String base64) {
         if (base64 == null) {
             return null;
         }

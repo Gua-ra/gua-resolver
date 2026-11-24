@@ -161,13 +161,12 @@ class PlacementRecordIngestTest {
     }
 
     @Test
-    void theStoredRowCarriesNoIdentifierColumn() {
+    void storedColumnsMatchApprovedPlacementSchema() {
         List<String> columns = jdbc.queryForList(
                         "SELECT column_name FROM information_schema.columns "
                                 + "WHERE UPPER(table_name) = 'PLACEMENT_RECORD'", String.class)
                 .stream().map(c -> c.toLowerCase(Locale.ROOT)).sorted().toList();
 
-        // Pins the columns so a phone, phone hash or Matrix user id column added later fails here.
         assertThat(columns).containsExactly("account_id", "generation", "homeserver_id", "issued_at",
                 "not_after", "not_before", "origin", "received_at", "record_b64", "signature_b64");
     }

@@ -98,22 +98,25 @@ public final class GovernanceKeySet {
             if (!keyIds.add(key.keyId())) {
                 throw new GovernanceException("duplicate governance keyId: " + key.keyId());
             }
-            PublicKey publicKey;
-            try {
-                publicKey = Ed25519.publicKey(key.publicKey());
-            } catch (RuntimeException e) {
-                throw new GovernanceException(
-                        "governance key " + key.keyId() + " is not an Ed25519 public key");
-            }
-            // One key listed for two operators would let one signer count twice toward the threshold.
-            if (!publicKeys.add(java.util.HexFormat.of().formatHex(publicKey.getEncoded()))) {
-                throw new GovernanceException("governance key " + key.keyId() + " repeats another key");
-            }
+            requireUniquePublicKey(key, publicKeys);
             operators.add(key.operatorId());
         }
         if (threshold > operators.size()) {
             throw new GovernanceException("governance threshold " + threshold + " exceeds the "
                     + operators.size() + " distinct operator(s) holding these keys, so it can never be met");
+        }
+    }
+
+    private static void requireUniquePublicKey(GovernanceKey key, Set<String> publicKeys) {
+        PublicKey publicKey;
+        try {
+            publicKey = Ed25519.publicKey(key.publicKey());
+        } catch (RuntimeException e) {
+            throw new GovernanceException(
+                    "governance key " + key.keyId() + " is not an Ed25519 public key");
+        }
+        if (!publicKeys.add(java.util.HexFormat.of().formatHex(publicKey.getEncoded()))) {
+            throw new GovernanceException("duplicate governance public key for keyId " + key.keyId());
         }
     }
 }
