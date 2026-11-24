@@ -246,13 +246,7 @@ public class AdmissionService {
         }
     }
 
-    /**
-     * Suspend (temporarily) or revoke (permanently) an admitted homeserver.
-     *
-     * <p>With governance required this records intent only and changes nothing that is served, so the
-     * operational key cannot take a member out of service on its own. The change takes effect when a
-     * membership epoch carries it.
-     */
+    /** Under governance this records intent only, so the operational key alone cannot remove a member. */
     @Transactional
     public SignedRoster setStatus(String id, RosterEntry.Status status) {
         RosterEntry entry = entries.findById(id).orElseThrow(() -> new AdmissionException("no such homeserver: " + id));
