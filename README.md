@@ -1,6 +1,6 @@
 ![gua-resolver](https://github.com/user-attachments/assets/01bd66c7-6250-42ce-a4d0-1f8ade952ca2)
 
-gua-resolver provides account routing for Gua. Before sign-in, clients submit an identifier and receive the homeserver to use. The resolver also publishes the signed roster of homeservers that host Gua accounts.
+gua-resolver is the routing front door of the Gua federation by providing account routing for Gua. Before sign-in, clients submit an identifier and receive the homeserver to use. The resolver also publishes the signed roster of homeservers that host Gua accounts.
 
 The resolver serves and verifies routing information. It does not authenticate users or store credentials.
 
