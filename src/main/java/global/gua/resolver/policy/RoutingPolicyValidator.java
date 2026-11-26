@@ -16,7 +16,6 @@ import org.springframework.stereotype.Component;
 import global.gua.resolver.roster.RosterEntry;
 import global.gua.resolver.roster.SignedRoster;
 
-/** Structural and federation-boundary validation for routing-policy bundles. */
 @Component
 public class RoutingPolicyValidator {
 
@@ -44,11 +43,9 @@ public class RoutingPolicyValidator {
             throw invalid("version must be positive");
         }
         Instant now = Instant.now(clock);
-        if (bundle.notBefore() != null && bundle.notBefore().isAfter(now)) {
-            throw invalid("policy is not active yet");
-        }
-        if (bundle.expiresAt() != null && !bundle.expiresAt().isAfter(now)) {
-            throw invalid("policy is expired");
+        if (!bundle.inEffectAt(now)) {
+            boolean early = bundle.notBefore() != null && bundle.notBefore().isAfter(now);
+            throw invalid(early ? "policy is not active yet" : "policy is expired");
         }
 
         Map<String, RosterEntry> activeHomeservers = roster.activeEntries().stream()
@@ -119,9 +116,6 @@ public class RoutingPolicyValidator {
             if (!withinZone(rule, zone)) {
                 throw invalid("rule " + rule.id() + " match is outside delegation zone " + zone.id());
             }
-            // Two rules are "the same match" only if their full match criteria coincide. For OIDC_CLAIM that
-            // includes the issuer and claim name, not just the value, so rules that differ only by issuer/claim
-            // are not wrongly flagged ambiguous (and rules that genuinely coincide still are).
             String matchKey = rule.matchType() == RoutingPolicyRule.MatchType.OIDC_CLAIM
                     ? String.join(":", rule.matchType().name(), normalize(rule.oidcIssuer()),
                             normalize(rule.oidcClaim()), normalize(rule.matchValue()))

@@ -10,19 +10,27 @@ import java.util.TreeMap;
 import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.placement.ClaimPredicate;
 
-/**
- * Deterministic, canonical byte serialization of a roster snapshot: the exact bytes the authority signs and
- * that every verifier (including third-party mirrors) reconstructs to check the signatures. Covers
- * everything except the signatures themselves. Entries are sorted by id and all collections are emitted in
- * a fixed order, so the same logical roster always yields identical bytes on any machine or JVM.
- */
+/** Signed bytes covering everything but the signatures, in a fixed order so every verifier rebuilds them exactly. */
 public final class CanonicalRoster {
 
     private CanonicalRoster() {}
 
-    /** Canonical bytes over (version, issuedAt, logCheckpoint, sorted entries). Excludes signatures. */
     public static byte[] bytes(long version, long issuedAtEpochMs, SignedRoster.LogCheckpoint checkpoint,
                                List<RosterEntry> entries) {
+        return bytes(version, issuedAtEpochMs, checkpoint, entries, RosterForm.V1);
+    }
+
+    public static byte[] bytes(SignedRoster roster) {
+        return bytes(roster, RosterForm.V1);
+    }
+
+    public static byte[] bytes(SignedRoster roster, RosterForm form) {
+        return bytes(roster.version(), roster.issuedAt().toEpochMilli(), roster.logCheckpoint(), roster.entries(),
+                form);
+    }
+
+    public static byte[] bytes(long version, long issuedAtEpochMs, SignedRoster.LogCheckpoint checkpoint,
+                               List<RosterEntry> entries, RosterForm form) {
         StringBuilder sb = new StringBuilder();
         sb.append("gua-roster.v1\n");
         sb.append("version=").append(version).append('\n');
@@ -30,18 +38,13 @@ public final class CanonicalRoster {
         sb.append("log=").append(checkpoint.merkleRoot()).append(':').append(checkpoint.size()).append('\n');
         entries.stream()
                 .sorted(Comparator.comparing(e -> e.homeserver().id()))
-                .forEach(e -> sb.append(entry(e)).append('\n'));
+                .forEach(e -> sb.append(entry(e, form)).append('\n'));
         return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
 
-    public static byte[] bytes(SignedRoster roster) {
-        return bytes(roster.version(), roster.issuedAt().toEpochMilli(), roster.logCheckpoint(),
-                roster.entries());
-    }
-
-    private static String entry(RosterEntry e) {
+    private static String entry(RosterEntry e, RosterForm form) {
         Homeserver h = e.homeserver();
-        StringJoiner j = new StringJoiner("");  // unit separator; cannot appear in the fields
+        StringJoiner j = new StringJoiner("\u001f");  // values are not escaped
         j.add(h.id());
         j.add(h.serverName());
         j.add(h.baseUrl());
@@ -50,8 +53,10 @@ public final class CanonicalRoster {
         j.add(Integer.toString(h.weight()));
         j.add(Boolean.toString(h.acceptsNew()));
         j.add(nz(h.signingKey()));
-        j.add(h.searchVisibility().name());
-        j.add(h.searchGroups().stream().sorted().reduce((a, b) -> a + "|" + b).orElse(""));
+        if (form == RosterForm.V1) {
+            j.add(h.searchVisibility().name());
+            j.add(h.searchGroups().stream().sorted().reduce((a, b) -> a + "|" + b).orElse(""));
+        }
         j.add(e.admittedAt() == null ? "" : Long.toString(e.admittedAt().toEpochMilli()));
         j.add(e.status().name());
         j.add(claims(e.claims()));

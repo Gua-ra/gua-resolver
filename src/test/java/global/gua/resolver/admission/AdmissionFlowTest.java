@@ -16,6 +16,7 @@ import global.gua.resolver.crypto.Ed25519;
 import global.gua.resolver.crypto.Ed25519Forgeries;
 import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.placement.ClaimPredicate;
+import global.gua.resolver.placement.rules.WeightedFallbackRule;
 import global.gua.resolver.roster.CanonicalMemberEntry;
 import global.gua.resolver.roster.JdbcTransparencyLog;
 import global.gua.resolver.roster.MemberAttestation;
@@ -53,12 +54,21 @@ class AdmissionFlowTest {
     private static final Instant NOT_AFTER = NOT_BEFORE.plus(Duration.ofDays(400));
 
     private AdmissionRequest request(String serverName, List<ClaimPredicate> claims) {
+        return request(serverName, claims, 1);
+    }
+
+    private AdmissionRequest request(String serverName, List<ClaimPredicate> claims, int weight) {
         Ed25519.KeyPairB64 kp = Ed25519.generate();
         String proof = Ed25519.sign(Ed25519.privateKey(kp.privateKeyB64()),
                 serverName.getBytes(StandardCharsets.UTF_8));
         return new AdmissionRequest(null, serverName, "https://" + serverName,
-                "https://account." + serverName, "BR", 1, true,
+                "https://account." + serverName, "BR", weight, true,
                 kp.publicKeyB64(), proof, "dns-txt-proof-token", claims, null, null);
+    }
+
+    private String idOf(String serverName) {
+        return entries.findAll().stream().filter(e -> e.homeserver().serverName().equals(serverName))
+                .findFirst().orElseThrow().homeserver().id();
     }
 
     private static Homeserver homeserver(String id, String serverName, String baseUrl, String signingKey) {
@@ -191,6 +201,29 @@ class AdmissionFlowTest {
                         new ClaimPredicate(null, "72411", null, null, null, null, null, 100)))))
                 .isInstanceOf(AdmissionService.AdmissionException.class)
                 .hasMessageContaining("overlap");
+    }
+
+    @Test
+    void refusesWeightsThatWouldTakeTheFallbackPastItsLimit() {
+        long held = WeightedFallbackRule.totalWeight(entries.findAll().stream()
+                .filter(e -> e.status() != RosterEntry.Status.REVOKED)
+                .map(RosterEntry::homeserver).filter(Homeserver::acceptsNew).toList());
+        int headroom = (int) (WeightedFallbackRule.MAX_TOTAL_WEIGHT - held);
+
+        admission.admit(request("full.gua.global", List.of(), headroom));
+        assertThatThrownBy(() -> admission.admit(request("one-more.gua.global", List.of(), 1)))
+                .isInstanceOf(AdmissionService.AdmissionException.class)
+                .hasMessageContaining("limit");
+
+        String full = idOf("full.gua.global");
+        admission.setStatus(full, RosterEntry.Status.REVOKED);
+        admission.admit(request("replacement.gua.global", List.of(), headroom));
+        assertThatThrownBy(() -> admission.setStatus(full, RosterEntry.Status.ACTIVE))
+                .isInstanceOf(AdmissionService.AdmissionException.class)
+                .hasMessageContaining("limit");
+
+        // The other tests in this class admit weight 1 into the same roster.
+        admission.setStatus(idOf("replacement.gua.global"), RosterEntry.Status.REVOKED);
     }
 
     @Test

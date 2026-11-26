@@ -116,7 +116,6 @@ class RoutingPolicyTest {
     void zoneWithoutADelegateSignatureIsNotDelegateVerified() {
         RoutingPolicyVerifier verifier = new RoutingPolicyVerifier(authorityProps(Ed25519.generate(), 1));
 
-        // authority-signed only, no delegate signature over the zone's rules
         assertThat(verifier.delegateVerifiedZones(unsignedPolicy("carrier", "+55119", "+551198"))).isEmpty();
     }
 
@@ -127,8 +126,7 @@ class RoutingPolicyTest {
                 unsignedPolicy("carrier", "+55119", "+551198"),
                 "carrier-zone", "delegate-vivo", DELEGATE.privateKeyB64());
 
-        // Whoever assembles the bundle swaps the delegate's rule for a different target, keeping the old
-        // delegate signature. The delegate signature is over the original rules, so the zone no longer verifies.
+        // A new rule target, still carrying the delegate signature over the original rules.
         RoutingPolicyBundle forged = new RoutingPolicyBundle(delegateSigned.schemaVersion(),
                 delegateSigned.policyId(), delegateSigned.version(), delegateSigned.issuedAt(),
                 delegateSigned.notBefore(), delegateSigned.expiresAt(), delegateSigned.delegationZones(),
@@ -186,8 +184,6 @@ class RoutingPolicyTest {
                                 RoutingPolicyRule.AssignmentPolicy.PORTABLE, true)),
                 new RoutingPolicyBundle.FallbackStrategy("legacy-weighted", true), List.of(), List.of());
 
-        // Both rules share matchValue "staff" but read different OIDC claims, so they are distinct and must
-        // not be rejected as ambiguous.
         assertThatCode(() -> validator.validate(policy, roster())).doesNotThrowAnyException();
     }
 
@@ -214,5 +210,23 @@ class RoutingPolicyTest {
         assertThatThrownBy(() -> validator.validate(policy, roster()))
                 .isInstanceOf(RoutingPolicyValidator.RoutingPolicyValidationException.class)
                 .hasMessageContaining("outside delegation zone");
+    }
+
+    @Test
+    void boundsCompareInTheWholeMillisecondsTheyAreSignedIn() {
+        Instant t = Instant.parse("2030-01-01T00:00:00Z");
+
+        assertThat(window(t.plusNanos(500_000), null).inEffectAt(t.plusNanos(200_000))).isTrue();
+        assertThat(window(null, t.plusNanos(500_000)).inEffectAt(t.plusNanos(200_000))).isFalse();
+    }
+
+    @Test
+    void aBoundPastTheEpochMillisecondRangeStillCompares() {
+        assertThat(window(null, Instant.MAX).inEffectAt(Instant.parse("2030-01-01T00:00:00Z"))).isTrue();
+    }
+
+    private static RoutingPolicyBundle window(Instant notBefore, Instant expiresAt) {
+        return new RoutingPolicyBundle(RoutingPolicyBundle.SCHEMA_VERSION, "window", 1, Instant.EPOCH, notBefore,
+                expiresAt, List.of(), List.of(), null, List.of(), List.of());
     }
 }

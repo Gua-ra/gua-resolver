@@ -20,10 +20,8 @@ import global.gua.resolver.config.ResolverProperties;
 import global.gua.resolver.roster.RosterStore;
 
 /**
- * File-backed policy source. On refresh failure it keeps serving the last verified bundle, if any, but never
- * serves a bundle that is outside its own signed validity window (an expired or not-yet-active policy
- * degrades to no policy, so placement falls back deterministically rather than applying stale data), and
- * never accepts a lower version than the one already loaded (rollback protection).
+ * Keeps the last verified bundle on refresh failure, serves none outside its signed validity window, and
+ * refuses a lower version than the one in effect.
  */
 @Component
 @ConditionalOnProperty(name = "gua.resolver.policy.enabled", havingValue = "true")
@@ -70,7 +68,7 @@ public class FileRoutingPolicySource implements RoutingPolicySource {
     @Override
     public Optional<RoutingPolicyBundle> current() {
         RoutingPolicyBundle bundle = current;
-        if (bundle == null || !withinValidityWindow(bundle)) {
+        if (bundle == null || !bundle.inEffectAt(Instant.now(clock))) {
             return Optional.empty();
         }
         return Optional.of(bundle);
@@ -79,19 +77,10 @@ public class FileRoutingPolicySource implements RoutingPolicySource {
     @Override
     public PolicySourceStatus status() {
         RoutingPolicyBundle bundle = current;
-        boolean healthy = bundle != null && withinValidityWindow(bundle);
-        String message = bundle != null && !withinValidityWindow(bundle) ? "loaded but outside validity window"
-                : lastMessage;
-        return new PolicySourceStatus("file:" + file, healthy,
+        boolean inEffect = bundle != null && bundle.inEffectAt(Instant.now(clock));
+        String message = bundle != null && !inEffect ? "loaded but outside validity window" : lastMessage;
+        return new PolicySourceStatus("file:" + file, inEffect,
                 bundle == null ? null : bundle.version(), loadedAt, message);
-    }
-
-    private boolean withinValidityWindow(RoutingPolicyBundle bundle) {
-        Instant now = Instant.now(clock);
-        if (bundle.notBefore() != null && bundle.notBefore().isAfter(now)) {
-            return false;
-        }
-        return bundle.expiresAt() == null || bundle.expiresAt().isAfter(now);
     }
 
     @Scheduled(fixedDelayString = "${gua.resolver.policy.refresh-interval:PT1M}")
@@ -100,12 +89,10 @@ public class FileRoutingPolicySource implements RoutingPolicySource {
             RoutingPolicyBundle loaded = json.readValue(Files.readString(file), RoutingPolicyBundle.class);
             validator.validate(loaded, rosterStore.current());
             verifier.requireVerified(loaded);
-            // Rollback protection is only meaningful against a policy we are actually still serving. If the
-            // current bundle has expired, it no longer floors the version, so an operator can recover by
-            // re-adopting a signed, in-window lower or equal version instead of being deadlocked until a
-            // brand-new higher version is minted.
+            // An expired bundle no longer floors the version, so an operator can recover with an older one.
             RoutingPolicyBundle existing = current;
-            if (existing != null && withinValidityWindow(existing) && loaded.version() < existing.version()) {
+            if (existing != null && existing.inEffectAt(Instant.now(clock))
+                    && loaded.version() < existing.version()) {
                 throw new IllegalStateException("routing policy rollback rejected: loaded v" + loaded.version()
                         + " < current v" + existing.version());
             }

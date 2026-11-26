@@ -19,6 +19,7 @@ import global.gua.resolver.crypto.Ed25519;
 import global.gua.resolver.crypto.MerkleTree;
 import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.governance.GenesisLoader;
+import global.gua.resolver.placement.rules.WeightedFallbackRule;
 import global.gua.resolver.roster.CanonicalMemberEntry;
 import global.gua.resolver.roster.CanonicalRoster;
 import global.gua.resolver.roster.MemberAttestation;
@@ -91,6 +92,12 @@ public class AdmissionService {
                 throw new AdmissionException(
                         "requested claims overlap those of " + e.homeserver().serverName());
             }
+        }
+        long addedWeight = req.acceptsNew() ? Math.max(0, req.weight()) : 0;
+        long weightAfter = addedWeight + WeightedFallbackRule.totalWeight(unrevokedEntries.stream()
+                .map(RosterEntry::homeserver).filter(Homeserver::acceptsNew).toList());
+        if (addedWeight > 0 && weightAfter > WeightedFallbackRule.MAX_TOTAL_WEIGHT) {
+            throw new AdmissionException(overWeightLimit(weightAfter));
         }
 
         Homeserver.SearchVisibility visibility = parseSearchVisibility(req);
@@ -231,9 +238,18 @@ public class AdmissionService {
 
     @Transactional
     public SignedRoster setStatus(String id, RosterEntry.Status status) {
-        entries.findById(id).orElseThrow(() -> new AdmissionException("no such homeserver: " + id));
+        RosterEntry entry = entries.findById(id).orElseThrow(() -> new AdmissionException("no such homeserver: " + id));
         if (status == RosterEntry.Status.PENDING) {
             throw new AdmissionException("PENDING cannot be set directly");
+        }
+        if (status == RosterEntry.Status.ACTIVE && entry.status() != RosterEntry.Status.ACTIVE
+                && entry.homeserver().acceptsNew()) {
+            long weightAfter = Math.max(0, entry.homeserver().weight()) + WeightedFallbackRule.totalWeight(
+                    entries.findAll().stream().filter(e -> e.status() == RosterEntry.Status.ACTIVE)
+                            .map(RosterEntry::homeserver).filter(Homeserver::acceptsNew).toList());
+            if (entry.homeserver().weight() > 0 && weightAfter > WeightedFallbackRule.MAX_TOTAL_WEIGHT) {
+                throw new AdmissionException(overWeightLimit(weightAfter));
+            }
         }
         if (genesis.governanceRequired()) {
             entries.setPendingStatus(id, status);
@@ -303,6 +319,11 @@ public class AdmissionService {
         if (value == null || value.isBlank()) {
             throw new AdmissionException(field + " is required");
         }
+    }
+
+    private static String overWeightLimit(long weightAfter) {
+        return "the homeservers that accept new accounts would weigh " + weightAfter
+                + " in total, above the weighted fallback's limit of " + WeightedFallbackRule.MAX_TOTAL_WEIGHT;
     }
 
     private void appendLog(String type, RosterEntry entry) {

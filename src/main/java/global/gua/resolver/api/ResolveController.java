@@ -29,16 +29,7 @@ import global.gua.resolver.service.ResolutionService;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 
-/**
- * The federation front door the iOS and Android clients call before OIDC login. The client sends a phone
- * number and learns which homeserver to authenticate against; for a phone with no account it learns where to
- * register.
- *
- * <p>Nothing about the phone is verified here: the endpoint is unauthenticated and takes a raw E.164, so it
- * also answers whether an account exists for any number. {@code ResolveAbuseFilter} rate-limits it per
- * client and globally, and the decision trace is returned only when
- * {@code gua.resolver.abuse.trace-enabled} is on.
- */
+/** Unauthenticated, and reveals whether any phone has an account, so {@code ResolveAbuseFilter} rate-limits it. */
 @RestController
 public class ResolveController {
 
@@ -56,20 +47,13 @@ public class ResolveController {
         this.rosterStore = rosterStore;
         this.routingClaimsVerifier = routingClaimsVerifier;
         this.abuse = props.getAbuse();
-        // gua_resolver_resolve_total{outcome=...}: existing (login) vs register (new placement).
         this.resolveExisting = Counter.builder("gua.resolver.resolve").tag("outcome", "existing").register(metrics);
         this.resolveRegister = Counter.builder("gua.resolver.resolve").tag("outcome", "register").register(metrics);
     }
 
-    /**
-     * Resolve a phone to its existing homeserver (login) or to a placement target (register).
-     * An existing account is looked up first; only a phone with no account runs placement. The decision
-     * trace is honoured only when the deployment enables it: it names the matched rule, policy id/version
-     * and delegated zone, which is policy internals an anonymous caller has no business seeing.
-     */
+    /** The trace is gated by configuration because it exposes policy internals to an anonymous caller. */
     @PostMapping("/resolve")
     public ResolveResponse resolve(@Valid @RequestBody ResolveRequest request) {
-        // The roster version the decision is made against; clients pin and verify this exact version.
         long rosterVersion = rosterStore.current().version();
         boolean trace = abuse.isTraceEnabled() && Boolean.TRUE.equals(request.trace());
 
@@ -77,45 +61,37 @@ public class ResolveController {
         if (existing.isPresent()) {
             resolveExisting.increment();
             Homeserver hs = existing.get();
-            return ResolveResponse.existing(HomeserverRef.of(hs),
+            return ResolveResponse.existing(HomeserverRef.of(hs), rosterVersion,
                     trace ? DecisionTrace.existing(hs.id(), rosterVersion) : null);
         }
 
         PlacementDecision decision = resolution.placementDecisionFor(placementContextFor(request));
         resolveRegister.increment();
-        return ResolveResponse.register(HomeserverRef.of(decision.homeserver()),
+        Long decidedAgainst = rosterStore.current().version() == rosterVersion ? rosterVersion : null;
+        return ResolveResponse.register(HomeserverRef.of(decision.homeserver()), decidedAgainst,
                 trace ? DecisionTrace.of(decision, rosterVersion) : null);
     }
 
     /**
-     * Build the placement context for a new-account decision. Institution/OIDC affiliations and attributes
-     * are trusted only when they arrive in a signature-verified routing-claims envelope bound to this phone;
-     * a public caller's self-asserted {@code affiliations}/{@code attributes} are deliberately dropped.
-     * Carrier/geo hints stay, because choosing a carrier homeserver is self-service, not privilege.
+     * Affiliations and attributes come only from a verified envelope bound to this phone, never from the caller.
+     * Carrier and geo hints stay, because choosing a carrier homeserver grants no privilege.
      */
     private PlacementContext placementContextFor(ResolveRequest request) {
         RoutingClaimsVerifier.VerifiedRoutingClaims verified =
                 routingClaimsVerifier.verify(request.routingClaims(), request.phone());
-        // The trust flag comes straight from the verification outcome, never from envelope presence.
+        // Trust follows the verification outcome, not envelope presence.
         return new PlacementContext(
                 request.phone(), request.country(), request.mccmnc(), request.carrier(), request.regionHint(),
                 verified.affiliations(), verified.attributes(), verified.verified());
     }
 
-    /**
-     * The signed, public roster: what mirrors and clients verify (threshold signatures plus log checkpoint). A
-     * mirror serves the upstream document verbatim here, so the upstream signature still covers exactly these
-     * bytes, while its own routing uses its verified view of it.
-     */
+    /** Mirrors serve the upstream document verbatim so its signatures still cover these exact bytes. */
     @GetMapping("/roster")
     public Object roster() {
         return rosterStore.served();
     }
 
-    /**
-     * A phone that is not valid E.164 is a client error, not a server fault: answers 400 with a generic
-     * message. The phone is never echoed back.
-     */
+    /** The phone is never echoed back. */
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ProblemResponse onInvalidPhone(IllegalArgumentException e) {
@@ -151,21 +127,21 @@ public class ResolveController {
             RoutingClaimsEnvelope routingClaims,
             Boolean trace) {}
 
-    /** Minimal homeserver reference the client needs to start OIDC; never leaks ":server" to the user. */
     public record HomeserverRef(String serverName, String baseUrl, String masIssuer, String region) {
         static HomeserverRef of(Homeserver hs) {
             return new HomeserverRef(hs.serverName(), hs.baseUrl(), hs.masIssuer(), hs.region());
         }
     }
 
+    /** {@code rosterVersion} is the roster the answer was made against; absent if the roster changed meanwhile. */
     public record ResolveResponse(boolean exists, HomeserverRef homeserver, HomeserverRef registerAt,
-                                  @JsonInclude(JsonInclude.Include.NON_NULL)
-                                  DecisionTrace trace) {
-        static ResolveResponse existing(HomeserverRef hs, DecisionTrace trace) {
-            return new ResolveResponse(true, hs, null, trace);
+                                  @JsonInclude(JsonInclude.Include.NON_NULL) Long rosterVersion,
+                                  @JsonInclude(JsonInclude.Include.NON_NULL) DecisionTrace trace) {
+        static ResolveResponse existing(HomeserverRef hs, long rosterVersion, DecisionTrace trace) {
+            return new ResolveResponse(true, hs, null, rosterVersion, trace);
         }
-        static ResolveResponse register(HomeserverRef hs, DecisionTrace trace) {
-            return new ResolveResponse(false, null, hs, trace);
+        static ResolveResponse register(HomeserverRef hs, Long rosterVersion, DecisionTrace trace) {
+            return new ResolveResponse(false, null, hs, rosterVersion, trace);
         }
     }
 

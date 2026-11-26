@@ -8,10 +8,6 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * RFC 6962 Merkle behaviour: a stable root, and consistency proofs that accept genuine append-only
- * extensions while rejecting a rewritten or forked history.
- */
 class MerkleTreeTest {
 
     private static List<String> leaves(int n) {
@@ -46,12 +42,23 @@ class MerkleTreeTest {
     }
 
     @Test
+    void anEmptyPrefixIsConsistentWithEveryTreeAndNeedsNoProof() {
+        List<String> all = leaves(9);
+        for (int second = 0; second <= 9; second++) {
+            List<String> proof = MerkleTree.consistencyProof(all, 0, second);
+            assertThat(proof).as("0 -> %d", second).isEmpty();
+            assertThat(MerkleTree.verifyConsistency(0, second, MerkleTree.root(List.of()),
+                    MerkleTree.root(all.subList(0, second)), proof)).as("0 -> %d", second).isTrue();
+        }
+    }
+
+    @Test
     void consistencyProofRejectsRewrittenHistory() {
         List<String> original = leaves(6);
         String oldRoot = MerkleTree.root(original.subList(0, 3));
         List<String> proof = MerkleTree.consistencyProof(original, 3, 6);
 
-        // Tamper with leaf 1 (within the "old" prefix) then re-extend: the old root no longer matches.
+        // Rewrite a leaf inside the old prefix, then re-extend.
         List<String> tampered = new ArrayList<>(original);
         tampered.set(1, MerkleTree.leafHash("forged".getBytes(StandardCharsets.UTF_8)));
         String forgedNewRoot = MerkleTree.root(tampered);

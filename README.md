@@ -56,6 +56,7 @@ Each key has a `GUA_RESOLVER_*` environment override, listed in `src/main/resour
 - `abuse.enabled`, `abuse.client-limit-for-period`, `abuse.client-refresh-period`, `abuse.client-burst`, `abuse.global-limit-for-period`, `abuse.global-refresh-period`, `abuse.global-burst`, `abuse.max-tracked-clients`, `abuse.client-expiry`: the `/resolve` rate limits. `abuse.trace-enabled` lets `"trace": true` return the decision trace.
 - `placement.enabled`, `placement.ingest-enabled`, `placement.checkpoint-interval`, `placement.audit-interval`, `placement.metrics-interval`, `placement.max-validity`, `placement.default-page-size`, `placement.max-page-size`: placement record custody and ingest. Off by default.
 - `dev-homeserver.*`: the homeserver seeded into an empty roster.
+- `cors.allowed-origins[]`: browser origins allowed to read the public endpoints and call `POST /resolve`. Empty by default, which refuses every cross-origin browser request.
 
 ## Documentation
 

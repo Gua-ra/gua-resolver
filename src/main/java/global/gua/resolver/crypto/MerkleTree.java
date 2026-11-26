@@ -8,13 +8,8 @@ import java.util.HexFormat;
 import java.util.List;
 
 /**
- * RFC 6962 (Certificate Transparency) Merkle tree hashing, the tamper-evidence primitive behind the
- * transparency log. Domain-separated so leaf and interior hashes cannot be confused:
- * {@code leafHash = SHA256(0x00 || data)}, {@code nodeHash = SHA256(0x01 || left || right)}.
- *
- * <p>Provides the Merkle Tree Hash (root) and the consistency proof plus verification that lets a mirror
- * check that a new checkpoint is an append-only extension of one it saw earlier. That detects a history
- * rewritten relative to that earlier checkpoint; it does not rule out a split view between readers.
+ * RFC 6962 Merkle tree hashing, domain-separated: {@code leafHash = SHA256(0x00 || data)} and
+ * {@code nodeHash = SHA256(0x01 || left || right)}.
  */
 public final class MerkleTree {
 
@@ -36,12 +31,10 @@ public final class MerkleTree {
         return HEX.formatHex(sha256().digest(data.getBytes(StandardCharsets.UTF_8)));
     }
 
-    /** Plain SHA-256 (hex) of arbitrary bytes, e.g. a canonical policy-bundle content hash. */
     public static String sha256Hex(byte[] data) {
         return HEX.formatHex(sha256().digest(data));
     }
 
-    /** RFC 6962 leaf hash (hex) for arbitrary leaf data. */
     public static String leafHash(byte[] data) {
         MessageDigest d = sha256();
         d.update(LEAF_PREFIX);
@@ -57,10 +50,7 @@ public final class MerkleTree {
         return d.digest();
     }
 
-    /**
-     * Merkle Tree Hash (RFC 6962 section 2.1) over {@code leafHashes} (each a hex leaf hash). Returns the root
-     * as hex. The empty tree hashes to SHA256 of the empty string.
-     */
+    /** RFC 6962 section 2.1 Merkle Tree Hash over hex leaf hashes. */
     public static String root(List<String> leafHashes) {
         if (leafHashes.isEmpty()) {
             return HEX.formatHex(sha256().digest(new byte[0]));
@@ -72,7 +62,6 @@ public final class MerkleTree {
         return HEX.formatHex(mth(level));
     }
 
-    /** Recursive MTH over already-leaf-hashed nodes, splitting at the largest power of two < n. */
     private static byte[] mth(List<byte[]> nodes) {
         int n = nodes.size();
         if (n == 1) {
@@ -92,13 +81,13 @@ public final class MerkleTree {
         return k;
     }
 
-    /**
-     * RFC 6962 section 2.1.2 consistency proof between a tree of {@code first} leaves and one of
-     * {@code second} leaves (first &le; second). Returns the list of hex node hashes the verifier needs.
-     */
+    /** RFC 6962 section 2.1.2. */
     public static List<String> consistencyProof(List<String> leafHashes, int first, int second) {
         if (first < 0 || second < first || second > leafHashes.size()) {
             throw new IllegalArgumentException("invalid consistency proof range");
+        }
+        if (first == 0 || first == second) {
+            return List.of();   // RFC 6962 defines the proof for 0 < first < second; both edges verify with no nodes
         }
         List<byte[]> nodes = new ArrayList<>(second);
         for (int i = 0; i < second; i++) {
@@ -131,11 +120,6 @@ public final class MerkleTree {
         }
     }
 
-    /**
-     * Verify a consistency proof: that {@code newRoot} (of {@code second} leaves) is an append-only
-     * extension of {@code oldRoot} (of {@code first} leaves). This is the check a mirror runs against the
-     * authority node so a history rewritten since {@code oldRoot} is detected.
-     */
     public static boolean verifyConsistency(int first, int second, String oldRoot, String newRoot,
                                             List<String> proof) {
         if (first == 0) {
@@ -153,7 +137,7 @@ public final class MerkleTree {
             path.add(HEX.parseHex(p));
         }
 
-        // RFC 6962 §2.1.2 verification algorithm.
+        // RFC 9162 section 2.1.4.2.
         boolean firstIsPowerOfTwo = (first & (first - 1)) == 0;
         int idx = 0;
         List<byte[]> seed = new ArrayList<>();
@@ -172,6 +156,9 @@ public final class MerkleTree {
             sn >>= 1;
         }
         while (idx < path.size()) {
+            if (sn == 0) {
+                return false;
+            }
             byte[] node = path.get(idx++);
             if ((fn & 1) == 1 || fn == sn) {
                 fr = nodeHash(node, fr);

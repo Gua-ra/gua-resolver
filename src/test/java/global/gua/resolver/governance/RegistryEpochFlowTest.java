@@ -19,6 +19,7 @@ import global.gua.resolver.admission.AdmissionService;
 import global.gua.resolver.crypto.Ed25519;
 import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.placement.ClaimPredicate;
+import global.gua.resolver.placement.rules.WeightedFallbackRule;
 import global.gua.resolver.roster.JdbcTransparencyLog;
 import global.gua.resolver.roster.RosterEntry;
 import global.gua.resolver.roster.RosterStore;
@@ -29,17 +30,8 @@ import global.gua.resolver.roster.store.RosterEntryRepository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * The membership epoch path end to end, with governance required: an admission is an intent, a status change
- * is an intent, and only a governance-signed epoch changes what is served.
- *
- * <p>The governance key here is minted in memory for this context. It stands in for a key that, in a real
- * environment, lives on an operator machine and never reaches the resolver.
- */
 @SpringBootTest
-// Per method, not per class: these tests commit epochs and admit members, so they mutate the very state
-// the next one asserts about. The schema script drops and recreates, so a fresh context is a fresh
-// federation.
+// Each test commits epochs or admits members, so each needs a fresh federation.
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class RegistryEpochFlowTest {
 
@@ -68,7 +60,6 @@ class RegistryEpochFlowTest {
     @Autowired JdbcTransparencyLog transparencyLog;
     @Autowired RosterEntryRepository entries;
 
-    /** Sign whatever the resolver says it is expecting, with the governance key. */
     private RegistryEpoch signPending(List<GovernanceFixtures.Holder> signers) {
         RegistryService.PendingEpoch pending = registry.pending();
         return GovernanceFixtures.epoch(pending.genesisId(), pending.epoch(), pending.previousEpochHash(),
@@ -91,7 +82,6 @@ class RegistryEpochFlowTest {
         long before = transparencyLog.head().size();
         registry.commit(signPending(List.of(GOVERNANCE)), pending.content());
 
-        // Still ACTIVE and still served: recording the intent is not the act.
         assertThat(entries.findById("dev").orElseThrow().status()).isEqualTo(RosterEntry.Status.ACTIVE);
         assertThat(rosterStore.current().activeEntries()).hasSize(1);
         assertThat(transparencyLog.head().size()).isEqualTo(before + 1);
@@ -159,7 +149,6 @@ class RegistryEpochFlowTest {
     @Test
     void anEpochCarryingAMembershipTheResolverDidNotBuildIsRefused() {
         RegistryService.PendingEpoch pending = registry.pending();
-        // Correctly signed, internally consistent, and inventing a member the resolver never proposed.
         HomeserverRegistryContent invented = HomeserverRegistryContent.of(List.of(
                 new RegistryMember("smuggled", RosterEntry.Status.ACTIVE, null, 99, true, List.of())));
         RegistryEpoch epoch = GovernanceFixtures.epoch(pending.genesisId(), pending.epoch(),
@@ -195,6 +184,25 @@ class RegistryEpochFlowTest {
     }
 
     @Test
+    void anEpochThatWouldTakeTheFallbackPastItsLimitIsRefused() {
+        // Inserted directly because admission refuses this weight; rows from before the limit can carry it.
+        entries.insert(new RosterEntry(new Homeserver("heavy", "heavy.gua.global", "https://heavy.gua.global",
+                "https://account.heavy.gua.global", "BR", (int) WeightedFallbackRule.MAX_TOTAL_WEIGHT, true, ""),
+                List.of(), Instant.now(), RosterEntry.Status.PENDING));
+        RegistryService.PendingEpoch pending = registry.pending();
+
+        assertThatThrownBy(() -> registry.commit(signPending(List.of(GOVERNANCE)), pending.content()))
+                .isInstanceOf(GovernanceException.class)
+                .hasMessageContaining("limit");
+
+        admission.setStatus("heavy", RosterEntry.Status.SUSPENDED);
+        registry.commit(signPending(List.of(GOVERNANCE)), registry.pending().content());
+
+        assertThat(entries.findById("dev").orElseThrow().status()).isEqualTo(RosterEntry.Status.ACTIVE);
+        assertThat(entries.findById("heavy").orElseThrow().status()).isEqualTo(RosterEntry.Status.SUSPENDED);
+    }
+
+    @Test
     void anAdmissionLandsPendingAndCannotBeServedWithoutAnEpoch() {
         String serverName = "governed.gua.global";
         Ed25519.KeyPairB64 key = Ed25519.generate();
@@ -209,7 +217,7 @@ class RegistryEpochFlowTest {
                 .isEqualTo(RosterEntry.Status.PENDING);
         assertThat(rosterStore.current().activeEntries())
                 .noneSatisfy(e -> assertThat(e.homeserver().id()).isEqualTo("governed"));
-        // Not in the published document either, in any status: PENDING is not something a client is shown.
+        // Not in the served document under any status.
         assertThat(rosterStore.served().entries())
                 .noneSatisfy(e -> assertThat(e.homeserver().id()).isEqualTo("governed"));
 
@@ -232,7 +240,6 @@ class RegistryEpochFlowTest {
         assertThat(registry.current(Registry.HOMESERVERS).orElseThrow().epoch().epoch()).isEqualTo(2);
         assertThat(registry.at(Registry.HOMESERVERS, 1)).isPresent();
 
-        // Re-submitting epoch 2 is now out of sequence: an accepted epoch cannot be replayed.
         RegistryEpoch replay = GovernanceFixtures.epoch(second.genesisId(), 2, second.previousEpochHash(),
                 second.contentHash(), List.of(GOVERNANCE));
         assertThatThrownBy(() -> registry.commit(replay, second.content()))
@@ -257,8 +264,7 @@ class RegistryEpochFlowTest {
     void twoAdmissionsClaimingTheSameAccountsCannotBothWaitForAnEpoch() {
         admitClaiming("hs-a", "hs-a.gua.global", "72411");
 
-        // Both would be PENDING, so a gate that looked only at ACTIVE entries would admit the second and the
-        // epoch that ratified them would make the overlap real.
+        // Both would be PENDING, so a gate that checked only ACTIVE entries would let the second through.
         assertThatThrownBy(() -> admitClaiming("hs-b", "hs-b.gua.global", "72411"))
                 .isInstanceOf(AdmissionService.AdmissionException.class)
                 .hasMessageContaining("overlap");
@@ -269,8 +275,7 @@ class RegistryEpochFlowTest {
 
     @Test
     void anEpochThatWouldLeaveTwoMembersClaimingTheSameAccountsIsRefused() {
-        // Inserted past the admission gate on purpose: the gate is one guard, and an epoch applies claims as
-        // well as statuses, so it is the last point at which the overlap could become real.
+        // Inserted past the admission gate, since the epoch check must hold on its own.
         entries.insert(new RosterEntry(homeserver("hs-a", "hs-a.gua.global"), List.of(claiming("72411")),
                 Instant.now(), RosterEntry.Status.PENDING));
         entries.insert(new RosterEntry(homeserver("hs-b", "hs-b.gua.global"), List.of(claiming("72411")),
