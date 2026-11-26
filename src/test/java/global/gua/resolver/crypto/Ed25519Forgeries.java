@@ -3,7 +3,7 @@ package global.gua.resolver.crypto;
 import java.util.Base64;
 import java.util.HexFormat;
 
-/** A key and signature that the JDK verifies over every message: the identity point with R = identity, S = 0. */
+/** Ed25519 identity-point forgery: R = identity, S = 0. */
 public final class Ed25519Forgeries {
 
     public static final String IDENTITY_HEX = "0100000000000000000000000000000000000000000000000000000000000000";

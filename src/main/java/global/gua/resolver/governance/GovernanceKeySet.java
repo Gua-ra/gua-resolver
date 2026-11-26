@@ -60,10 +60,6 @@ public final class GovernanceKeySet {
         return publicKeys.get(keyId);
     }
 
-    /**
-     * The policy verifier counts these per key, not per operator; a threshold that must mean independent
-     * operators goes through {@link GovernanceVerifier}.
-     */
     public List<ResolverProperties.TrustedKey> asTrustedKeys() {
         return byKeyId.values().stream().map(k -> {
             ResolverProperties.TrustedKey trusted = new ResolverProperties.TrustedKey();
@@ -93,27 +89,30 @@ public final class GovernanceKeySet {
             }
             if (key.operatorId() == null || key.operatorId().isBlank()) {
                 throw new GovernanceException("governance key " + key.keyId()
-                        + " needs an operatorId: a threshold counts operators, not keys");
+                        + " requires an operatorId");
             }
             if (!keyIds.add(key.keyId())) {
                 throw new GovernanceException("duplicate governance keyId: " + key.keyId());
             }
-            PublicKey publicKey;
-            try {
-                publicKey = Ed25519.publicKey(key.publicKey());
-            } catch (RuntimeException e) {
-                throw new GovernanceException(
-                        "governance key " + key.keyId() + " is not an Ed25519 public key");
-            }
-            // One key listed for two operators would let one signer count twice toward the threshold.
-            if (!publicKeys.add(java.util.HexFormat.of().formatHex(publicKey.getEncoded()))) {
-                throw new GovernanceException("governance key " + key.keyId() + " repeats another key");
-            }
+            requireUniquePublicKey(key, publicKeys);
             operators.add(key.operatorId());
         }
         if (threshold > operators.size()) {
             throw new GovernanceException("governance threshold " + threshold + " exceeds the "
-                    + operators.size() + " distinct operator(s) holding these keys, so it can never be met");
+                    + operators.size() + " distinct operator(s)");
+        }
+    }
+
+    private static void requireUniquePublicKey(GovernanceKey key, Set<String> publicKeys) {
+        PublicKey publicKey;
+        try {
+            publicKey = Ed25519.publicKey(key.publicKey());
+        } catch (RuntimeException e) {
+            throw new GovernanceException(
+                    "governance key " + key.keyId() + " is not an Ed25519 public key");
+        }
+        if (!publicKeys.add(java.util.HexFormat.of().formatHex(publicKey.getEncoded()))) {
+            throw new GovernanceException("duplicate governance public key for keyId " + key.keyId());
         }
     }
 }

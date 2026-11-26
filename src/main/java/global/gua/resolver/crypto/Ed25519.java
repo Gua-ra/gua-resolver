@@ -18,10 +18,6 @@ import java.util.Base64;
 import java.util.HexFormat;
 import java.util.Set;
 
-/**
- * Ed25519 over the JDK provider. Public keys are the 44-byte X.509 {@code SubjectPublicKeyInfo} and
- * signatures the raw 64 bytes, both as standard padded base64; private keys are base64 PKCS#8.
- */
 public final class Ed25519 {
 
     private static final String ALG = "Ed25519";
@@ -54,9 +50,8 @@ public final class Ed25519 {
         }
     }
 
-    /** Refuses non-canonical encodings and small-order points, under which anyone can forge signatures. */
     public static PublicKey publicKey(String base64X509) {
-        byte[] spki = decodeCanonical(base64X509);
+        byte[] spki = decodeCanonicalBase64(base64X509);
         if (spki == null || spki.length != SPKI_PREFIX.length + RAW_KEY_LENGTH
                 || !Arrays.equals(spki, 0, SPKI_PREFIX.length, SPKI_PREFIX, 0, SPKI_PREFIX.length)) {
             throw new IllegalArgumentException("invalid Ed25519 public key");
@@ -94,12 +89,11 @@ public final class Ed25519 {
         }
     }
 
-    /** Returns false on any malformed input. */
     public static boolean verify(PublicKey key, byte[] message, String signatureB64) {
         if (key == null) {
             return false;
         }
-        byte[] signature = decodeCanonical(signatureB64);
+        byte[] signature = decodeCanonicalBase64(signatureB64);
         if (signature == null || signature.length != SIGNATURE_LENGTH) {
             return false;
         }
@@ -114,8 +108,7 @@ public final class Ed25519 {
         }
     }
 
-    /** Accepts only standard padded base64 with zero trailing bits, the one spelling every Gua verifier reads. */
-    private static byte[] decodeCanonical(String base64) {
+    private static byte[] decodeCanonicalBase64(String base64) {
         if (base64 == null) {
             return null;
         }

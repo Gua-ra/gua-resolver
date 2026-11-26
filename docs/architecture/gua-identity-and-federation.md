@@ -1,6 +1,6 @@
 # Gua identity and federation
 
-How a Gua account is named, where it lives, how a person signs in, and what homeservers share. Everything here describes the system as it runs today unless a section says otherwise.
+This guide describes account identifiers, hosting, sign-in and federation in the current system. Planned features are labelled separately.
 
 ## The parts
 
@@ -20,11 +20,11 @@ flowchart LR
     Synapse -- "checks tokens" --> Auth
 ```
 
-| Part | Repository | Owns |
+| Part | Repository | Responsibility |
 | --- | --- | --- |
-| Resolver | `gua-resolver` | The list of homeservers, the routing rules, and the answer to "which homeserver for this phone number". No credentials, no sessions. |
+| Resolver | `gua-resolver` | Publishes the homeserver roster and routing rules. Returns a homeserver for a phone number. Stores no credentials or sessions. |
 | Synapse | upstream | The Matrix account, rooms, encrypted messages, device list and encrypted key backup. |
-| Auth service | `gua-auth-service`, a fork of Matrix Authentication Service | Matrix sessions and access tokens. One runs beside each homeserver. |
+| Auth service | `gua-auth-service`, a fork of Matrix Authentication Service | Manages Matrix sessions and access tokens. Each homeserver has an auth service. |
 | Identity service | `identity-service` | Phone verification, PIN, passkeys, account recovery, usernames, contact discovery and the account identifier. One serves every homeserver. |
 | Sign-in page | `gua-idp-web` | The web page the identity service uses for sign-in, shown by the apps in a system browser sheet. |
 
@@ -32,16 +32,16 @@ One operator runs all of these today.
 
 ## What a Gua account is
 
-One person's profile, conversations and credentials. It is created when a phone number completes signup, and it lives on exactly one homeserver.
+A Gua account consists of a person's profile, conversations and credentials. It is created during signup after phone verification and is hosted on exactly one homeserver.
 
-An account has four names, each with its own job:
+An account has four identifiers:
 
-| Name | Looks like | Who sees it | Job |
+| Identifier | Example | Who sees it | Purpose |
 | --- | --- | --- | --- |
 | Username | `maria` | Everyone | The public identity. |
 | Phone number | `+55 11 98765 4321` | The identity service | How the owner signs in, and how people who already have the number find them. |
 | Matrix ID | `@maria:gua.example` | Nobody, in the product | The address the Matrix protocol uses. |
-| Account identifier | `ga1aea…`, 58 characters | Nobody | A permanent internal name that outlives a change of phone number. |
+| Account identifier | `ga1aea…`, 58 characters | Not displayed | A permanent internal identifier, unchanged by a phone number change. |
 
 ## The public identity
 
@@ -49,7 +49,7 @@ A person is known on Gua by a **username** and a display name. The username is c
 
 People find each other by username, or through contact discovery: the app sends the numbers in the address book over TLS, and the identity service answers with the ones that have accounts. An account can opt out of being found this way.
 
-The phone number is not a public identity. It can change and the account stays the same.
+The phone number is private and can change without creating a new account.
 
 ## The Matrix ID
 
@@ -58,7 +58,7 @@ Gua is built on Matrix, and Matrix addresses every user as `@localpart:server`. 
 Two consequences:
 
 - The apps hide it. Screens show the username without the server and never say "Matrix ID".
-- It is permanent. The server name is part of the address, so an account cannot move to another homeserver and keep its identity. Gua offers no per-account move. See [planned federation work](planned-federation-work.md#moving-an-account-to-another-homeserver).
+- It is permanent. Changing the homeserver would change the Matrix ID. Gua does not support moving individual accounts between homeservers. See [planned federation work](planned-federation-work.md#moving-an-account-to-another-homeserver).
 
 The Matrix ID is also the subject the identity service reports to the auth service when someone signs in.
 
@@ -69,19 +69,19 @@ A homeserver is Synapse plus its auth service.
 - **Synapse** holds the account's rooms, memberships, encrypted messages, device list, public device keys and an encrypted backup of message keys. It cannot read message content.
 - **The auth service** issues and revokes Matrix sessions. Synapse accepts no password of its own and trusts only tokens from its auth service.
 
-The auth service holds no credentials either. It sends every sign-in to the identity service over OpenID Connect and creates the Matrix user on first sign-in from the username the identity service reports. So today the homeserver owns the account's data and sessions, and the identity service decides who gets in.
+The auth service stores no user credentials. It delegates sign-in to the identity service over OpenID Connect and creates the Matrix user on first sign-in using the returned username. The homeserver manages account data and sessions; the identity service authenticates users.
 
 ## What the resolver does
 
-The apps ship with no server address. Before sign-in they ask the resolver which homeserver a phone number leads to.
+The apps request a homeserver from the resolver before phone-based sign-in. They do not hardcode a homeserver address for this lookup.
 
 The resolver publishes:
 
-- **The roster** (`GET /roster`): every homeserver with its id, Matrix server name, base URL, auth issuer, region and status, signed by the resolver operator's keys.
-- **The routing policy** (`GET /policy/routing`): signed rules that send new accounts to a homeserver by phone prefix, institution domain or sign-on issuer. Institution and issuer rules apply only when the request carries a routing claim that is signed by a trusted key, bound to that phone number, valid for at most 5 minutes and accepted once. A caller's own word is never enough.
-- **A transparency log** (`GET /roster/log`): a list of every roster and policy change that can only be added to. Each entry is hashed into a tree, so anyone who kept an earlier copy can detect a rewritten history.
+- **The roster** (`GET /roster`): homeservers admitted to host Gua accounts, with their ids, Matrix server names, base URLs, auth issuers, regions and statuses. The resolver operator signs the roster.
+- **The routing policy** (`GET /policy/routing`): signed rules for assigning new accounts by phone prefix, institution domain or sign-on issuer. Institution and issuer rules require a routing claim signed by a trusted key, bound to the phone number, valid for at most five minutes and accepted only once.
+- **A transparency log** (`GET /roster/log`): an append-only record of roster and policy changes. Each entry is hashed into a Merkle tree. Comparing checkpoints with an earlier copy can detect rewritten history.
 
-It never sees a code, a PIN or a passkey, and never issues a session.
+The resolver does not receive verification codes, PINs or passkeys, or issue sessions.
 
 ## How a phone number is resolved
 
@@ -117,13 +117,13 @@ curl -s -XPOST https://resolver.example/resolve \
 
 What to know about this answer:
 
-- **The directory is read-only.** It maps a hash of a phone number, computed with a secret key, to a homeserver id. It holds a fixed set of older numbers and nothing can add to it.
-- **For every other number the answer is a rule evaluation, not a record.** `exists: false` means "no directory row", not "no account". The app starts sign-in at the returned homeserver either way, and the identity service decides whether this is a returning user or a new one.
-- **The weighted pick is repeatable, not permanent.** Every resolver gives the same answer for the same number while the transparency log has the same size. The pick is reseeded when the log grows. The choice is used once, when the account is created, and a Matrix ID never changes afterwards.
-- **Usernames resolve at the identity service**, which maps a username to its Matrix ID. The roster carries each homeserver's search visibility for username search across homeservers.
-- **The endpoint is public.** It needs no session. Each client address may ask 20 times a minute, with IPv6 counted per /64, and each resolver pod answers at most 200 requests a second. Over either limit the answer is `429` with `Retry-After` and a fixed body, sent without reading the request body, so a refusal reveals nothing about the number. `exists` stays in the answer because both apps choose between sign-in and signup from it. The settings are `gua.resolver.abuse.*`, and `ResolveAbuseControlsTest` holds the contract.
+- **Read-only directory.** The directory maps keyed phone number hashes to homeserver ids for a fixed set of older numbers. New entries cannot be added.
+- **Directory result.** `exists: false` means there is no directory row; an account may still exist. Without a row, the resolver evaluates routing rules. The app starts sign-in at the returned homeserver, and the identity service distinguishes returning users from new users.
+- **Weighted selection.** Given the same number and federation state, resolvers return the same homeserver. Selection is reseeded when the transparency log grows. This selects the server for account creation; it does not change an existing Matrix ID.
+- **Username lookup.** The identity service maps usernames to Matrix IDs. The roster specifies each homeserver's visibility for searches across homeservers.
+- **Public endpoint.** No session is required. The limits are 20 requests per minute per client address, with IPv6 grouped by /64, and 200 requests per second per resolver pod. Rate-limited requests receive `429`, `Retry-After` and a fixed response body without parsing the submitted phone number. Both apps use `exists` to choose between sign-in and signup. Configuration is under `gua.resolver.abuse.*`; `ResolveAbuseControlsTest` verifies this behavior.
 
-Signed records of where each account lives exist in code and are switched off. See [account identifiers and placement records](../specs/account-identifiers-and-placement-records.md).
+Signed account placement records are implemented but disabled. See [account identifiers and placement records](../specs/account-identifiers-and-placement-records.md).
 
 ## How sign-in works
 
@@ -144,12 +144,12 @@ sequenceDiagram
     App->>HS: sync and send
 ```
 
-- **The SMS code never completes a sign-in.** It proves control of a number, which a SIM swap also gives. Finishing needs a passkey, the PIN, the first factor created during signup, or a completed recovery.
+- **An SMS code is insufficient for sign-in.** It proves current control of the number, including after a SIM swap. Sign-in also requires a passkey, a PIN, creation of the first factor during signup, or completed recovery.
 - **New account:** choose a username, then register a passkey. Whoever cannot or will not use a passkey must set a PIN.
 - **Returning account with a PIN:** enter the PIN, or use a passkey instead.
 - **Returning account with only a passkey:** the passkey is required.
 - **Passkey first:** a user can sign in with a passkey without typing a number. No SMS is sent. This path skips the resolver and uses the app's default homeserver.
-- **Every sign-in is fresh.** The apps use an ephemeral browser session and ask for a new login each time, so a cached browser session never signs anyone in.
+- **Fresh authentication.** The apps use ephemeral browser sessions and request a new login each time.
 
 ## Account security
 
@@ -159,22 +159,22 @@ sequenceDiagram
 | PIN | Knowledge | 6 digits. Repeated, sequential and common PINs are refused. 5 wrong attempts lock it for 15 minutes. |
 | Passkey | Possession of a registered device or credential manager | WebAuthn, verified by the identity service. The relying party ID is the Gua brand domain, and the sign-in host is the allowed origin. |
 
-Two limits on passkey checks: signature counters are not validated, because synced passkeys never increment them, and any authenticator model is accepted, because attestation is not required to be trusted.
+Passkey verification does not validate signature counters or require trusted authenticator attestation. Any authenticator model is accepted.
 
-A passkey is bound to the **account identifier**, not to the phone number or the Matrix ID. Every account has an identifier, derived from random bytes when the account is created. Nothing else reads it: not routing, not login, not a token. Its format is in [account identifiers and placement records](../specs/account-identifiers-and-placement-records.md).
+A passkey uses the permanent **account identifier** as its user handle. Each account receives an identifier derived from random bytes at creation. Routing, login identifiers and token claims do not use it. See [account identifiers and placement records](../specs/account-identifiers-and-placement-records.md) for the format.
 
-Changing what guards an account always needs more than a session:
+Account security changes require additional verification beyond an active session:
 
 - **Adding a PIN or passkey from settings** needs a step-up first: an existing passkey, else the PIN, else an SMS code to the account's own number when it has no factor.
 - **Deactivating, resetting encryption or changing the number** each need a fresh SMS code scoped to that one operation.
 - **Changing the number** also needs a passkey or the PIN, then a code sent to the new number, and is limited to once per 24 hours.
-- **A PIN or passkey less than 7 days old cannot authorize a number change**, so someone who steals a session cannot add a factor and then move the number.
+- **Number changes require a PIN or passkey registered at least seven days earlier.** A newly added factor cannot authorize a number change.
 
 ## Devices and message keys
 
 Messages are end-to-end encrypted with Matrix's encryption. Each device generates its own keys. The homeserver holds public device keys and an encrypted backup of message keys, and can read neither the messages nor the backup.
 
-A new device restores earlier messages from a device that is already signed in, after the two are verified by comparing emoji. Gua never shows a recovery key, and the account PIN is never used to protect message keys, because six digits can be guessed offline.
+A new device restores earlier messages from an existing signed-in device after verification by comparing emoji. Gua does not display a recovery key. The six-digit account PIN is unsuitable for protection against offline guessing and is not used to encrypt message keys.
 
 Without another device, the user resets the encrypted backup. Messages saved only in that backup are lost, messages already on a device are unaffected, and contacts are told that the person's security details changed.
 
@@ -187,7 +187,7 @@ Without another device, the user resets the encrypted backup. Messages saved onl
 | New phone number, still signed in | Change the number in settings. Username, Matrix ID and conversations are unchanged. |
 | PIN forgotten or passkey lost, number still held | Delayed account recovery, below. |
 | Someone else gets the number: SIM swap or a recycled number | They receive codes and cannot finish sign-in without the PIN or passkey. They can start recovery only on a dormant account, and the owner can cancel it. |
-| Number, PIN and passkey all lost | No way back in. A path that recovers an account from nothing is also a path to take one over from nothing. |
+| Number, PIN and passkey all lost | Account recovery is unavailable. |
 
 ### Delayed account recovery
 
@@ -211,7 +211,8 @@ stateDiagram-v2
 
 | | Scope today |
 | --- | --- |
-| Messages and rooms | Federated between Gua homeservers over Matrix federation. Gua is a closed federation and does not join the open Matrix network. |
+| Messages and rooms | Gua's homeservers currently exchange messages and room events with other Matrix servers through federation. |
+| Matrix federation policy | Each operator sets its policy: open, restricted to selected servers, or disabled. Restricting Gua's homeservers to roster members is planned. |
 | Roster, routing policy, transparency log | Federation-wide, published by the resolver. |
 | Matrix account, sessions, devices, key backup | Local to one homeserver. |
 | Sign-in, PIN, passkeys, recovery, usernames, contact discovery, account identifiers | Central. One identity service serves every homeserver. |
@@ -219,23 +220,23 @@ stateDiagram-v2
 
 ## How a resolver answer can be checked
 
-- The roster carries signatures from the operator's keys, and a set minimum number of them must be valid.
-- Each roster names the size and root hash of the transparency log at that moment, and the log can prove that it only grew since any earlier one.
+- Roster verification requires a configured minimum number of valid signatures from the operator's keys.
+- Each roster includes the transparency log size and root hash. Consistency proofs verify that a later checkpoint extends an earlier checkpoint.
 - A routing policy bundle is signed, appears in the log, and limits each delegated rule set to the homeservers and scope it was granted.
-- A homeserver can sign its own roster entry, so the operator cannot quietly change its address or key. Built, and optional until every homeserver has signed.
-- Membership changes can require signatures from governance keys held outside the resolver, anchored in a federation root that apps would pin. Built, and switched off.
+- Homeserver signatures allow verification of each server's address and key independently of the resolver operator. This is implemented; enforcement remains optional until all homeservers have signed their entries.
+- Membership changes can require governance signatures from keys stored outside the resolver. Apps would pin the federation trust root. This is implemented but disabled.
 
 The [verification protocol](../verification/gua-resolver-verification-protocol.md) is the step by step algorithm. The byte formats are in [signed federation objects](../specs/federation-signed-objects.md).
 
 Limits to keep in mind:
 
 - The apps do not run these checks yet. They use the resolver's answer as received.
-- One operator holds every key, so none of this protects against that operator.
-- For an `exists: true` answer a client can check that the homeserver is active in the roster, not that the account lives there.
+- All keys are controlled by one operator. Verification does not provide independence from that operator.
+- For an `exists: true` response, roster verification establishes that the homeserver is active. It does not establish that the account is hosted there.
 - The stored phone hashes can be reversed by anyone who holds both the stored values and the secret they are keyed with.
 
-What closing these gaps requires is in [planned federation work](planned-federation-work.md).
+See [planned federation work](planned-federation-work.md) for proposed changes.
 
 ## In development: account authority
 
-Open pull requests in the resolver, the identity service, both apps and the sign-in page add account authority: signing keys held on a person's devices and recorded in an append-only chain per account, so that adding or removing a device is approved by a device the account already trusts, and the phone number alone authorizes none of it. It is switched off everywhere and no account uses it. Nothing above depends on it.
+Open pull requests in the resolver, identity service, apps and sign-in page add device-held account signing keys and an append-only key history. Adding or removing a device requires approval from an already trusted device. Phone number control alone cannot authorize these changes. The feature is disabled and unused; the current system described above does not depend on it.
