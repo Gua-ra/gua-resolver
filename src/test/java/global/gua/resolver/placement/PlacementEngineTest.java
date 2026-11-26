@@ -4,10 +4,13 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 import org.junit.jupiter.api.Test;
 
 import global.gua.resolver.config.ResolverProperties;
+import global.gua.resolver.crypto.Ed25519;
 import global.gua.resolver.domain.Homeserver;
 import global.gua.resolver.placement.rules.PolicyRoutingRule;
 import global.gua.resolver.placement.rules.ClaimRule;
@@ -16,6 +19,7 @@ import global.gua.resolver.policy.CompositeRoutingPolicyProvider;
 import global.gua.resolver.policy.DelegationZone;
 import global.gua.resolver.policy.RoutingPolicyBundle;
 import global.gua.resolver.policy.RoutingPolicyRule;
+import global.gua.resolver.policy.RoutingPolicySigner;
 import global.gua.resolver.policy.RoutingPolicySource;
 import global.gua.resolver.policy.RoutingPolicyVerifier;
 import global.gua.resolver.roster.RosterEntry;
@@ -228,11 +232,55 @@ class PlacementEngineTest {
                 List.of(), List.of());
     }
 
+    @Test
+    void aBundleChangedAtTheSameVersionHasItsDelegateSignaturesCheckedAgain() {
+        Ed25519.KeyPairB64 delegate = Ed25519.generate();
+        RoutingPolicyBundle signed = RoutingPolicySigner.signZone(
+                carrierPolicy(delegate.publicKeyB64(), "carrier"), "vivo-sp", "delegate-vivo-sp",
+                delegate.privateKeyB64());
+        RoutingPolicyBundle retargeted = new RoutingPolicyBundle(signed.schemaVersion(), signed.policyId(),
+                signed.version(), signed.issuedAt(), signed.notBefore(), signed.expiresAt(),
+                signed.delegationZones(), carrierPolicy(delegate.publicKeyB64(), "default").rules(),
+                signed.fallback(), signed.signatures(), signed.delegateSignatures());
+        AtomicReference<RoutingPolicyBundle> current = new AtomicReference<>(signed);
+        var rule = new PolicyRoutingRule(provider(current::get), rosterOf(entry(CARRIER), entry(DEFAULT)),
+                new RoutingPolicyVerifier(new ResolverProperties()));
+        PlacementContext ctx = PlacementContext.forPhone("+5511987654321");
+
+        assertThat(rule.evaluate(ctx)).map(d -> d.homeserver().id()).contains("carrier");
+
+        current.set(retargeted);
+
+        assertThat(rule.evaluate(ctx)).isEmpty();
+    }
+
+    private static RoutingPolicyBundle carrierPolicy(String delegatePublicKey, String target) {
+        return new RoutingPolicyBundle(RoutingPolicyBundle.SCHEMA_VERSION, "br-carrier-policy", 7,
+                Instant.parse("2026-01-01T00:00:00Z"), Instant.now().minusSeconds(60),
+                Instant.now().plusSeconds(3600),
+                List.of(new DelegationZone("vivo-sp", DelegationZone.ScopeType.PHONE_PREFIX, "+55119",
+                        "carrier:vivo", "delegate-vivo-sp", delegatePublicKey, List.of("carrier", "default"),
+                        null, null)),
+                List.of(new RoutingPolicyRule("vivo-sp-portable", 10, RoutingPolicyRule.MatchType.PHONE_PREFIX,
+                        "+551198", null, null, target, "vivo-sp", "carrier routing",
+                        RoutingPolicyRule.AssignmentPolicy.PORTABLE, true)),
+                new RoutingPolicyBundle.FallbackStrategy("legacy-weighted", true), List.of(), List.of());
+    }
+
     private static CompositeRoutingPolicyProvider provider(RoutingPolicyBundle policy) {
         return new CompositeRoutingPolicyProvider(List.of(new RoutingPolicySource() {
             @Override public Optional<RoutingPolicyBundle> current() { return Optional.of(policy); }
             @Override public PolicySourceStatus status() {
                 return new PolicySourceStatus("test", true, policy.version(), Instant.now(), "ok");
+            }
+        }));
+    }
+
+    private static CompositeRoutingPolicyProvider provider(Supplier<RoutingPolicyBundle> policy) {
+        return new CompositeRoutingPolicyProvider(List.of(new RoutingPolicySource() {
+            @Override public Optional<RoutingPolicyBundle> current() { return Optional.of(policy.get()); }
+            @Override public PolicySourceStatus status() {
+                return new PolicySourceStatus("test", true, policy.get().version(), Instant.now(), "ok");
             }
         }));
     }

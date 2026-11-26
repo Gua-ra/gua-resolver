@@ -39,10 +39,9 @@ public class PolicyRoutingRule implements PlacementRule {
     private final RoutingPolicyVerifier verifier;
     private final Clock clock = Clock.systemUTC();
 
-    // Cache the delegate-verified zone set per (policyId, version) so signatures are not re-verified per call.
-    // A single immutable holder published through one volatile write, so concurrent request threads always
-    // read a self-consistent (key, zones) snapshot (never a key from one policy with zones from another).
-    private record VerifiedZoneCache(String key, Set<String> zones) {}
+    // Keyed on the whole bundle, not its version, so a bundle changed at the same version has its delegate
+    // signatures checked again. One volatile holder, so a reader never pairs one bundle with another's zones.
+    private record VerifiedZoneCache(RoutingPolicyBundle policy, Set<String> zones) {}
 
     private volatile VerifiedZoneCache zoneCache = new VerifiedZoneCache(null, Set.of());
 
@@ -84,11 +83,10 @@ public class PolicyRoutingRule implements PlacementRule {
     }
 
     private Set<String> delegateVerifiedZones(RoutingPolicyBundle policy) {
-        String key = policy.policyId() + " " + policy.version();
-        VerifiedZoneCache cached = zoneCache;   // read the snapshot once
-        if (!key.equals(cached.key())) {
-            cached = new VerifiedZoneCache(key, verifier.delegateVerifiedZones(policy));
-            zoneCache = cached;                 // single atomic publish of (key, zones)
+        VerifiedZoneCache cached = zoneCache;
+        if (!policy.equals(cached.policy())) {
+            cached = new VerifiedZoneCache(policy, verifier.delegateVerifiedZones(policy));
+            zoneCache = cached;
         }
         return cached.zones();
     }
