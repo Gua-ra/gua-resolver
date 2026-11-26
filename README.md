@@ -1,13 +1,13 @@
 ![gua-resolver](https://github.com/user-attachments/assets/01bd66c7-6250-42ce-a4d0-1f8ade952ca2)
 
-gua-resolver is the routing front door of the Gua federation. Before login, a client asks it which homeserver an identifier leads to. It also serves the signed list of federated homeservers.
+gua-resolver is the routing front door of the Gua federation by providing account routing for Gua. Before sign-in, clients submit an identifier and receive the homeserver to use. The resolver also publishes the signed roster of homeservers that host Gua accounts.
 
-The resolver serves and verifies routing information. It does not authenticate anyone and never holds a credential.
+The resolver serves and verifies routing information. It does not authenticate users or store credentials.
 
 ## Endpoints
 
-- `POST /resolve`: a phone number in, the homeserver to log in to or register at out. Rate limited per client and globally; over the limit it answers `429` with `Retry-After`.
-- `GET /roster`: the signed list of federated homeservers. Its transparency log is at `/roster/log` and `/roster/log/consistency`.
+- `POST /resolve`: accepts a phone number and returns the homeserver for sign-in or registration. Per-client and global rate limits return `429` with `Retry-After`.
+- `GET /roster`: the signed roster of homeservers that host Gua accounts. Its transparency log is at `/roster/log` and `/roster/log/consistency`.
 - `GET /policy/routing`: the signed routing policy bundle, with `/policy/routing/status` and `/policy/log`.
 - `GET /directory/lookup`, `GET /directory/checkpoint`: the mirror-facing directory read and its signed checkpoint.
 - `GET /.well-known/gua-federation`, `GET /registry/homeservers/epoch/{current|n}`: the pinned federation genesis and the governance-signed membership epochs.
@@ -17,7 +17,7 @@ The resolver serves and verifies routing information. It does not authenticate a
 
 ## Run
 
-Needs Postgres; Flyway applies `src/main/resources/db/migration`.
+Requires Postgres. Flyway applies the migrations in `src/main/resources/db/migration`.
 
 ```sh
 GUA_RESOLVER_ABUSE_TRACE_ENABLED=true ./gradlew bootRun   # :8095
@@ -50,7 +50,7 @@ Each key has a `GUA_RESOLVER_*` environment override, listed in `src/main/resour
 - `policy.enabled`, `policy.file`, `policy.require-signatures`, `policy.signature-threshold`, `policy.trusted-keys[]`, `policy.refresh-interval`: the routing policy bundle.
 - `claims.audience`, `claims.max-clock-skew`, `claims.max-lifetime`, `claims.replay-protection-enabled`, `claims.require-subject-binding`, `claims.trusted-keys[]`: signed routing-claims envelopes.
 - `genesis.file`, `genesis.transitions-file`, `genesis.expected-id`, `genesis.expected-chain-head`: the pinned federation genesis. A genesis id or chain head that differs from its pin fails startup.
-- `governance.required`: when on, an admission lands `PENDING`, membership changes only through a governance-signed epoch, policy bundles verify only under the genesis governance keys, and claims only under `claims.trusted-keys`. Follow the [governance keys runbook](docs/runbooks/governance-keys.md) before turning it on.
+- `governance.required`: when enabled, new admissions have status `PENDING`. Membership changes require a governance-signed epoch. Policy bundles require the genesis governance keys, and claims require `claims.trusted-keys`. Follow the [governance keys runbook](docs/runbooks/governance-keys.md) before enabling it.
 - `roster.require-member-signature`, `roster.member-max-lifetime`: member self-signature enforcement. Follow the [member attestation runbook](docs/runbooks/member-attestation.md) before turning it on.
 - `mirror.upstream-url`, `mirror.refresh-interval`, `mirror.cache-file`, `mirror.lookup-timeout`, `mirror.directory-cache-ttl`.
 - `abuse.enabled`, `abuse.client-limit-for-period`, `abuse.client-refresh-period`, `abuse.client-burst`, `abuse.global-limit-for-period`, `abuse.global-refresh-period`, `abuse.global-burst`, `abuse.max-tracked-clients`, `abuse.client-expiry`: the `/resolve` rate limits. `abuse.trace-enabled` lets `"trace": true` return the decision trace.
@@ -60,7 +60,7 @@ Each key has a `GUA_RESOLVER_*` environment override, listed in `src/main/resour
 ## Documentation
 
 - [Architecture guide](docs/architecture/gua-identity-and-federation.md), and [what is not built yet](docs/architecture/planned-federation-work.md)
-- Specifications: [signed federation objects](docs/specs/federation-signed-objects.md), [account identifiers and placement records](docs/specs/account-identifiers-and-placement-records.md). Test vectors sit beside them in `docs/specs/`.
+- Specifications: [signed federation objects](docs/specs/federation-signed-objects.md), [account identifiers and placement records](docs/specs/account-identifiers-and-placement-records.md). Test vectors are in `docs/specs/`.
 - [Verification protocol](docs/verification/gua-resolver-verification-protocol.md)
 - [Migration plan](docs/migrations/gua-resolver-migration-plan.md)
 - Runbooks: [governance keys](docs/runbooks/governance-keys.md), [member attestation](docs/runbooks/member-attestation.md)
